@@ -1,0 +1,250 @@
+# Plano de Implementação — Atualizações Sistema Upgrade
+
+**Base:** 06_PLANEJAMENTO.md + 02_LIVRO_DE_REGRAS.md + 10 pesquisas Deep Research  
+**Prioridade definida pela reunião de 12/03/2026**
+
+---
+
+## Visão Geral
+
+Implementar os requisitos extraídos da reunião Upgrade × RR Tecnol em 4 fases, do mais simples (mudanças de schema/DTO) ao mais complexo (novos módulos). Cada fase é independente e pode ser deployada separadamente.
+
+---
+
+## Fase 1 — Mudanças de Schema + DTOs (Sem novas tabelas)
+
+> Estas são as mudanças mais seguras: adição de campos opcionais ou enum values. Não quebram dados existentes.
+
+### 1.1 Schema Prisma
+
+#### [MODIFY] [schema.prisma](file:///C:/Users/Desktop/Downloads/Sistema_upgrade-main_atual/backend/prisma/schema.prisma)
+
+**Mudança 1 — REQ-04:** Adicionar `PE_DE_MEIA` ao enum `SocialProgram`:
+```prisma
+enum SocialProgram {
+  NONE
+  BOLSA_FAMILIA
+  BPC
+  AUXILIO_BRASIL
+  PE_DE_MEIA  // ← NOVO
+  OTHER
+}
+```
+
+**Mudança 2 — REQ-03:** Adicionar `publicSchoolOnly` ao model `StudentSocioeconomic`:
+```prisma
+model StudentSocioeconomic {
+  // ... campos existentes
+  publicSchoolOnly  Boolean  @default(false)  // ← NOVO (REQ-03)
+}
+```
+
+**Mudança 3 — REQ-05:** Tornar `motivation` opcional em `StudentProfessional`:
+```prisma
+model StudentProfessional {
+  // ...
+  motivation  String?  // ← era String, vira String?
+}
+```
+
+**Mudança 4 — REQ-01:** Adicionar `reserveSlots` ao model [Class](file:///C:/Users/Desktop/Downloads/Sistema_upgrade-main_atual/backend/src/classes/dto/create-class.dto.ts#5-74):
+```prisma
+model Class {
+  // ... campos existentes
+  reserveSlots  Int  @default(4)  // ← NOVO (REQ-01)
+}
+```
+
+**Mudança 5 — REQ-09:** Adicionar campos financeiros CLT ao model `Employee`:
+```prisma
+model Employee {
+  // ... campos existentes
+  monthlySalaryCLT  Decimal?  @db.Decimal(12, 2)  // ← NOVO
+  contractType      ContractType?                   // ← NOVO (CLT/PJ/FREELANCE)
+  travelRuleKm      Int?      @default(200)         // ← limite km semanal/quinzenal
+}
+```
+
+---
+
+### 1.2 DTOs Backend
+
+#### [MODIFY] [create-student.dto.ts](file:///C:/Users/Desktop/Downloads/Sistema_upgrade-main_atual/backend/src/students/dto/create-student.dto.ts)
+
+- Adicionar `publicSchoolOnly?: boolean` (opcional, REQ-03)
+- Mudar `motivation: string` → `motivation?: string` + remover `@IsString()` obrigatório (REQ-05)
+- O campo `PE_DE_MEIA` já é aceito pelo enum após mudança no schema
+
+#### [MODIFY] [create-class.dto.ts](file:///C:/Users/Desktop/Downloads/Sistema_upgrade-main_atual/backend/src/classes/dto/create-class.dto.ts)
+
+- Adicionar `reserveSlots?: number` (opcional, default 4, REQ-01)
+
+---
+
+## Fase 2 — Novos Módulos Backend
+
+### 2.1 Módulo Holiday (REQ-08)
+
+#### [NEW] `backend/src/holiday/holiday.module.ts`
+#### [NEW] `backend/src/holiday/holiday.service.ts`
+#### [NEW] `backend/src/holiday/holiday.controller.ts`
+
+**Responsabilidades do HolidayService:**
+- `listNationalHolidays(year)` — lista de feriados nacionais fixos BR
+- `checkIsHoliday(date, cityId)` — verifica se data é feriado (nacional ou municipal)
+- `recalculateClassDates(classId, holidayDate)` — empurra datas para frente
+- `registerClassHoliday(classId, date, reason)` — professor registra dia não-aula
+
+**Schema adicional necessário:**
+```prisma
+model ClassHoliday {
+  id        String   @id @default(uuid())
+  classId   String
+  date      DateTime
+  reason    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  @@map("class_holidays")
+}
+```
+
+---
+
+### 2.2 Módulo Reembolso / Despesas de Campo (REQ-10)
+
+#### [NEW] `backend/src/reimbursement/reimbursement.module.ts`
+#### [NEW] `backend/src/reimbursement/reimbursement.service.ts`
+#### [NEW] `backend/src/reimbursement/reimbursement.controller.ts`
+
+**Schema adicional necessário:**
+```prisma
+model Reimbursement {
+  id            String           @id @default(uuid())
+  requestedBy   String           // userId do professor/motorista
+  acaoId        String?          // Período de Curso relacionado
+  amount        Decimal          @db.Decimal(10, 2)
+  description   String
+  receiptUrl    String           // MinIO URL da foto do recibo
+  status        ExpenseStatus    @default(PENDING)
+  approvedBy    String?
+  approvedAt    DateTime?
+  rejectedAt    DateTime?
+  rejectionReason String?
+  active        Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  @@map("reimbursements")
+}
+```
+
+**Upload de foto:** Reutiliza `MinioService` já existente em [students/minio.service.ts](file:///C:/Users/Desktop/Downloads/Sistema_upgrade-main_atual/backend/src/students/minio.service.ts) — gera Presigned URL para upload direto do mobile.
+
+---
+
+### 2.3 Módulo Financeiro CLT (REQ-09 — expansão)
+
+#### [MODIFY] [backend/src/employees/employees.service.ts](file:///c:/Users/Desktop/Downloads/Sistema_upgrade-main_atual/backend/src/employees/employees.service.ts)
+#### [NEW] `backend/src/employees/payroll.service.ts`
+
+**PayrollService:**
+- `calculateMonthlyPayroll(employeeId, month, year)` — calcula salário base + diárias + passagens
+- `getTravelExpenseRule(distanceKm)` — retorna `WEEKLY` (≤200km) ou `BIWEEKLY` (>200km)
+
+---
+
+## Fase 3 — Relatórios PDF (REQ-11, REQ-12)
+
+> **Dependência:** Instalar `@sparticuz/chromium` (serverless Puppeteer) ou usar `puppeteer` local.
+
+### 3.1 Módulo PDF
+
+#### [NEW] `backend/src/reports/reports.module.ts`
+#### [NEW] `backend/src/reports/pdf.service.ts`
+#### [NEW] `backend/src/reports/certificate.service.ts`
+#### [NEW] `backend/src/reports/reports.controller.ts`
+
+**PDFService:**
+- `generateFrequencyReport(classId)` — lista de frequência em PDF para o dia 20
+- `generateConcludentsList(classId)` — lista de concludentes na 3ª semana
+
+**Regra de aprovação (REQ-02):** `presencas / totalAulas >= 0.80`  
+**Regra da 3ª semana (02_LIVRO_DE_REGRAS.md §5.3):** frequência ≥ 75% das aulas realizadas **até o momento**
+
+---
+
+## Fase 4 — Frontend
+
+### 4.1 Mudanças de Nomenclatura (REQ-07)
+
+> Busca e substituição em todos os arquivos [.tsx](file:///C:/Users/Desktop/Downloads/Sistema_upgrade-main_atual/frontend/app/page.tsx): "Ação" → "Período de Curso", "Ações" → "Períodos de Curso"
+
+Pastas afetadas: `frontend/app/admin/`, `frontend/components/`
+
+### 4.2 Formulário de Aluno (REQ-03, REQ-04, REQ-05)
+
+#### [MODIFY] Formulário de cadastro de aluno no frontend
+
+- Adicionar toggle: "Você sempre estudou em escola pública?" (REQ-03)
+- Adicionar `PE_DE_MEIA` na lista de programas sociais (REQ-04)
+- Remover `*` (obrigatório) do campo Motivação (REQ-05)
+
+### 4.3 Formulário de Turma (REQ-01)
+
+- Adicionar campo `reserveSlots` — número de vagas de reserva (padrão 4)
+
+---
+
+## ⚠️ User Review Required
+
+> [!IMPORTANT]
+> **Antes de implementar a Fase 3 (PDFs):** Robert precisa enviar o modelo/template do PDF de frequência prometido na reunião para que Puppeteer replique o layout correto. Sem o template, geramos um modelo padrão provisório.
+
+> [!WARNING]
+> **Fase 2.1 (Holiday/Recálculo):** A lógica de recálculo automático de datas é complexa e afeta o `endDate` de turmas existentes em produção. Sugiro implementar somente em turmas novas (flag `isDynamic`) e não retroativamente.
+
+> [!IMPORTANT]
+> **Fase 1 — Migração:** Após mudança no schema, é necessário rodar `npx prisma migrate dev --name "req_03_04_05_01_09"` localmente. Isso cria um arquivo de migração. Não usar `prisma db push` em produção.
+
+---
+
+## Ordenação de Implementação (por impacto e risco)
+
+1. **Fase 1 (Schema + DTOs)** — Baixo risco, alto impacto imediato
+2. **Fase 4.1 (Nomenclatura UI)** — Zero risco, visibilidade imediata
+3. **Fase 4.2/4.3 (Formulários)** — Depende da Fase 1
+4. **Fase 2.2 (Reembolso)** — Módulo novo, isolado
+5. **Fase 2.3 (Financeiro CLT)** — Depende de Fase 1 (Employee fields)
+6. **Fase 3 (PDFs)** — Depende de template do Robert
+7. **Fase 2.1 (Holiday)** — Mais complexo, menor urgência imediata
+
+---
+
+## Plano de Verificação
+
+### Testes Automatizados
+> Não há testes automatizados no projeto (verificado: nenhum arquivo `.spec.ts` próprio encontrado). Os testes serão manuais via chamadas HTTP.
+
+### Manual — Fase 1 (Schema + DTOs)
+1. Rodar `cd backend && npx prisma migrate dev --name "req_03_04_05_01_09"`
+2. Verificar que a migração foi aplicada sem erros
+3. Via Swagger (`http://localhost:3001/api`): tentar criar um aluno com `publicSchoolOnly: true` e `socialProgram: "PE_DE_MEIA"` — deve retornar 201
+4. Verificar que criar aluno **sem** `motivation` não retorna erro de validação
+
+### Manual — Fase 2.2 (Reembolso)
+1. Acessar `POST /reimbursements/presigned-url` com payload `{ filename, contentType }` — deve retornar URL do MinIO
+2. Fazer upload do arquivo via URL retornada
+3. Criar reembolso com `receiptUrl` gerada — deve retornar 201
+4. Acessar `GET /reimbursements?status=PENDING` como ADMIN — deve listar o reembolso
+5. Aprovar via `PATCH /reimbursements/:id/approve` — status deve mudar para APPROVED
+
+### Manual — Fase 3 (PDFs)
+1. Acessar `GET /reports/frequency/:classId` — deve retornar arquivo PDF
+2. Abrir PDF: verificar logo da empresa e dados de frequência corretos
+3. Verificar que alunos com frequência ≥ 80% aparecem na seção de aprovados
+4. Testar `GET /reports/concludents/:classId` — lista de concludentes com separação aprovados/reprovados
+
+### Manual — Fase 4 (Frontend)
+1. Abrir o sistema no browser
+2. Navegar para qualquer tela que antes mostrava "Ação/Ações" — verificar se agora mostra "Período de Curso/Períodos de Curso"
+3. Abrir formulário de cadastro de aluno — verificar toggle "Escola pública?", opção "Pé de Meia" e campo Motivação sem asterisco
