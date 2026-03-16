@@ -1,27 +1,32 @@
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '@/components/admin/Sidebar';
 import Header from '@/components/admin/Header';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
     const router = useRouter();
+    const pathname = usePathname();
     const [ready, setReady] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
 
     useEffect(() => {
         // BUG-01: Verificar token no localStorage antes de renderizar
-        // Sem isso, o conteúdo protegido pisca 1-2s antes do redirect
         const token = localStorage.getItem('token') || localStorage.getItem('access_token');
         if (!token) {
             router.replace('/login');
-            return; // não renderiza nada até o redirect completar
+            return;
         }
         setReady(true);
     }, [router]);
 
+    // Fechar sidebar ao navegar entre rotas
+    useEffect(() => {
+        setSidebarOpen(false);
+    }, [pathname]);
+
     if (!ready) {
-        // Tela de loading durante verificação — nada do admin vaza
         return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#FAFAFA' }}>
                 <div style={{ textAlign: 'center' }}>
@@ -34,9 +39,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
     return (
         <div className="admin-layout">
-            <Sidebar />
+            <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
             <div className="admin-main">
-                <Header />
+                <Header onMenuToggle={() => setSidebarOpen(s => !s)} />
                 <main className="admin-content custom-scrollbar">
                     {children}
                 </main>

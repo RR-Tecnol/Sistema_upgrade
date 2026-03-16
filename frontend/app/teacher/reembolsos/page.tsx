@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import api from '@/lib/api/client';
+import imageCompression from 'browser-image-compression';
 
 import { CameraIcon, PaperAirplaneIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
@@ -51,13 +52,28 @@ export default function TeacherReembolsos() {
         }
     }
 
-    function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    async function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (!file) return;
-        setFotoFile(file);
-        const reader = new FileReader();
-        reader.onload = ev => setFotoPreview(ev.target?.result as string);
-        reader.readAsDataURL(file);
+        try {
+            // Comprime imagem para max 500KB / 1200px antes do preview e upload
+            const options = {
+                maxSizeMB: 0.5,
+                maxWidthOrHeight: 1200,
+                useWebWorker: true,
+            };
+            const compressed = await imageCompression(file, options);
+            setFotoFile(compressed as unknown as File);
+            const reader = new FileReader();
+            reader.onload = ev => setFotoPreview(ev.target?.result as string);
+            reader.readAsDataURL(compressed);
+        } catch {
+            // Fallback sem compressão
+            setFotoFile(file);
+            const reader = new FileReader();
+            reader.onload = ev => setFotoPreview(ev.target?.result as string);
+            reader.readAsDataURL(file);
+        }
     }
 
     async function handleSubmit(e: React.FormEvent) {

@@ -148,7 +148,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* ── ROW 1: PRIMARY KPIs ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.85rem' }}>
+            <div className="grid-4-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.85rem' }}>
                 <KPI label="Cursos Ativos" value={stats?.courses.active || 0} sub={`de ${stats?.courses.total || 0} cursos`} color="#B89B00" bg="#FFFDE7" border="#FEF08A" spark={[3, 5, 4, 7, 6, 8, 7, 9, 8, 10, 9]} />
                 <KPI label="Total de Alunos" value={totalStudents} sub={`MA ${maStudents} · PI ${piStudents}`} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" spark={[10, 15, 13, 18, 16, 20, 19, 22, 24, 21, 26]} />
                 <KPI label="Turmas Ativas" value={stats?.classes.active || 0} sub={`de ${stats?.classes.total || 0} turmas`} color="#059669" bg="#F0FDF4" border="#BBF7D0" spark={[2, 3, 3, 5, 4, 6, 5, 7, 6, 8, 7]} />
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* ── ROW 2: SECONDARY METRICS ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
+            <div className="grid-3-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
                 <KPI label="Taxa de Aprovação" value={87} suffix="%" color="#B89B00" bg="#FFFDE7" border="#FEF08A" spark={[60, 70, 65, 80, 75, 82, 87, 85, 89, 88, 87]} />
                 <KPI label="Frequência Média" value={91} suffix="%" color="#059669" bg="#F0FDF4" border="#BBF7D0" spark={SPARK_ATTEND} />
                 <KPI label="Certificados Emitidos" value={stats?.enrollments.total ? Math.floor(stats.enrollments.total * 0.3) : 0} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" spark={SPARK_CERT} />
@@ -192,7 +192,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* ── ROW 4: ACTIVITIES + UPCOMING ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="grid-2-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
 
                 {/* Recent Activity */}
                 <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>

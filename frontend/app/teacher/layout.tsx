@@ -76,7 +76,7 @@ export default function TeacherLayout({ children }: { children: ReactNode }) {
                 left: 0,
                 height: '100vh',
                 zIndex: 20,
-                transform: sidebarOpen ? 'translateX(0)' : 'translateX(0)',
+                transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
                 transition: 'transform 0.28s ease',
                 paddingBottom: '1rem',
             }}>
@@ -148,6 +148,23 @@ export default function TeacherLayout({ children }: { children: ReactNode }) {
                     display: 'flex', alignItems: 'center', padding: '0 1.5rem',
                     justifyContent: 'space-between', flexShrink: 0,
                 }}>
+                    {/* Hamburger — mobile */}
+                    <button
+                        onClick={() => setSidebarOpen(s => !s)}
+                        style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: 40, height: 40, borderRadius: 8,
+                            border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
+                            cursor: 'pointer', marginRight: '0.75rem', flexShrink: 0,
+                        }}
+                        aria-label="Abrir menu"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                            <rect y="2" width="18" height="2" rx="1" fill="#94A3B8"/>
+                            <rect y="8" width="18" height="2" rx="1" fill="#94A3B8"/>
+                            <rect y="14" width="18" height="2" rx="1" fill="#94A3B8"/>
+                        </svg>
+                    </button>
                     <div style={{ fontSize: '0.9rem', color: '#94A3B8' }}>
                         Bem-vindo(a), <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{teacherName}</span>
                     </div>

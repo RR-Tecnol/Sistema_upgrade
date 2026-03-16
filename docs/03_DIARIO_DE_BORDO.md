@@ -370,3 +370,20 @@ Esse erro é **esperado** quando MinIO não está configurado com credenciais co
 
 **Estado do projeto:** ~90% completo
 **Próximo:** Sprint Mobile → responsividade completa
+
+---
+
+## [16/03/2026] — Sprint Mobile
+
+**SM-01:** Sidebar admin com drawer + hamburger — `globals.css` recebe CSS mobile (transform translateX, overlay, z-index 100). `Sidebar.tsx` refatorado com props `open`/`onClose` e overlay clicável. `Header.tsx` recebe prop `onMenuToggle` e botão hamburger SVG. `admin/layout.tsx` com `useState sidebarOpen` + `usePathname` fechando drawer ao navegar. ✅
+
+**SM-02:** Breakpoints sistemáticos — bloco completo adicionado ao final do `globals.css`: classes `grid-4-cols`, `grid-3-cols`, `grid-2-cols`, `font-size: 16px` em inputs (previne zoom iOS), `min-height: 44px` em botões touch, modais fullscreen em `≤640px`. ✅
+
+**SM-03:** Dashboard admin responsivo — `className="grid-4-cols"` no ROW 1 (4 KPI cards), `className="grid-3-cols"` no ROW 2 (métricas secundárias), `className="grid-2-cols"` no ROW 4 (Activities + Upcoming). ✅
+
+**SM-04:** Portal do professor responsivo — corrigido bug: `transform: sidebarOpen ? 'translateX(0)' : 'translateX(0)'` → `'translateX(-100%)'` quando fechado. Hamburger button adicionado no header do teacher. ✅
+
+**SM-05:** Upload mobile otimizado — `browser-image-compression` instalado. `handleFotoChange` no `teacher/reembolsos/page.tsx` agora comprime para max 500KB / 1200px via WebWorker antes do preview e upload. Fallback sem compressão em caso de erro. ✅
+
+**Estado do projeto:** ~95% completo
+**Pendente final:** Socket.io real-time (notificações ao vivo)

@@ -3,7 +3,11 @@
 import { BellIcon, MagnifyingGlassIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState, useRef } from 'react';
 
-export default function Header() {
+interface HeaderProps {
+    onMenuToggle?: () => void;
+}
+
+export default function Header({ onMenuToggle }: HeaderProps) {
     const [user, setUser] = useState<any>(null);
     const [currentDate, setCurrentDate] = useState('');
     const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
@@ -53,12 +57,19 @@ export default function Header() {
         localStorage.removeItem('user');
         setUser(null);
         setShowUserMenu(false);
-        // Optionally redirect to login page
-        // window.location.href = '/login';
     };
 
     return (
         <header className="admin-topbar">
+            {/* Botão Hamburger — visível apenas em mobile */}
+            <button className="hamburger-btn" onClick={onMenuToggle} aria-label="Abrir menu">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <rect y="2" width="18" height="2" rx="1" fill="#374151"/>
+                    <rect y="8" width="18" height="2" rx="1" fill="#374151"/>
+                    <rect y="14" width="18" height="2" rx="1" fill="#374151"/>
+                </svg>
+            </button>
+
             {/* Search */}
             <div style={{ flex: 1, maxWidth: 420 }}>
                 <div style={{ position: 'relative' }}>
