@@ -143,6 +143,7 @@ export class AuthService {
             response.student = studentData;
         }
 
+        return response;
     }
 
     async refreshToken(refreshToken: string) {

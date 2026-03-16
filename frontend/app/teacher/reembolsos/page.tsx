@@ -7,11 +7,11 @@ import imageCompression from 'browser-image-compression';
 import { CameraIcon, PaperAirplaneIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const TIPOS = [
-    { value: 'ALIMENTACAO', label: 'Alimentação' },
-    { value: 'HOSPEDAGEM', label: 'Hospedagem' },
-    { value: 'TRANSPORTE', label: 'Transporte' },
-    { value: 'MATERIAL', label: 'Material' },
-    { value: 'OUTRO', label: 'Outro' },
+    { value: 'CLASSROOM_MATERIAL', label: 'Material de Aula' },
+    { value: 'CLEANING_MATERIAL', label: 'Material de Limpeza' },
+    { value: 'FOOD', label: 'Alimentação' },
+    { value: 'EMERGENCY_REPAIR', label: 'Reparo Emergencial' },
+    { value: 'OTHER', label: 'Outro' },
 ];
 
 const STATUS_COLORS: Record<string, { bg: string; color: string; label: string }> = {
@@ -28,7 +28,7 @@ function fmtCurr(value: number | string) {
 export default function TeacherReembolsos() {
     const [reembolsos, setReembolsos] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [tipo, setTipo] = useState('ALIMENTACAO');
+    const [tipo, setTipo] = useState('FOOD');
     const [valor, setValor] = useState('');
     const [descricao, setDescricao] = useState('');
     const [fotoPreview, setFotoPreview] = useState<string | null>(null);
@@ -106,7 +106,7 @@ export default function TeacherReembolsos() {
             }
 
             await api.post('/reimbursements', {
-                category: tipo,
+                type: tipo,
                 amount: parseFloat(valor.replace(',', '.')),
                 description: descricao,
                 ...(receiptUrl ? { receiptUrl } : {}),
@@ -268,7 +268,7 @@ export default function TeacherReembolsos() {
                                 }}>
                                     <div>
                                         <div style={{ fontWeight: 600, color: '#F1F5F9', fontSize: '0.88rem' }}>
-                                            {TIPOS.find(t => t.value === r.category)?.label || r.category}
+                                            {TIPOS.find(t => t.value === r.type)?.label || r.type}
                                         </div>
                                         <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: 2 }}>
                                             {r.description || 'Sem descrição'} · {new Date(r.createdAt || Date.now()).toLocaleDateString('pt-BR')}
