@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { SettingsService } from './settings/settings.service';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -45,6 +46,27 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
 
     const port = process.env.PORT || 3001;
+
+    // Middleware de modo manutencao (S5-04)
+    const settingsService = app.get(SettingsService);
+    app.use((req: any, res: any, next: any) => {
+        if (settingsService.isMaintenanceMode()) {
+            // Permitir: login + rotas admin + health
+            const allowed = ['/api/auth/login', '/api/settings', '/api/health'];
+            const isAllowed =
+                allowed.some(p => req.path.startsWith(p)) ||
+                req.headers['x-admin-bypass'] === process.env.MAINTENANCE_KEY;
+            if (!isAllowed) {
+                return res.status(503).json({
+                    statusCode: 503,
+                    message: 'Sistema em manutenção. Tente novamente em breve.',
+                    maintenance: true,
+                });
+            }
+        }
+        next();
+    });
+
     await app.listen(port);
 
     console.log(`\n🚀 Server running on http://localhost:${port}`);

@@ -28,6 +28,14 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        // Modo manutencao (S5-04): redirecionar para /manutencao
+        if (error.response?.status === 503 && error.response?.data?.maintenance) {
+            if (typeof window !== 'undefined' && window.location.pathname !== '/manutencao') {
+                window.location.href = '/manutencao';
+            }
+            return Promise.reject(error);
+        }
+
         // Only logout on actual 401 Unauthorized from the API
         // Don't logout on network errors or other issues
         if (error.response?.status === 401 && error.response?.data) {

@@ -34,6 +34,15 @@ async function main() {
         },
     });
 
+    const grupo1AC = await prisma.group.upsert({
+        where: { name: 'Grupo 1 AC' },
+        update: {},
+        create: {
+            name: 'Grupo 1 AC',
+            state: 'AC',
+        },
+    });
+
     console.log('✅ Groups created');
 
     // Create Cities - Maranhão
@@ -61,6 +70,17 @@ async function main() {
         { name: 'Altos', state: 'PI', ibgeCode: '2200400' },
         { name: 'Esperantina', state: 'PI', ibgeCode: '2203701' },
         { name: 'Pedro II', state: 'PI', ibgeCode: '2207900' },
+        // Acre
+        { name: 'Rio Branco', state: 'AC', ibgeCode: '1200401' },
+        { name: 'Cruzeiro do Sul', state: 'AC', ibgeCode: '1200203' },
+        { name: 'Sena Madureira', state: 'AC', ibgeCode: '1200500' },
+        { name: 'Taraucaá', state: 'AC', ibgeCode: '1200609' },
+        { name: 'Feijó', state: 'AC', ibgeCode: '1200302' },
+        { name: 'Brasileia', state: 'AC', ibgeCode: '1200104' },
+        { name: 'Epitaciolândia', state: 'AC', ibgeCode: '1200252' },
+        { name: 'Xapuri', state: 'AC', ibgeCode: '1200708' },
+        { name: 'Senador Guiomard', state: 'AC', ibgeCode: '1200450' },
+        { name: 'Plácido de Castro', state: 'AC', ibgeCode: '1200385' },
     ];
 
     for (const city of cities) {
@@ -243,7 +263,8 @@ Módulo 6: Empreendedorismo`,
 
     console.log('\n🎉 Database seeding completed successfully!');
     console.log('\nSummary:');
-    console.log(`- Groups: 3`);
+    console.log(`- Groups: 4`);
+
     console.log(`- Cities: ${cities.length}`);
     console.log(`- Courses: ${courses.length}`);
     console.log(`- Users: 1 (admin)`);

@@ -116,6 +116,14 @@ export default function ConfiguracoesPage() {
     const [settingsLoaded, setSettingsLoaded] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    /* 2FA state (S5-02) */
+    const [twoFAStep, setTwoFAStep] = useState<'idle' | 'setup' | 'disabling' | 'active'>('idle');
+    const [qrCodeUrl, setQrCodeUrl] = useState('');
+    const [totpToken, setTotpToken] = useState('');
+    const [twoFALoading, setTwoFALoading] = useState(false);
+    const [twoFAError, setTwoFAError] = useState('');
+    const [twoFADisableToken, setTwoFADisableToken] = useState('');
+
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setPhotoError(null);
         const file = e.target.files?.[0];
@@ -412,11 +420,153 @@ export default function ConfiguracoesPage() {
                                 { label: 'Nunca', value: '0' },
                             ]} />
                         </SettingRow>
-                        <SettingRow label="Autenticação em 2 Fatores" desc="Exigir código adicional no login (em breve)">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                <Toggle checked={cfg.doisFatores} onChange={v => set('doisFatores', v)} color="#0891B2" />
-                                <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: 100, background: '#FFF7ED', color: '#EA580C', border: '1px solid #FED7AA', fontWeight: 700 }}>Em breve</span>
-                            </div>
+                        <SettingRow label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
+                            {/* Estado: idle — 2FA desativado */}
+                            {twoFAStep === 'idle' && !cfg.doisFatores && (
+                                <button
+                                    onClick={async () => {
+                                        setTwoFAError('');
+                                        setTwoFALoading(true);
+                                        try {
+                                            const res = await api.post('/auth/2fa/generate');
+                                            setQrCodeUrl(res.data.qrCodeDataUrl || res.data.qrCode || '');
+                                            setTwoFAStep('setup');
+                                        } catch (e: any) {
+                                            setTwoFAError(e?.response?.data?.message || 'Erro ao gerar QR Code');
+                                        } finally {
+                                            setTwoFALoading(false);
+                                        }
+                                    }}
+                                    disabled={twoFALoading}
+                                    style={{
+                                        padding: '0.45rem 1.1rem', borderRadius: 8, border: '1.5px solid #0891B2',
+                                        background: twoFALoading ? '#E5E7EB' : '#F0F9FF',
+                                        color: '#0891B2', fontWeight: 700, fontSize: '0.82rem',
+                                        cursor: twoFALoading ? 'not-allowed' : 'pointer', transition: 'all 0.18s',
+                                    }}
+                                >
+                                    {twoFALoading ? 'Gerando...' : '🔐 Ativar 2FA'}
+                                </button>
+                            )}
+
+                            {/* Estado: setup — Mostrar QR Code */}
+                            {twoFAStep === 'setup' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-end' }}>
+                                    {qrCodeUrl && (
+                                        <div style={{ textAlign: 'center', padding: '0.75rem', background: '#fff', borderRadius: 10, border: '2px solid #BAE6FD' }}>
+                                            <img src={qrCodeUrl} alt="QR Code 2FA" style={{ width: 140, height: 140, display: 'block' }} />
+                                            <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 6 }}>Escaneie com Google Authenticator ou Authy</div>
+                                        </div>
+                                    )}
+                                    <input
+                                        type="text" inputMode="numeric" maxLength={6}
+                                        placeholder="Código de 6 dígitos"
+                                        value={totpToken}
+                                        onChange={e => setTotpToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        style={{
+                                            width: 160, padding: '0.5rem 0.75rem', borderRadius: 8,
+                                            border: '1.5px solid #BAE6FD', background: '#F0F9FF',
+                                            fontSize: '1.1rem', letterSpacing: '0.3em', textAlign: 'center',
+                                            color: '#0891B2', fontWeight: 700, outline: 'none',
+                                        }}
+                                    />
+                                    {twoFAError && <div style={{ fontSize: '0.72rem', color: '#EF4444' }}>{twoFAError}</div>}
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={() => { setTwoFAStep('idle'); setTotpToken(''); setTwoFAError(''); }}
+                                            style={{ padding: '0.4rem 0.9rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#6B7280', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                                        >Cancelar</button>
+                                        <button
+                                            disabled={totpToken.length !== 6 || twoFALoading}
+                                            onClick={async () => {
+                                                setTwoFAError('');
+                                                setTwoFALoading(true);
+                                                try {
+                                                    await api.post('/auth/2fa/enable', { token: totpToken });
+                                                    setCfg(c => ({ ...c, doisFatores: true }));
+                                                    setTwoFAStep('active');
+                                                    setTotpToken('');
+                                                } catch (e: any) {
+                                                    setTwoFAError(e?.response?.data?.message || 'Código inválido. Tente novamente.');
+                                                } finally {
+                                                    setTwoFALoading(false);
+                                                }
+                                            }}
+                                            style={{
+                                                padding: '0.4rem 1rem', borderRadius: 8, border: 'none',
+                                                background: totpToken.length !== 6 || twoFALoading ? '#E5E7EB' : '#0891B2',
+                                                color: totpToken.length !== 6 || twoFALoading ? '#9CA3AF' : '#fff',
+                                                fontWeight: 700, fontSize: '0.82rem',
+                                                cursor: totpToken.length !== 6 || twoFALoading ? 'not-allowed' : 'pointer',
+                                                transition: 'all 0.18s',
+                                            }}
+                                        >{twoFALoading ? 'Ativando...' : 'Confirmar e Ativar'}</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Estado: active — 2FA ativado */}
+                            {(twoFAStep === 'active' || (twoFAStep === 'idle' && cfg.doisFatores)) && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <span style={{ padding: '0.25rem 0.75rem', borderRadius: 20, background: '#DCFCE7', color: '#059669', fontWeight: 700, fontSize: '0.8rem', border: '1px solid #BBF7D0' }}>
+                                        ✓ 2FA Ativo
+                                    </span>
+                                    <button
+                                        onClick={() => { setTwoFAStep('disabling'); setTwoFAError(''); setTwoFADisableToken(''); }}
+                                        style={{ padding: '0.35rem 0.8rem', borderRadius: 8, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}
+                                    >Desativar</button>
+                                </div>
+                            )}
+
+                            {/* Estado: disabling — confirmar desativação */}
+                            {twoFAStep === 'disabling' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', alignItems: 'flex-end' }}>
+                                    <div style={{ fontSize: '0.75rem', color: '#6B7280' }}>Digite o código para confirmar desativação</div>
+                                    <input
+                                        type="text" inputMode="numeric" maxLength={6}
+                                        placeholder="Código de 6 dígitos"
+                                        value={twoFADisableToken}
+                                        onChange={e => setTwoFADisableToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        style={{
+                                            width: 160, padding: '0.5rem 0.75rem', borderRadius: 8,
+                                            border: '1.5px solid #FED7AA', background: '#FFF7ED',
+                                            fontSize: '1.1rem', letterSpacing: '0.3em', textAlign: 'center',
+                                            color: '#EA580C', fontWeight: 700, outline: 'none',
+                                        }}
+                                    />
+                                    {twoFAError && <div style={{ fontSize: '0.72rem', color: '#EF4444' }}>{twoFAError}</div>}
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={() => { setTwoFAStep('idle'); setTwoFAError(''); setTwoFADisableToken(''); }}
+                                            style={{ padding: '0.4rem 0.9rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#6B7280', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                                        >Cancelar</button>
+                                        <button
+                                            disabled={twoFADisableToken.length !== 6 || twoFALoading}
+                                            onClick={async () => {
+                                                setTwoFAError('');
+                                                setTwoFALoading(true);
+                                                try {
+                                                    await api.post('/auth/2fa/disable', { token: twoFADisableToken });
+                                                    setCfg(c => ({ ...c, doisFatores: false }));
+                                                    setTwoFAStep('idle');
+                                                    setTwoFADisableToken('');
+                                                } catch (e: any) {
+                                                    setTwoFAError(e?.response?.data?.message || 'Código inválido.');
+                                                } finally {
+                                                    setTwoFALoading(false);
+                                                }
+                                            }}
+                                            style={{
+                                                padding: '0.4rem 1rem', borderRadius: 8, border: 'none',
+                                                background: twoFADisableToken.length !== 6 || twoFALoading ? '#E5E7EB' : '#EF4444',
+                                                color: twoFADisableToken.length !== 6 || twoFALoading ? '#9CA3AF' : '#fff',
+                                                fontWeight: 700, fontSize: '0.82rem',
+                                                cursor: twoFADisableToken.length !== 6 || twoFALoading ? 'not-allowed' : 'pointer',
+                                            }}
+                                        >{twoFALoading ? 'Desativando...' : 'Confirmar Desativação'}</button>
+                                    </div>
+                                </div>
+                            )}
                         </SettingRow>
                         <SettingRow label="Log de Acessos" desc="Registrar data, hora e IP de todos os logins">
                             <Toggle checked={cfg.logAcesso} onChange={v => set('logAcesso', v)} color="#059669" />

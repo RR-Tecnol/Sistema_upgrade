@@ -351,3 +351,22 @@ Esse erro é **esperado** quando MinIO não está configurado com credenciais co
 **Pendente Sprint Mobile:** sidebar drawer, breakpoints, touch 44px sistemático
 **Pendente Sprint 5:** Socket.io real-time, seed Acre, CI/CD, UI 2FA
 
+---
+
+## [16/03/2026] — Sprint 5
+
+**S5-01:** Seed do Acre — `Grupo 1 AC` criado, 10 cidades do AC adicionadas ao `seed.ts`. `npm run prisma:seed` → Groups: 4, Cities: 30 ✅
+
+**S5-02:** UI ativação 2FA nas configurações — `configuracoes/page.tsx` refatorado com fluxo completo: `idle` → Botão "Ativar 2FA" (POST `/auth/2fa/generate`) → `setup` com QR Code + input 6 dígitos → `active` com chip verde ✓ 2FA Ativo + botão Desativar (POST `/auth/2fa/disable`). Estado `disabling` para confirmar desativação com código TOTP. ✅
+
+**S5-03:** CI/CD GitHub Actions — `.github/workflows/ci.yml` criado com 2 jobs paralelos: `backend` (tsc --noEmit + npm run build) e `frontend` (tsc --noEmit + npm run build). Disparado em push/PR para master/main. ✅
+
+**S5-04:** Modo Manutenção — `main.ts` recebe middleware Express antes do `app.listen()`: retorna 503 `{ maintenance: true }` para todas as rotas exceto `/api/auth/login`, `/api/settings`, `/api/health` e bypass via header `x-admin-bypass`. `frontend/middleware.ts` criado. `frontend/app/manutencao/page.tsx` criado com animação pulse + barra de progresso. `lib/api/client.ts` atualizado com interceptor 503 → redirect automático. ✅
+
+**Pendente Sprint Mobile:**
+- Sidebar drawer + hamburger para mobile
+- Breakpoints sistemáticos no globals.css
+- Grids adaptativos em todas as telas
+
+**Estado do projeto:** ~90% completo
+**Próximo:** Sprint Mobile → responsividade completa
