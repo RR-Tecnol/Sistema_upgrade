@@ -66,34 +66,38 @@ export class PdfService {
           orderBy: { student: { user: { name: 'asc' } } },
         },
         attendances: {
-          where: { present: true },
-          select: { studentId: true, date: true },
+          select: { studentId: true, date: true, present: true },
         },
       },
     });
 
     if (!classData) throw new NotFoundException(`Turma ${classId} não encontrada`);
 
-    // Total de dias de aula registrados
+    // Total de dias de aula registrados (todos os registros, presenças ou não)
     const uniqueDates = new Set(
-      classData.attendances.map(a => a.date.toISOString().slice(0, 10))
+      classData.attendances.map((a: any) => a.date.toISOString().slice(0, 10))
     );
-    const totalAulas = uniqueDates.size;
+    const allDates = Array.from(uniqueDates).sort();
+    const totalAulas = allDates.length;
 
-    // Mapa de presenças por aluno
-    const presencasPorAluno = new Map<string, number>();
-    classData.attendances.forEach(a => {
-      presencasPorAluno.set(a.studentId, (presencasPorAluno.get(a.studentId) ?? 0) + 1);
+    // Mapa de presenças por aluno: studentId -> Map<dateStr, boolean>
+    const presencaMap = new Map<string, Map<string, boolean>>();
+    classData.attendances.forEach((a: any) => {
+      const ds = a.date.toISOString().slice(0, 10);
+      if (!presencaMap.has(a.studentId)) presencaMap.set(a.studentId, new Map());
+      presencaMap.get(a.studentId)!.set(ds, a.present);
     });
 
     // Lista de alunos com frequência
-    const alunos = classData.enrollments.map((e, idx) => {
-      const presencas = presencasPorAluno.get(e.studentId) ?? 0;
+    const alunos = classData.enrollments.map((e: any, idx: number) => {
+      const alunoMap = presencaMap.get(e.studentId) ?? new Map<string, boolean>();
+      const presencas = Array.from(alunoMap.values()).filter(Boolean).length;
       const percentual = totalAulas > 0 ? (presencas / totalAulas) : 0;
       const aprovado = percentual >= this.APPROVAL_THRESHOLD;
       return {
         seq: idx + 1,
         nome: e.student.user.name,
+        studentId: e.studentId,
         presencas,
         faltas: totalAulas - presencas,
         percentual: (percentual * 100).toFixed(1),
@@ -102,14 +106,14 @@ export class PdfService {
     });
 
     const professores = classData.teachers
-      .map(t => t.teacher.user.name)
+      .map((t: any) => t.teacher.user.name)
       .join(', ');
 
     const summary = {
       totalAlunos: alunos.length,
       totalAulas,
-      aprovados: alunos.filter(a => parseFloat(a.percentual) >= 80).length,
-      emRisco: alunos.filter(a => parseFloat(a.percentual) < 80 && totalAulas > 0).length,
+      aprovados: alunos.filter((a: any) => parseFloat(a.percentual) >= 80).length,
+      emRisco: alunos.filter((a: any) => parseFloat(a.percentual) < 80 && totalAulas > 0).length,
     };
 
     const html = this.buildFrequencyHtml({
@@ -118,6 +122,8 @@ export class PdfService {
       professores,
       totalAulas,
       summary,
+      allDates,
+      presencaMap,
     });
 
     return { html, classInfo: classData, summary };
@@ -225,9 +231,34 @@ export class PdfService {
     professores: string;
     totalAulas: number;
     summary: any;
+    allDates: string[];
+    presencaMap: Map<string, Map<string, boolean>>;
   }): string {
-    const { classData, alunos, professores, totalAulas, summary } = data;
-    const hoje = new Date().toLocaleDateString('pt-BR');
+    const { classData, alunos, professores, totalAulas, summary, allDates, presencaMap } = data;
+    const estado = classData.city?.state || classData.group?.state || 'MA';
+    const dataInicio = classData.startDate ? new Date(classData.startDate).toLocaleDateString('pt-BR') : '';
+    const dataFim = classData.endDate ? new Date(classData.endDate).toLocaleDateString('pt-BR') : '';
+    // Cabeçalho de colunas de datas: exibe dia/mês abreviado
+    const colHeaders = allDates.map((d: string) => {
+      const [, m, dia] = d.split('-');
+      return `${dia}/${m}`;
+    });
+
+    const rows = alunos.map((a: any) => {
+      const alunoMap = presencaMap.get(a.studentId) ?? new Map<string, boolean>();
+      const cells = allDates.map((d: string) => {
+        if (!alunoMap.has(d)) return `<td style="background:#fff;border:1px solid #ccc"></td>`;
+        const presente = alunoMap.get(d);
+        return presente
+          ? `<td style="background:#1a3a6a;color:#fff;font-weight:bold;text-align:center;border:1px solid #ccc">P</td>`
+          : `<td style="background:#fff;color:#000;text-align:center;border:1px solid #ccc">F</td>`;
+      }).join('');
+      return `<tr>
+        <td style="border:1px solid #ccc;padding:4px 6px;text-align:center">${a.seq}</td>
+        <td style="border:1px solid #ccc;padding:4px 8px">${a.nome}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
 
     return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -235,88 +266,60 @@ export class PdfService {
   <meta charset="UTF-8">
   <title>Lista de Frequência — ${classData.course.name}</title>
   <style>
-    /* ─── MODELO PROVISÓRIO — aguarda template oficial do Robert ─── */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
-    .header { display: flex; align-items: center; border-bottom: 2px solid #1a3a6a; padding-bottom: 10px; margin-bottom: 15px; }
-    .logo-area { width: 120px; height: 60px; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; margin-right: 20px; }
-    .header-info h1 { font-size: 14px; color: #1a3a6a; }
-    .header-info p { font-size: 10px; color: #555; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 15px; background: #f0f4fa; padding: 10px; border-radius: 4px; }
-    .info-item span { font-weight: bold; }
-    .summary-bar { display: flex; gap: 20px; background: #1a3a6a; color: #fff; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; font-size: 10px; }
-    .summary-bar div { text-align: center; }
-    .summary-bar strong { display: block; font-size: 16px; }
-    table { width: 100%; border-collapse: collapse; }
-    thead tr { background: #1a3a6a; color: #fff; }
-    thead th { padding: 6px 8px; text-align: left; font-size: 10px; }
-    tbody tr:nth-child(even) { background: #f5f7fb; }
-    tbody td { padding: 5px 8px; border-bottom: 1px solid #e0e6f0; }
-    .status-ok { color: #1a7a1a; font-weight: bold; }
-    .status-risk { color: #b22222; font-weight: bold; }
-    .footer { margin-top: 30px; border-top: 1px solid #ccc; padding-top: 15px; display: flex; justify-content: space-between; }
-    .signature-line { width: 200px; border-top: 1px solid #000; text-align: center; padding-top: 4px; font-size: 9px; }
-    .watermark { font-size: 8px; color: #aaa; text-align: center; margin-top: 10px; }
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #000; padding: 15px; }
+    .logos { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+    .logo-box { width: 80px; height: 45px; border: 1px dashed #aaa; display: flex; align-items: center; justify-content: center; font-size: 7px; color: #aaa; text-align: center; }
+    .address { text-align: right; font-size: 8px; color: #555; line-height: 1.4; }
+    .header-row { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1a3a6a; padding-bottom: 6px; margin-bottom: 8px; }
+    .titulo { font-size: 13px; font-weight: bold; color: #1a3a6a; text-align: center; margin-bottom: 3px; }
+    .subtitulo { font-size: 10px; text-align: center; color: #333; margin-bottom: 6px; }
+    .faixa { background: #FFD600; padding: 5px 12px; font-weight: bold; font-size: 11px; text-align: center; margin-bottom: 10px; border-radius: 3px; }
+    table { width: 100%; border-collapse: collapse; font-size: 9px; }
+    thead th { background: #1a3a6a; color: #fff; padding: 4px 5px; border: 1px solid #ccc; text-align: center; }
+    thead th.nome-col { text-align: left; }
+    .footer { margin-top: 30px; display: flex; justify-content: space-between; }
+    .assinatura { text-align: center; }
+    .linha-assinatura { border-top: 1px solid #000; width: 200px; margin: 0 auto 3px; padding-top: 3px; font-size: 8px; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo-area">LOGO PROVISÓRIO<br>[Substituir]</div>
-    <div class="header-info">
-      <h1>LISTA DE FREQUÊNCIA</h1>
-      <p>Programa de Qualificação Profissional — Sistema Upgrade</p>
-      <p>Gerado em: ${hoje}</p>
+  <div class="header-row">
+    <div class="logos">
+      <div class="logo-box">SETRE</div>
+      <div class="logo-box">GOV.<br>ESTADO</div>
+      <div class="logo-box">UPGRADE</div>
+      <div class="logo-box">BRASÃO</div>
+    </div>
+    <div class="address">
+      Qualifica ${estado} — CNPJ: 00.000.000/0001-00<br>
+      Av. Principal, 100 — São Luís, MA<br>
+      qualifica@upgrade.ma.gov.br
     </div>
   </div>
 
-  <div class="info-grid">
-    <div class="info-item"><span>Curso:</span> ${classData.course.name}</div>
-    <div class="info-item"><span>Turma:</span> ${classData.classIdentifier}</div>
-    <div class="info-item"><span>Cidade:</span> ${classData.city.name} — ${classData.city.state}</div>
-    <div class="info-item"><span>Grupo:</span> ${classData.group.name}</div>
-    <div class="info-item"><span>Período:</span> ${new Date(classData.startDate).toLocaleDateString('pt-BR')} a ${new Date(classData.endDate).toLocaleDateString('pt-BR')}</div>
-    <div class="info-item"><span>Professor(es):</span> ${professores || 'Não definido'}</div>
-    <div class="info-item"><span>Carga Horária:</span> ${classData.course.workloadHours}h</div>
-    <div class="info-item"><span>Aulas Realizadas:</span> ${totalAulas}</div>
-  </div>
-
-  <div class="summary-bar">
-    <div><strong>${summary.totalAlunos}</strong>Alunos Inscritos</div>
-    <div><strong>${summary.totalAulas}</strong>Aulas Realizadas</div>
-    <div><strong>${summary.aprovados}</strong>Com Aprovação ≥80%</div>
-    <div><strong>${summary.emRisco}</strong>Em Risco <80%</div>
-  </div>
+  <div class="titulo">PROJETO QUALIFICA ${estado}</div>
+  <div class="subtitulo">${classData.city?.name || ''} — ${estado}, DE ${dataInicio} À ${dataFim}</div>
+  <div class="faixa">${classData.course.name} (${classData.classIdentifier}) ${classData.startTime || ''} às ${classData.endTime || ''}</div>
 
   <table>
     <thead>
       <tr>
-        <th>#</th>
-        <th>Nome do Aluno</th>
-        <th>Presenças</th>
-        <th>Faltas</th>
-        <th>Frequência</th>
-        <th>Situação</th>
+        <th style="width:30px">Nº</th>
+        <th class="nome-col" style="min-width:180px">NOME</th>
+        ${colHeaders.map((h: string) => `<th style="width:32px">${h}</th>`).join('')}
       </tr>
     </thead>
-    <tbody>
-      ${alunos.map(a => `
-      <tr>
-        <td>${a.seq}</td>
-        <td>${a.nome}</td>
-        <td style="text-align:center">${a.presencas}</td>
-        <td style="text-align:center">${a.faltas}</td>
-        <td style="text-align:center">${a.percentual}%</td>
-        <td class="${parseFloat(a.percentual) >= 80 ? 'status-ok' : 'status-risk'}">${a.status}</td>
-      </tr>`).join('')}
-    </tbody>
+    <tbody>${rows}</tbody>
   </table>
 
   <div class="footer">
-    <div class="signature-line">Professor(es)</div>
-    <div class="signature-line">Coordenador de Campo</div>
-    <div class="signature-line">Secretaria</div>
+    <div class="assinatura">
+      <div class="linha-assinatura">${professores || 'Instrutor'}</div>
+      <div style="font-size:8px;color:#555">Instrutor(a) Responsável</div>
+    </div>
+    <div style="font-size:8px;color:#aaa;align-self:flex-end">Total: ${summary.totalAlunos} alunos · ${totalAulas} aulas</div>
   </div>
-  <p class="watermark">⚠️ MODELO PROVISÓRIO — aguarda template oficial — Sistema Upgrade v2.0</p>
 </body>
 </html>`;
   }
@@ -330,17 +333,24 @@ export class PdfService {
     summary: any;
   }): string {
     const { classData, aprovados, desistentes, professores, totalAulaAteAgora, summary } = data;
-    const hoje = new Date().toLocaleDateString('pt-BR');
+    const estado = classData.city?.state || classData.group?.state || 'MA';
+    const hoje = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const turno = classData.startTime ? `${classData.startTime} às ${classData.endTime || ''}` : '';
 
-    const renderRows = (lista: any[], offset = 0) =>
-      lista.map((a, i) => `
-      <tr>
-        <td>${offset + i + 1}</td>
-        <td>${a.nome}</td>
-        <td style="text-align:center">${a.presencas}</td>
-        <td style="text-align:center">${a.faltas}</td>
-        <td style="text-align:center">${a.percentual}%</td>
-      </tr>`).join('');
+    const rowsAprovados = aprovados.map((a: any, i: number) =>
+      `<tr>
+        <td style="border:1px solid #ccc;padding:5px 6px;text-align:center">${i + 1}</td>
+        <td style="border:1px solid #ccc;padding:5px 10px">${a.nome}</td>
+        <td style="border:1px solid #ccc;padding:5px 10px;min-width:180px"></td>
+      </tr>`
+    ).join('');
+
+    const rowsDesistentes = desistentes.map((a: any, i: number) =>
+      `<tr>
+        <td style="border:1px solid #ccc;padding:5px 6px;text-align:center">${i + 1}</td>
+        <td style="border:1px solid #ccc;padding:5px 10px">${a.nome}</td>
+      </tr>`
+    ).join('');
 
     return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -348,86 +358,99 @@ export class PdfService {
   <meta charset="UTF-8">
   <title>Lista de Concludentes — ${classData.course.name}</title>
   <style>
-    /* ─── MODELO PROVISÓRIO — aguarda template oficial do Robert ─── */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
-    .header { display: flex; align-items: center; border-bottom: 2px solid #1a3a6a; padding-bottom: 10px; margin-bottom: 15px; }
-    .logo-area { width: 120px; height: 60px; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; margin-right: 20px; }
-    .header-info h1 { font-size: 14px; color: #1a3a6a; }
-    .section-title { font-size: 12px; font-weight: bold; padding: 8px 12px; margin: 15px 0 8px; border-radius: 4px; }
-    .section-aprovados { background: #d4edda; color: #155724; }
-    .section-desistentes { background: #f8d7da; color: #721c24; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 15px; background: #f0f4fa; padding: 10px; border-radius: 4px; }
-    .info-item span { font-weight: bold; }
-    .summary-bar { display: flex; gap: 20px; background: #1a3a6a; color: #fff; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; font-size: 10px; }
-    .summary-bar div { text-align: center; }
-    .summary-bar strong { display: block; font-size: 16px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-    thead tr { background: #1a3a6a; color: #fff; }
-    thead th { padding: 6px 8px; text-align: left; font-size: 10px; }
-    tbody tr:nth-child(even) { background: #f5f7fb; }
-    tbody td { padding: 5px 8px; border-bottom: 1px solid #e0e6f0; }
-    .footer { margin-top: 30px; border-top: 1px solid #ccc; padding-top: 15px; display: flex; justify-content: space-between; }
-    .signature-line { width: 200px; border-top: 1px solid #000; text-align: center; padding-top: 4px; font-size: 9px; }
-    .watermark { font-size: 8px; color: #aaa; text-align: center; margin-top: 10px; }
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #000; padding: 15px; }
+    .logos { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+    .logo-box { width: 80px; height: 45px; border: 1px dashed #aaa; display: flex; align-items: center; justify-content: center; font-size: 7px; color: #aaa; text-align: center; }
+    .address { text-align: right; font-size: 8px; color: #555; line-height: 1.4; }
+    .header-row { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1a3a6a; padding-bottom: 6px; margin-bottom: 8px; }
+    .faixa-cidade { background: #1a3a6a; color: #fff; padding: 6px 12px; font-weight: bold; font-size: 12px; text-align: center; margin-bottom: 4px; }
+    .subtitulo { font-size: 10px; text-align: center; color: #333; margin-bottom: 6px; }
+    .titulo-lista { font-size: 13px; font-weight: bold; color: #1a3a6a; text-align: center; margin-bottom: 3px; }
+    .faixa-curso { background: #FFD600; padding: 5px 12px; font-weight: bold; font-size: 11px; text-align: center; margin-bottom: 10px; border-radius: 3px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 10px; }
+    thead th { background: #1a3a6a; color: #fff; padding: 5px 8px; border: 1px solid #ccc; }
+    .page-break { page-break-before: always; margin-top: 20px; }
+    .footer { margin-top: 24px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .assinatura { text-align: center; }
+    .linha-assinatura { border-top: 1px solid #000; width: 220px; margin: 0 auto 3px; padding-top: 3px; font-size: 8px; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo-area">LOGO PROVISÓRIO<br>[Substituir]</div>
-    <div class="header-info">
-      <h1>LISTA DE CONCLUDENTES — 3ª SEMANA</h1>
-      <p>Programa de Qualificação Profissional — Sistema Upgrade</p>
-      <p>Gerado em: ${hoje} | Critério ≥75% de presença até o momento</p>
+  <div class="header-row">
+    <div class="logos">
+      <div class="logo-box">SETRE</div>
+      <div class="logo-box">GOV.<br>ESTADO</div>
+      <div class="logo-box">UPGRADE</div>
+      <div class="logo-box">BRASÃO</div>
+    </div>
+    <div class="address">
+      Qualifica ${estado} — CNPJ: 00.000.000/0001-00<br>
+      Av. Principal, 100 — São Luís, MA<br>
+      qualifica@upgrade.ma.gov.br
     </div>
   </div>
 
-  <div class="info-grid">
-    <div class="info-item"><span>Curso:</span> ${classData.course.name}</div>
-    <div class="info-item"><span>Turma:</span> ${classData.classIdentifier}</div>
-    <div class="info-item"><span>Cidade:</span> ${classData.city.name} — ${classData.city.state}</div>
-    <div class="info-item"><span>Grupo:</span> ${classData.group.name}</div>
-    <div class="info-item"><span>Início:</span> ${new Date(classData.startDate).toLocaleDateString('pt-BR')}</div>
-    <div class="info-item"><span>Professor(es):</span> ${professores || 'Não definido'}</div>
-    <div class="info-item"><span>Aulas Realizadas até agora:</span> ${totalAulaAteAgora}</div>
-    <div class="info-item"><span>Taxa de Conclusão:</span> ${summary.taxaConclusao}%</div>
-  </div>
+  <div class="faixa-cidade">${classData.city?.name?.toUpperCase() || ''}</div>
+  <div class="subtitulo">QUALIFICA ${estado}</div>
+  <div class="titulo-lista">LISTA DE CONCLUDENTES</div>
+  <div class="faixa-curso">${classData.course.name} (${turno})</div>
 
-  <div class="summary-bar">
-    <div><strong>${summary.totalAlunos}</strong>Total de Alunos</div>
-    <div><strong>${summary.aprovados}</strong>Concludentes (≥75%)</div>
-    <div><strong>${summary.desistentes}</strong>Desistentes (<75%)</div>
-    <div><strong>${summary.taxaConclusao}%</strong>Taxa de Conclusão</div>
-  </div>
-
-  <!-- APROVADOS -->
-  <div class="section-title section-aprovados">
-    ✅ CONCLUDENTES — ${summary.aprovados} alunos com frequência ≥ 75%
-  </div>
   <table>
     <thead>
-      <tr><th>#</th><th>Nome do Aluno</th><th>Presenças</th><th>Faltas</th><th>Frequência</th></tr>
+      <tr>
+        <th style="width:40px">Nº</th>
+        <th style="text-align:left">NOME</th>
+        <th style="min-width:200px">ASSINATURA</th>
+      </tr>
     </thead>
-    <tbody>${aprovados.length > 0 ? renderRows(aprovados) : '<tr><td colspan="5" style="text-align:center;padding:10px;color:#999">Nenhum aluno concludente até o momento</td></tr>'}</tbody>
-  </table>
-
-  <!-- DESISTENTES -->
-  <div class="section-title section-desistentes">
-    ❌ DESISTENTES / EM RISCO — ${summary.desistentes} alunos com frequência < 75%
-  </div>
-  <table>
-    <thead>
-      <tr><th>#</th><th>Nome do Aluno</th><th>Presenças</th><th>Faltas</th><th>Frequência</th></tr>
-    </thead>
-    <tbody>${desistentes.length > 0 ? renderRows(desistentes, aprovados.length) : '<tr><td colspan="5" style="text-align:center;padding:10px;color:#999">Nenhum desistente registrado</td></tr>'}</tbody>
+    <tbody>
+      ${aprovados.length > 0 ? rowsAprovados : '<tr><td colspan="3" style="padding:10px;text-align:center;color:#999">Nenhum concludente</td></tr>'}
+    </tbody>
   </table>
 
   <div class="footer">
-    <div class="signature-line">Professor(es)</div>
-    <div class="signature-line">Coordenador de Campo</div>
-    <div class="signature-line">Secretaria</div>
+    <div style="font-size:9px;color:#555">${hoje}</div>
+    <div class="assinatura">
+      <div class="linha-assinatura">${professores || 'Instrutor'}</div>
+      <div style="font-size:8px;color:#555">Instrutor(a) Responsável</div>
+    </div>
   </div>
-  <p class="watermark">⚠️ MODELO PROVISÓRIO — aguarda template oficial — Sistema Upgrade v2.0</p>
+
+  <!-- DESISTENTES — página separada -->
+  <div class="page-break">
+    <div class="header-row" style="margin-top:0">
+      <div class="logos">
+        <div class="logo-box">SETRE</div>
+        <div class="logo-box">GOV.<br>ESTADO</div>
+        <div class="logo-box">UPGRADE</div>
+        <div class="logo-box">BRASÃO</div>
+      </div>
+      <div class="address">Qualifica ${estado}</div>
+    </div>
+    <div class="titulo-lista" style="margin-bottom:8px">LISTA DE DESISTENTES</div>
+    <div class="faixa-curso">${classData.course.name} (${turno})</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:40px">Nº</th>
+          <th style="text-align:left">NOME</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${desistentes.length > 0 ? rowsDesistentes : '<tr><td colspan="2" style="padding:10px;text-align:center;color:#999">Nenhum desistente</td></tr>'}
+      </tbody>
+    </table>
+
+    <div class="footer">
+      <div style="font-size:9px;color:#555">${hoje}</div>
+      <div class="assinatura">
+        <div class="linha-assinatura">${professores || 'Instrutor'}</div>
+        <div style="font-size:8px;color:#555">Instrutor(a) Responsável</div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>`;
   }

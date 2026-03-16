@@ -262,4 +262,61 @@ export class DashboardService {
             resumo: { totalStudents, totalCourses, totalClasses, totalEnrollments, totalActions },
         };
     }
+
+    async getRotasBi(estado?: string, ano?: number) {
+        const where: any = {};
+        if (estado && estado !== 'TODOS') {
+            where.grupo = { state: estado };
+        }
+        if (ano) {
+            where.dataInicio = {
+                gte: new Date(`${ano}-01-01`),
+                lte: new Date(`${ano}-12-31`),
+            };
+        }
+        const acoes = await this.prisma.acao.findMany({
+            where,
+            include: {
+                cidade: { select: { name: true, state: true } },
+                grupo: { select: { name: true, state: true } },
+                turmas: {
+                    include: {
+                        turma: {
+                            include: {
+                                _count: { select: { enrollments: true } },
+                                course: { select: { name: true } },
+                            },
+                        },
+                    },
+                },
+                _count: { select: { turmas: true } },
+            },
+            orderBy: { dataInicio: 'desc' },
+        });
+
+        const totalInscritos = acoes.reduce(
+            (sum, a) => sum + a.turmas.reduce((s, t) => s + t.turma._count.enrollments, 0),
+            0,
+        );
+        const cidades = [...new Set(
+            acoes.map(a => (a as any).cidadeNome || a.cidade?.name).filter(Boolean),
+        )];
+
+        return {
+            totalRotas: acoes.length,
+            cidadesBeneficiadas: cidades.length,
+            totalInscritos,
+            rotas: acoes.map(a => ({
+                id: a.id,
+                nome: a.nome,
+                cidade: (a as any).cidadeNome || a.cidade?.name,
+                estado: a.grupo?.state,
+                status: a.status,
+                dataInicio: a.dataInicio,
+                dataFim: a.dataFim,
+                totalTurmas: a._count.turmas,
+                totalInscritos: a.turmas.reduce((s, t) => s + t.turma._count.enrollments, 0),
+            })),
+        };
+    }
 }

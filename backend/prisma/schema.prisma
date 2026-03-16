@@ -259,6 +259,8 @@ model User {
   phone     String?
   role      UserRole
   active    Boolean  @default(true)
+  twoFactorEnabled Boolean @default(false)  // S3-03: Google Authenticator
+  twoFactorSecret  String?                  // segredo TOTP — armazenado criptografado
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

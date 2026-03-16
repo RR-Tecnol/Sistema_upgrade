@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import { AcaoStatus } from '@prisma/client';
 import { CreateAcaoDto } from './dto/create-acao.dto';
 import { CreateAcaoCustoDto } from './dto/create-acao-custo.dto';
@@ -8,7 +9,10 @@ import { CreateAcaoFuncionarioDto } from './dto/create-acao-funcionario.dto';
 
 @Injectable()
 export class AcoesService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private settingsService: SettingsService,
+    ) { }
 
 
     async findAll(filters?: {
@@ -86,7 +90,7 @@ export class AcoesService {
                 funcionarios: {
                     include: {
                         employee: {
-                            select: { id: true, name: true, role: true, department: true, phone: true, email: true, specialty: true, dailyCost: true, photoUrl: true, active: true },
+                            select: { id: true, name: true, role: true, department: true, phone: true, email: true, specialty: true, dailyCost: true, photoUrl: true, active: true, contractType: true, monthlySalaryCLT: true, travelRuleKm: true },
                         },
                     },
                     orderBy: { createdAt: 'asc' },
@@ -172,8 +176,30 @@ export class AcoesService {
         const custoEstimadoCombustivel = litrosEstimados * precoCombustivel;
 
         // Custo estimado de diárias — somente AcaoFuncionario (funcionários registrados)
+        // GAP-F2: para instrutores CLT, incluir salário proporcional + passagens (Sprint 2)
+        // S3-00: parâmetros agora consumidos do SettingsService (não mais hardcoded)
+        const settings = this.settingsService.get();
         const custoEstimadoDiarias = (acao.funcionarios || []).reduce((sum: number, f: any) => {
-            return sum + Number(f.valorDiaria) * (f.diasTrabalhados || 0);
+            const diarias = Number(f.valorDiaria) * (f.diasTrabalhados || 0);
+
+            let salarioProporcional = 0;
+            let passagens = 0;
+            if (f.employee?.contractType === 'CLT' && f.employee?.monthlySalaryCLT) {
+                const diasUteisMes = settings.diasUteisReferenciaMes;
+                salarioProporcional = (Number(f.employee.monthlySalaryCLT) / diasUteisMes)
+                    * (f.diasTrabalhados || 0);
+
+                // Regra passagem: ≤kmLimite semanal / >kmLimite quinzenal (reunião 00:23:15)
+                const kmLimite = f.employee.travelRuleKm || settings.kmLimitePassagemSemanal;
+                const semanas = Math.ceil((f.diasTrabalhados || 0) / 5);
+                const viagens = kmLimite <= settings.kmLimitePassagemSemanal
+                    ? semanas * 2               // ida+volta por semana
+                    : Math.ceil(semanas / 2) * 2; // ida+volta quinzenal
+                const custoPassagem = settings.valorPassagemViagem;
+                passagens = viagens * custoPassagem;
+            }
+
+            return sum + diarias + salarioProporcional + passagens;
         }, 0);
 
         // Custos reais por tipo
@@ -348,7 +374,7 @@ export class AcoesService {
     // ── Custos ───────────────────────────────────────────────────
     async addCusto(acaoId: string, data: CreateAcaoCustoDto) {
         await this.findOne(acaoId);
-        return this.prisma.acaoCusto.create({
+        const novoCusto = await this.prisma.acaoCusto.create({
             data: {
                 acaoId,
                 tipo: data.tipo,
@@ -363,6 +389,45 @@ export class AcoesService {
                 funcionario: { select: { id: true, name: true } },
             },
         });
+
+        // GAP-F3: alerta quando custo real > estimado × (percentualAlertaCusto/100) (Sprint 2)
+        // S3-00: percentual configuravel via SettingsService
+        try {
+            const acaoAtual = await this.prisma.acao.findUnique({
+                where: { id: acaoId },
+                include: {
+                    funcionarios: { include: { employee: true } },
+                    custos: true,
+                },
+            });
+            if (acaoAtual) {
+                const resumo = this.calcularResumoFinanceiro(acaoAtual);
+                const settings = this.settingsService.get();
+                const fatorAlerta = settings.percentualAlertaCusto / 100;
+                if (resumo.estimado.total > 0 &&
+                    resumo.real.total > resumo.estimado.total * fatorAlerta) {
+                    console.warn(
+                        `⚠️ ALERTA CUSTO: Rota "${acaoAtual.nome}" atingiu ` +
+                        `R$ ${resumo.real.total.toFixed(2)}, acima de ${settings.percentualAlertaCusto}% ` +
+                        `do estimado (R$ ${resumo.estimado.total.toFixed(2)}).`
+                    );
+                    await this.prisma.notification.create({
+                        data: {
+                            userId: acaoAtual.grupoId,
+                            type: 'GENERAL_ANNOUNCEMENT',
+                            title: '⚠️ Custo da rota acima do estimado',
+                            message: `A rota "${acaoAtual.nome}" atingiu R$ ${resumo.real.total.toFixed(2)}, ` +
+                                `acima de ${settings.percentualAlertaCusto}% do estimado (R$ ${resumo.estimado.total.toFixed(2)}).`,
+                            channel: 'IN_APP',
+                        },
+                    }).catch(() => { /* silencia se userId for inválido */ });
+                }
+            }
+        } catch {
+            // Não bloquear o fluxo principal se o alerta falhar
+        }
+
+        return novoCusto;
     }
 
     async removeCusto(custoId: string) {
@@ -405,6 +470,10 @@ export class AcoesService {
         const emp = await this.prisma.employee.findUnique({ where: { id: dto.employeeId } });
         if (!emp) throw new NotFoundException('Funcionário não encontrado');
 
+        // GAP-F1: usar dailyCost do cadastro como default quando valorDiaria
+        // não for informado no DTO (evita que admin re-digite manualmente)
+        const valorDiariaFinal = dto.valorDiaria ?? (emp.dailyCost ? Number(emp.dailyCost) : 0);
+
         // Auto-calcular dias trabalhados com base nas datas da ação
         const dataInicio = new Date((acao as any).dataInicio);
         const dataFim = new Date((acao as any).dataFim);
@@ -418,7 +487,7 @@ export class AcoesService {
                 data: {
                     acaoId,
                     employeeId: dto.employeeId,
-                    valorDiaria: dto.valorDiaria,
+                    valorDiaria: valorDiariaFinal,
                     diasTrabalhados: diasFinal,
                 },
                 include: {
@@ -432,7 +501,7 @@ export class AcoesService {
         }
 
         // Criar AcaoCusto imediatamente ao vincular
-        const valorTotal = Number(dto.valorDiaria) * diasFinal;
+        const valorTotal = valorDiariaFinal * diasFinal;
         await this.prisma.acaoCusto.create({
             data: {
                 acaoId,
@@ -440,7 +509,7 @@ export class AcoesService {
                 descricao: `Diária - ${emp.name}`,
                 valor: valorTotal,
                 data: dataInicio,
-                observacoes: `${diasFinal} dia(s) × R$ ${Number(dto.valorDiaria).toFixed(2)}/dia`,
+                observacoes: `${diasFinal} dia(s) × R$ ${valorDiariaFinal.toFixed(2)}/dia`,
             },
         });
 
@@ -458,7 +527,7 @@ export class AcoesService {
                 recorrente: false,
                 acaoId,
                 cidade: (acao as any).cidadeNome || undefined,
-                observacoes: `${diasFinal} dia(s) × R$ ${Number(dto.valorDiaria).toFixed(2)}/dia`,
+                observacoes: `${diasFinal} dia(s) × R$ ${valorDiariaFinal.toFixed(2)}/dia`,
             },
         });
 

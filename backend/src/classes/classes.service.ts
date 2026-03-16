@@ -494,4 +494,38 @@ export class ClassesService {
             certificates: certificatesIssued,
         };
     }
+
+    // Bulk Attendance — usado pelo professor para registrar frequência do dia
+    async bulkAttendance(
+        classId: string,
+        date: string,
+        records: { studentId: string; present: boolean }[],
+        registeredBy: string,
+    ) {
+        const dateObj = new Date(date);
+        await Promise.all(
+            records.map(r =>
+                this.prisma.attendance.upsert({
+                    where: {
+                        classId_studentId_date: {
+                            classId,
+                            studentId: r.studentId,
+                            date: dateObj,
+                        },
+                    },
+                    update: { present: r.present },
+                    create: {
+                        classId,
+                        studentId: r.studentId,
+                        date: dateObj,
+                        present: r.present,
+                        registeredBy,
+                    },
+                }),
+            ),
+        );
+        return { message: `${records.length} registros salvos`, date };
+    }
 }
+
+

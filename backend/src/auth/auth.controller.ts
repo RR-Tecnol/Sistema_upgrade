@@ -56,4 +56,45 @@ export class AuthController {
     async getProfile(@Request() req: ExpressRequest & { user: Record<string, unknown> }) {
         return req.user;
     }
+
+    // ─── S3-03: Google Authenticator endpoints ───
+
+    @Post('2fa/generate')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Gera QR Code para ativar Google Authenticator' })
+    async generate2FA(@Request() req: ExpressRequest & { user: { id: string } }) {
+        return this.authService.generate2FA(req.user.id);
+    }
+
+    @Post('2fa/enable')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Confirma o primeiro código TOTP e ativa 2FA' })
+    async enable2FA(
+        @Request() req: ExpressRequest & { user: { id: string } },
+        @Body() body: { token: string },
+    ) {
+        await this.authService.enable2FA(req.user.id, body.token);
+    }
+
+    @Post('2fa/verify')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Verifica token TOTP após login (2FA ativo) e emite JWT' })
+    async verify2FA(@Body() body: { userId: string; token: string }) {
+        return this.authService.verify2FAAndLogin(body.userId, body.token);
+    }
+
+    @Post('2fa/disable')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Desativa 2FA após confirmar com token válido' })
+    async disable2FA(
+        @Request() req: ExpressRequest & { user: { id: string } },
+        @Body() body: { token: string },
+    ) {
+        await this.authService.disable2FA(req.user.id, body.token);
+    }
 }

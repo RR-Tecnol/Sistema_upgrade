@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, UseGuards, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -40,5 +40,18 @@ export class DashboardController {
     @ApiResponse({ status: 200, description: 'Analytics retrieved successfully' })
     async getAnalytics() {
         return this.dashboardService.getAnalytics();
+    }
+
+    @Get('rotas-bi')
+    @ApiOperation({ summary: 'BI de rotas por estado e ano' })
+    @ApiResponse({ status: 200, description: 'Rotas BI retrieved successfully' })
+    getRotasBi(
+        @Query('estado') estado?: string,
+        @Query('ano') ano?: string,
+    ) {
+        return this.dashboardService.getRotasBi(
+            estado,
+            ano ? parseInt(ano, 10) : undefined,
+        );
     }
 }

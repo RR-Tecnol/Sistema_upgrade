@@ -1,7 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import * as speakeasy from 'speakeasy';
+import * as QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 
@@ -117,6 +119,12 @@ export class AuthService {
         }
 
         // Generate tokens
+        // S3-03: Se 2FA ativado, não emite JWT agora
+        // O frontend deve chamar POST /auth/2fa/verify com o TOTP antes de obter os tokens
+        if ((user as any).twoFactorEnabled) {
+            return { requiresTwoFactor: true, userId: user.id };
+        }
+
         const tokens = await this.generateTokens(user.id, user.email, user.role);
 
         const response: any = {
@@ -135,7 +143,6 @@ export class AuthService {
             response.student = studentData;
         }
 
-        return response;
     }
 
     async refreshToken(refreshToken: string) {
@@ -231,5 +238,92 @@ export class AuthService {
         }
 
         return user;
+    }
+
+    // ─────────────────────────────────────────────
+    // S3-03: Google Authenticator (TOTP / RFC 6238)
+    // ─────────────────────────────────────────────
+
+    /** PASSO 1: Gera segredo TOTP para o usuário e retorna QR Code em data URL */
+    async generate2FA(userId: string): Promise<{ qrCodeDataUrl: string; secret: string }> {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new UnauthorizedException('Usuário não encontrado');
+
+        const secret = speakeasy.generateSecret({
+            name: `Qualifica (${user.email})`,
+            length: 32,
+        });
+
+        // Persiste o segredo ANTES da confirmação — ativado apenas no enable2FA()
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { twoFactorSecret: secret.base32 },
+        });
+
+        const qrCodeDataUrl = await QRCode.toDataURL(secret.otpauth_url!);
+        return { qrCodeDataUrl, secret: secret.base32 };
+    }
+
+    /** PASSO 2: Valida o primeiro código TOTP e ativa o 2FA definitivamente */
+    async enable2FA(userId: string, token: string): Promise<void> {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.twoFactorSecret) {
+            throw new BadRequestException('Segredo 2FA não configurado. Chame /auth/2fa/generate primeiro.');
+        }
+
+        const valid = speakeasy.totp.verify({
+            secret: user.twoFactorSecret,
+            encoding: 'base32',
+            token,
+            window: 1,
+        });
+
+        if (!valid) throw new UnauthorizedException('Código inválido ou expirado');
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { twoFactorEnabled: true },
+        });
+    }
+
+    /** PASSO 3 (login): Valida token TOTP e emite JWT se correto */
+    async verify2FAAndLogin(userId: string, token: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+            throw new BadRequestException('2FA não ativo para este usuário');
+        }
+
+        const valid = speakeasy.totp.verify({
+            secret: user.twoFactorSecret,
+            encoding: 'base32',
+            token,
+            window: 1,
+        });
+
+        if (!valid) throw new UnauthorizedException('Código 2FA inválido ou expirado');
+
+        return this.generateTokens(user.id, user.email, user.role);
+    }
+
+    /** PASSO 4: Desativa 2FA após confirmar com token válido */
+    async disable2FA(userId: string, token: string): Promise<void> {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+            throw new BadRequestException('2FA não ativo');
+        }
+
+        const valid = speakeasy.totp.verify({
+            secret: user.twoFactorSecret,
+            encoding: 'base32',
+            token,
+            window: 1,
+        });
+
+        if (!valid) throw new UnauthorizedException('Código 2FA inválido');
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { twoFactorEnabled: false, twoFactorSecret: null },
+        });
     }
 }

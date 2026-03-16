@@ -202,11 +202,152 @@ Esse erro é **esperado** quando MinIO não está configurado com credenciais co
 | REQ-11 | PDF de frequência (logo governamental) | Alta | ✅ PDF real via Puppeteer — template provisório |
 | REQ-12 | PDF de concludentes (3ª semana) | Alta | ✅ PDF real via Puppeteer — template provisório |
 | REQ-13 | Filtros avançados + export multi-formato | Média | ✅ 26 estados + exportar PDF contas |
-| REQ-14 | Config de segurança (2FA, timeout) | Baixa | ⏳ Parcial — UI pronta, 2FA marcado "Em breve" |
-| — | Templates PDF oficiais | Alta | ⏳ Aguardando modelo visual do Robert |
-| — | BUG-C1 encoding cidades | Infra | ⚠️ Banco precisa ser recriado com UTF-8 collation |
+| REQ-14 | Config de segurança (2FA, timeout) | Baixa | ✅ Implementado — 4 endpoints TOTP (S3-03) |
+| — | Templates PDF oficiais | Alta | ✅ Templates reais implementados (S3-01/S3-02) |
+| — | Parâmetros financeiros configuráveis | Alta | ✅ SettingsService + UI Financeiro (S3-00) |
+| — | BUG-C1 encoding cidades | Infra | ✅ docker-compose com POSTGRES_INITDB_ARGS UTF-8 |
 | — | MinIO / upload de comprovantes | Infra | ⚠️ Requer configuração de servidor MinIO |
 | — | Notificações E-mail/WhatsApp | Média | ⏳ Pendente |
 | — | Integração CADUNICO | Baixa | ⏳ Pendente |
 
 > **Referência completa:** [`06_PLANEJAMENTO.md`](./06_PLANEJAMENTO.md) — contexto completo, impacto no schema e citações da reunião.
+
+---
+
+## [15/03/2026] - Sprint 0 — BUG-C1: Encoding UTF-8 das Cidades
+
+**Feature/Foco:** Corrigir encoding UTF-8 no PostgreSQL para cidades com acentos.
+
+**Contexto:** Cidades como São Luís, Teresina, etc. eram armazenadas com caracteres quebrados no banco.
+
+**Decisão Técnica:**
+- Adicionado `POSTGRES_INITDB_ARGS: "--locale=pt_BR.UTF-8 --encoding=UTF8"` no `docker-compose.yml` bloco `postgres.environment`
+- Procedimento: `docker-compose down -v` → `docker-compose up -d` → `prisma migrate deploy` → seeds
+
+**Bypasses/Pendências:** Seed de cidades precisa ser re-executado após reset do volume Docker.
+
+---
+
+## [15/03/2026] - Sprint 1 — GAP-01/02/03: Campos CLT e Verificação de Cadastro
+
+**Feature/Foco:** Persistência dos campos CLT e validação do formulário de alunos.
+
+**GAP-01 — employees.service.ts não salvava campos CLT:**
+- Adicionados `contractType?`, `monthlySalaryCLT?`, `travelRuleKm?` ao `create-employee.dto.ts`
+- `employees.service.ts`: create() e update() passam os 3 campos ao Prisma (eram silenciosamente ignorados)
+
+**GAP-02 — UI frontend para campos CLT:**
+- `frontend/app/admin/funcionarios/page.tsx`: interface `Employee` ampliada, `EMPTY_FORM` atualizado, modal com Step 1 condicional (campos CLT só aparecem quando `contractType === 'CLT'`)
+
+**GAP-03 — Verificação de formulário de alunos:**
+- `publicSchoolOnly` verificado como funcional em `Step4Socioeconomic.tsx` ✅
+- Campo `motivation` verificado como opcional em `Step5Professional.tsx` ✅
+- `PE_DE_MEIA`: não encontrado nos componentes — registrado como gap (implementação futura)
+
+**Bypasses:** `tsc --noEmit` passou sem erros após as edições.
+
+---
+
+## [15/03/2026] - Sprint 2 — GAP-F1/F2/F3: Lógica Financeira e Alertas de Custo
+
+**Feature/Foco:** Automação do custo de instrutor e alertas financeiros em `acoes.service.ts`.
+
+**GAP-F1 — addFuncionario() puxar dailyCost do cadastro:**
+- `valorDiariaFinal = dto.valorDiaria ?? (emp.dailyCost ? Number(emp.dailyCost) : 0)`
+- Propagado para `AcaoFuncionario`, `AcaoCusto` e `ContaPagar`
+
+**GAP-F2 — calcularResumoFinanceiro() com custo CLT:**
+- Para instrutores CLT: `salarioProporcional = (monthlySalaryCLT / diasUteisMes) × diasTrabalhados`
+- Passagens: ≤200km semanal · >200km quinzenal (regra da reunião B2G, transcrição 00:23:15)
+- `include` do `findOne()` ampliado com campos CLT do Employee
+
+**GAP-F3 — addCusto() alerta custo excessivo:**
+- Quando `real.total > estimado.total × 1.1`: `console.warn` + `Notification` no banco
+- `userId` usa `grupoId` como placeholder (resolvido em Sprint 4 com sistema de notificações)
+
+---
+
+## [15/03/2026] - Sprint 3 — S3-00 a S3-03: Parâmetros Financeiros, PDFs e 2FA
+
+**Feature/Foco:** 4 tasks de refatoração e segurança.
+
+### S3-00 — Parâmetros Financeiros Configuráveis (PRIORIDADE MÁXIMA)
+
+**Problema resolvido:** Valores financeiros hardcoded em `acoes.service.ts` (custoPassagem=270, diasUteisMes=22, etc.)
+
+**Arquivos alterados:**
+- `settings.service.ts`: 5 campos adicionados à interface `SystemSettings` + `DEFAULT_SETTINGS`
+  - `valorPassagemViagem: 270` · `valorDiariaPadrao: 120` · `kmLimitePassagemSemanal: 200`
+  - `diasUteisReferenciaMes: 22` · `percentualAlertaCusto: 110`
+- `acoes.module.ts`: importa `SettingsModule`
+- `acoes.service.ts`: injeta `SettingsService`, usa `settings.xxx` em vez de literais hardcoded
+- `configuracoes/page.tsx`: nova tab "Financeiro" com 5 inputs (4 number inputs + 1 range slider), lógica GET/PUT integrada
+
+**Decisão:** Slider para percentualAlertaCusto (100–200%) em vez de input para melhor UX.
+
+### S3-01 — PDF de Frequência Refatorado
+
+**Problema resolvido:** Query filtrava `where: { present: true }`, excluindo faltas do relatório.
+
+**Alterações:**
+- Query: removido `where: { present: true }` → query retorna todos os registros com campo `present: boolean`
+- `buildFrequencyHtml()`: reescrito com template visual real (logos, faixa amarela curso, tabela P/F por coluna de data, assinatura do instrutor)
+- Mapa de presenças: `presencaMap: Map<studentId, Map<dateStr, boolean>>` para células P (azul) / F (branco)
+
+### S3-02 — PDF de Concludentes Refatorado
+
+**Problema resolvido:** Template provisório sem estrutura do modelo `CONCLUDENTES_MORRO_CABECA.pdf`.
+
+**Alterações:**
+- `buildConcludentsHtml()`: reescrito com tabela Nº / NOME / ASSINATURA para concludentes + página separada para desistentes (CSS `page-break-before: always`)
+- Faixa cidade em azul escuro, faixa curso em amarelo, logos governamentais no cabeçalho
+
+### S3-03 — 2FA Google Authenticator (TOTP / RFC 6238)
+
+**Arquivos alterados:**
+- `schema.prisma`: + `twoFactorEnabled Boolean @default(false)` e `twoFactorSecret String?` no model User
+- `auth.service.ts`: 4 métodos — `generate2FA()` (QR code), `enable2FA()` (confirma 1º token), `verify2FAAndLogin()` (login com TOTP), `disable2FA()` (desativa)
+- `auth.controller.ts`: 4 endpoints — `POST /auth/2fa/generate`, `/enable`, `/verify`, `/disable`
+- `login()`: se `twoFactorEnabled`, retorna `{ requiresTwoFactor: true, userId }` em vez dos tokens JWT
+- Pacotes instalados: `speakeasy`, `qrcode`, `@types/speakeasy`, `@types/qrcode` (com `--legacy-peer-deps`)
+- `npx prisma generate` executado — novo Prisma Client com os campos 2FA
+- `tsc --noEmit` passou sem erros após todas as alterações
+
+**Fluxo 2FA:**
+1. Admin logado → `POST /auth/2fa/generate` → recebe QR code (data URL)
+2. Escaneia no Google Authenticator
+3. `POST /auth/2fa/enable` com 1º token TOTP → `twoFactorEnabled = true`
+4. Próximo login: `{ requiresTwoFactor: true, userId }` → frontend pede o TOTP
+5. `POST /auth/2fa/verify` com token → recebe JWT
+
+**Bypasses/Pendências:**
+- Migration 2FA precisa ser rodada: `npx prisma migrate dev --name add-two-factor`
+- Frontend: UI de ativação/desativação do 2FA nas configurações de perfil (Sprint 4)
+
+---
+
+## [16/03/2026] — Sprint 4
+
+**Executor:** Antigravity | **Monitor:** Gravity 2.0 | **Autorização:** Tech Lead
+
+**S4-01A — Backend: Endpoint de Frequência em Lote**
+- `POST /classes/:id/attendance/bulk` adicionado em `classes.controller.ts` + `classes.service.ts`
+- `bulkAttendance()` usa `prisma.attendance.upsert` com chave única `classId_studentId_date` — não duplica se o professor corrigir no mesmo dia
+- `registeredBy` extraído do token JWT via `@Req() req.user.id`
+
+**S4-01B — Frontend: Portal do Professor (`frontend/app/teacher/`)**
+- 7 arquivos criados: `layout.tsx` (sidebar, guard JWT, logout), `page.tsx` (redirect), `dashboard/page.tsx` (saudação, KPIs, botão #FFD600), `frequencia/page.tsx` (chips Verde/Amarelo), `frequencia/[classId]/page.tsx` (toggle P/F 44px, toast), `reembolsos/page.tsx` (câmera nativa, presigned URL MinIO, histórico), `historico/page.tsx` (placeholder)
+
+**S4-02 — Dashboard BI de Rotas**
+- `dashboard.service.ts`: `getRotasBi(estado?, ano?)` — agrega acoes, retorna totalRotas, cidadesBeneficiadas, totalInscritos
+- `dashboard.controller.ts`: `GET /dashboard/rotas-bi?estado=MA&ano=2026`
+- `dashboard/page.tsx`: ROW 6 "ROTAS & BI" com filtros Estado/Ano, 3 KPI cards, tabela de rotas com status coloridos
+
+**S4-03 — Mapa Interativo MA/PI**
+- `npm install react-simple-maps` (17 pacotes)
+- `frontend/components/MapaRotas.tsx`: mapa Brasil via world-atlas, marcadores proporcionais a inscritos, MA=#FFD600, PI=#0EA5E9, tooltip ao hover
+- Integrado no dashboard via `next/dynamic` (sem SSR)
+
+**Pendente Sprint Mobile:** sidebar drawer, breakpoints, touch 44px sistemático
+**Pendente Sprint 5:** Socket.io real-time, seed Acre, CI/CD, UI 2FA
+

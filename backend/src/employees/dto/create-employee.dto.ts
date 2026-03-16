@@ -63,4 +63,18 @@ export class CreateEmployeeDto {
     @IsOptional()
     @IsBoolean()
     active?: boolean;
+
+    // REQ-09: Campos CLT — adicionados em Sprint 1 (15/03/2026)
+    @ApiPropertyOptional({ enum: ['CLT', 'PJ', 'FREELANCE'], description: 'Tipo de contrato do funcionário' })
+    @IsOptional()
+    @IsString()
+    contractType?: string;
+
+    @ApiPropertyOptional({ description: 'Salário base mensal CLT em reais' })
+    @IsOptional()
+    monthlySalaryCLT?: number;
+
+    @ApiPropertyOptional({ description: 'Distância limite (km) para passagem semanal vs quinzenal. Default: 200' })
+    @IsOptional()
+    travelRuleKm?: number;
 }

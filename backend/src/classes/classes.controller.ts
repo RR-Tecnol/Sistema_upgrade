@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ClassesService } from './classes.service';
 import { CreateClassDto } from './dto/create-class.dto';
@@ -142,5 +142,20 @@ export class ClassesController {
     @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
     async getStatistics(@Param('id') classId: string) {
         return this.classesService.getClassStatistics(classId);
+    }
+
+    // Bulk Attendance (Professor)
+    @Post(':id/attendance/bulk')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Registrar frequência em lote (professor)' })
+    @ApiResponse({ status: 201, description: 'Frequências registradas com sucesso' })
+    bulkAttendance(
+        @Param('id') classId: string,
+        @Body() body: { date: string; records: { studentId: string; present: boolean }[] },
+        @Req() req: any,
+    ) {
+        const registeredBy = req.user?.id || req.user?.sub;
+        return this.classesService.bulkAttendance(classId, body.date, body.records, registeredBy);
     }
 }

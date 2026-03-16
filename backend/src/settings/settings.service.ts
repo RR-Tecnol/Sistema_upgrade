@@ -43,6 +43,13 @@ export interface SystemSettings {
     periodoRetencao: string;  // dias
     exportFormato: 'xlsx' | 'csv' | 'pdf';
 
+    // Parâmetros Financeiros (S3-00 — Sprint 3)
+    valorPassagemViagem: number;         // R$ — confirmado na planilha do Robert
+    valorDiariaPadrao: number;           // R$ — sugestão padrão ao vincular instrutor
+    kmLimitePassagemSemanal: number;     // km — ≤ este valor = passagem semanal
+    diasUteisReferenciaMes: number;      // padrão CLT = 22 dias
+    percentualAlertaCusto: number;       // ex: 110 = alerta quando real > 110% do estimado
+
     // Meta
     updatedAt: string;
     updatedBy: string;
@@ -69,6 +76,11 @@ const DEFAULT_SETTINGS: SystemSettings = {
     modoDebug: false,
     periodoRetencao: '365',
     exportFormato: 'xlsx',
+    valorPassagemViagem: 270,
+    valorDiariaPadrao: 120,
+    kmLimitePassagemSemanal: 200,
+    diasUteisReferenciaMes: 22,
+    percentualAlertaCusto: 110,
     updatedAt: new Date().toISOString(),
     updatedBy: 'system',
 };

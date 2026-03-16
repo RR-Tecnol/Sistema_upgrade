@@ -18,6 +18,9 @@ interface Employee {
     email?: string;
     specialty?: string;
     dailyCost?: number;
+    contractType?: string;
+    monthlySalaryCLT?: number;
+    travelRuleKm?: number;
     hireDate?: string;
     notes?: string;
     photoUrl?: string;
@@ -51,6 +54,7 @@ const DEPTS = Object.entries(DEPT_CONFIG) as [EmployeeDepartment, typeof DEPT_CO
 const EMPTY_FORM = {
     name: '', role: 'INSTRUCTOR' as EmployeeRole, department: 'ACADEMIC' as EmployeeDepartment,
     cpf: '', rg: '', phone: '', email: '', specialty: '', dailyCost: '', hireDate: '', notes: '', active: true,
+    contractType: '', monthlySalaryCLT: '', travelRuleKm: 200,
 };
 
 /* ── 3D Tilt Card ──────────────────────────────────── */
@@ -372,6 +376,9 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
         email: employee.email || '', specialty: employee.specialty || '',
         dailyCost: employee.dailyCost?.toString() || '', hireDate: employee.hireDate?.split('T')[0] || '',
         notes: employee.notes || '', active: employee.active,
+        contractType: employee.contractType || '',
+        monthlySalaryCLT: employee.monthlySalaryCLT?.toString() || '',
+        travelRuleKm: employee.travelRuleKm || 200,
     } : { ...EMPTY_FORM });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -389,9 +396,12 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                 cpf: form.cpf || undefined, rg: form.rg || undefined,
                 phone: form.phone || undefined, email: form.email || undefined,
                 specialty: form.specialty || undefined,
-                dailyCost: form.dailyCost ? parseFloat(form.dailyCost) : undefined,
+                dailyCost: form.dailyCost ? parseFloat(form.dailyCost as string) : undefined,
                 hireDate: form.hireDate || undefined, notes: form.notes || undefined,
                 active: form.active,
+                contractType: form.contractType || undefined,
+                monthlySalaryCLT: form.monthlySalaryCLT ? parseFloat(form.monthlySalaryCLT as string) : undefined,
+                travelRuleKm: form.travelRuleKm ? parseInt(String(form.travelRuleKm)) : undefined,
             };
             if (employee?.id) {
                 await api.put(`/employees/${employee.id}`, payload);
@@ -518,6 +528,34 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                                 <label className="form-label">Especialidade / Habilidade</label>
                                 <input className="form-input" value={form.specialty} onChange={e => set('specialty', e.target.value)} placeholder="Ex: CNH categoria E, Eletrônica..." />
                             </div>
+                            <div>
+                                <label className="form-label">Tipo de Contrato</label>
+                                <select className="form-input" value={form.contractType || ''} onChange={e => set('contractType', e.target.value)}>
+                                    <option value="">Selecione...</option>
+                                    <option value="CLT">CLT — Assalariado</option>
+                                    <option value="PJ">PJ — Pessoa Jurídica</option>
+                                    <option value="FREELANCE">Freelance</option>
+                                </select>
+                            </div>
+                            {form.contractType === 'CLT' && (
+                                <div>
+                                    <label className="form-label">Salário Base Mensal (R$)</label>
+                                    <input type="number" step="0.01" className="form-input"
+                                        value={form.monthlySalaryCLT || ''} onChange={e => set('monthlySalaryCLT', e.target.value)}
+                                        placeholder="Ex: 3500,00" />
+                                </div>
+                            )}
+                            {form.contractType === 'CLT' && (
+                                <div>
+                                    <label className="form-label">Distância limite para passagem semanal (km)</label>
+                                    <input type="number" className="form-input"
+                                        value={form.travelRuleKm || 200} onChange={e => set('travelRuleKm', e.target.value)}
+                                        placeholder="200" />
+                                    <p style={{fontSize:'0.7rem', color:'#9CA3AF', marginTop:'0.25rem'}}>
+                                        ≤ {form.travelRuleKm || 200}km = passagem semanal · acima = quinzenal
+                                    </p>
+                                </div>
+                            )}
                             <div>
                                 <label className="form-label">Custo Diária (R$)</label>
                                 <input type="number" step="0.01" className="form-input" value={form.dailyCost} onChange={e => set('dailyCost', e.target.value)} placeholder="0,00" />

@@ -12,6 +12,7 @@ import {
     UserCircleIcon,
     CheckCircleIcon,
     ExclamationTriangleIcon,
+    CurrencyDollarIcon,
 } from '@heroicons/react/24/outline';
 
 /* ── Toggle Switch ── */
@@ -99,6 +100,7 @@ const TABS = [
     { id: 'notificacoes', label: 'Notificações', icon: BellIcon },
     { id: 'seguranca', label: 'Segurança', icon: ShieldCheckIcon },
     { id: 'sistema', label: 'Sistema', icon: GlobeAltIcon },
+    { id: 'financeiro', label: 'Financeiro', icon: CurrencyDollarIcon },
     { id: 'dados', label: 'Dados', icon: DocumentArrowDownIcon },
     { id: 'perfil', label: 'Meu Perfil', icon: UserCircleIcon },
 ];
@@ -156,6 +158,12 @@ export default function ConfiguracoesPage() {
         // Dados
         periodoRetencao: '365',
         exportFormato: 'xlsx',
+        // Financeiro (S3-00)
+        valorPassagemViagem: '270',
+        valorDiariaPadrao: '120',
+        kmLimitePassagemSemanal: '200',
+        diasUteisReferenciaMes: '22',
+        percentualAlertaCusto: '110',
         // Perfil
         nomeAdmin: '',
         emailAdmin: '',
@@ -197,6 +205,12 @@ export default function ConfiguracoesPage() {
                     modoDebug: data.modoDebug ?? c.modoDebug,
                     periodoRetencao: String(data.periodoRetencao ?? c.periodoRetencao),
                     exportFormato: data.exportFormato ?? c.exportFormato,
+                    // Financeiro (S3-00)
+                    valorPassagemViagem: String(data.valorPassagemViagem ?? c.valorPassagemViagem),
+                    valorDiariaPadrao: String(data.valorDiariaPadrao ?? c.valorDiariaPadrao),
+                    kmLimitePassagemSemanal: String(data.kmLimitePassagemSemanal ?? c.kmLimitePassagemSemanal),
+                    diasUteisReferenciaMes: String(data.diasUteisReferenciaMes ?? c.diasUteisReferenciaMes),
+                    percentualAlertaCusto: String(data.percentualAlertaCusto ?? c.percentualAlertaCusto),
                 }));
                 setSettingsLoaded(true);
             })
@@ -230,6 +244,12 @@ export default function ConfiguracoesPage() {
                 modoDebug: cfg.modoDebug,
                 periodoRetencao: cfg.periodoRetencao,
                 exportFormato: cfg.exportFormato,
+                // Financeiro (S3-00)
+                valorPassagemViagem: parseFloat(cfg.valorPassagemViagem),
+                valorDiariaPadrao: parseFloat(cfg.valorDiariaPadrao),
+                kmLimitePassagemSemanal: parseInt(cfg.kmLimitePassagemSemanal),
+                diasUteisReferenciaMes: parseInt(cfg.diasUteisReferenciaMes),
+                percentualAlertaCusto: parseFloat(cfg.percentualAlertaCusto),
             });
             setSaved(true);
             // Atualizar nome/email do admin no localStorage para Header e Sidebar refletirem
@@ -467,6 +487,50 @@ export default function ConfiguracoesPage() {
                                     <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.78rem', fontWeight: 700, color: '#374151' }}>{v}</div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── TAB: FINANCEIRO ── */}
+            {tab === 'financeiro' && (
+                <div className="animate-fade-in">
+                    <div style={SECTION_STYLE}>
+                        <div style={SECTION_TITLE}>Parâmetros Financeiros</div>
+                        <p style={{ fontSize: '0.72rem', color: '#9CA3AF', marginBottom: '0.75rem' }}>
+                            Valores usados no cálculo de custo estimado de rotas. Alterações aplicadas imediatamente.
+                        </p>
+                        <SettingRow label="Valor da passagem por viagem (R$)" desc="Custo de cada viagem de instrutor CLT (ida e volta)">
+                            <InlineInput value={cfg.valorPassagemViagem} onChange={v => set('valorPassagemViagem', v)} type="number" placeholder="270.00" width={140} />
+                        </SettingRow>
+                        <SettingRow label="Diária padrão do instrutor (R$)" desc="Sugerida automaticamente ao vincular instrutor sem dailyCost cadastrado">
+                            <InlineInput value={cfg.valorDiariaPadrao} onChange={v => set('valorDiariaPadrao', v)} type="number" placeholder="120.00" width={140} />
+                        </SettingRow>
+                        <SettingRow label="Distância limite passagem semanal (km)" desc="≤ este valor = passagem semanal · acima = passagem quinzenal">
+                            <InlineInput value={cfg.kmLimitePassagemSemanal} onChange={v => set('kmLimitePassagemSemanal', v)} type="number" placeholder="200" width={120} />
+                        </SettingRow>
+                        <SettingRow label="Dias úteis de referência / mês" desc="Base para cálculo de salário proporcional CLT (padrão: 22)">
+                            <InlineInput value={cfg.diasUteisReferenciaMes} onChange={v => set('diasUteisReferenciaMes', v)} type="number" placeholder="22" width={100} />
+                        </SettingRow>
+                        <SettingRow label="Alerta de custo excessivo (%)" desc="Gera notificação quando custo real ultrapassar este percentual do estimado">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <input type="range" min="100" max="200" step="5" value={cfg.percentualAlertaCusto}
+                                    onChange={e => set('percentualAlertaCusto', e.target.value)}
+                                    style={{ width: 120, accentColor: '#FFD600' }} />
+                                <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1rem', color: '#B89B00', minWidth: 52, textAlign: 'right' }}>{cfg.percentualAlertaCusto}%</span>
+                            </div>
+                        </SettingRow>
+                    </div>
+
+                    <div style={{ padding: '0.85rem 1.1rem', borderRadius: 12, background: '#FFFDE7', border: '1px solid #FEF08A', display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: '1.1rem' }}>💡</span>
+                        <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#B89B00', marginBottom: '0.2rem' }}>Como esses parâmetros funcionam</div>
+                            <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>
+                                O custo estimado de cada Período de Cursos é calculado usando esses valores.
+                                Para instrutores CLT: <strong>diárias + salário proporcional + passagens</strong>.
+                                Altere e clique em &quot;Salvar Alterações&quot; para aplicar.
+                            </div>
                         </div>
                     </div>
                 </div>

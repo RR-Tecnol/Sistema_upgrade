@@ -2,8 +2,14 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { dashboardApi, DashboardStats, Activity, UpcomingClass } from '@/lib/api/dashboard';
-import { ClockIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import { ClockIcon, CalendarIcon, MapPinIcon, BuildingLibraryIcon, UsersIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import api from '@/lib/api/client';
+
+const MapaRotas = dynamic(() => import('@/components/MapaRotas'), { ssr: false, loading: () => (
+    <div style={{ height: 360, background: '#0F172A', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: '0.85rem' }}>Carregando mapa...</div>
+) });
 
 /* ── Count-up ── */
 function useCountUp(target: number, duration = 1000) {
@@ -74,12 +80,19 @@ export default function AdminDashboard() {
     const [upcoming, setUpcoming] = useState<UpcomingClass[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastUpdate, setLastUpdate] = useState('');
+    const [rotasBiData, setRotasBiData] = useState<any>(null);
+    const [biEstado, setBiEstado] = useState('TODOS');
+    const [biAno, setBiAno] = useState(new Date().getFullYear().toString());
+    const [biLoading, setBiLoading] = useState(false);
 
     useEffect(() => {
         load();
+        loadRotasBi();
         const iv = setInterval(load, 30000);
         return () => clearInterval(iv);
     }, []);
+
+    useEffect(() => { loadRotasBi(); }, [biEstado, biAno]);
 
     const load = async () => {
         try {
@@ -91,6 +104,16 @@ export default function AdminDashboard() {
             setStats(s); setActivities(a); setUpcoming(u);
             setLastUpdate(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
         } catch { /* noop */ } finally { setLoading(false); }
+    };
+
+    const loadRotasBi = async () => {
+        setBiLoading(true);
+        try {
+            const res = await api.get('/dashboard/rotas-bi', {
+                params: { estado: biEstado !== 'TODOS' ? biEstado : undefined, ano: biAno }
+            });
+            setRotasBiData(res.data);
+        } catch { setRotasBiData(null); } finally { setBiLoading(false); }
     };
 
     const maStudents = stats?.students.ma || 0;
@@ -263,6 +286,94 @@ export default function AdminDashboard() {
                             {l.label}
                         </Link>
                     ))}
+                </div>
+            </div>
+
+            {/* ── ROW 6: ROTAS BI ── */}
+            <div style={{ background: '#0F172A', borderRadius: 16, border: '1px solid rgba(255,214,0,0.15)', overflow: 'hidden' }}>
+                {/* Header BI */}
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                        <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#FFD600', letterSpacing: '0.08em' }}>ROTAS & BI</h2>
+                        <p style={{ fontSize: '0.75rem', color: '#475569', marginTop: 2 }}>Análise de ações de campo por estado e ano</p>
+                    </div>
+                    {/* Filtros */}
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <select value={biEstado} onChange={e => setBiEstado(e.target.value)}
+                            style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0.35rem 0.75rem', color: '#F1F5F9', fontSize: '0.8rem', cursor: 'pointer', height: 36 }}>
+                            <option value="TODOS">Todos estados</option>
+                            <option value="MA">Maranhão (MA)</option>
+                            <option value="PI">Piauí (PI)</option>
+                            <option value="AC">Acre (AC)</option>
+                        </select>
+                        <select value={biAno} onChange={e => setBiAno(e.target.value)}
+                            style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0.35rem 0.75rem', color: '#F1F5F9', fontSize: '0.8rem', cursor: 'pointer', height: 36 }}>
+                            {[2024, 2025, 2026].map(y => <option key={y} value={String(y)}>{y}</option>)}
+                        </select>
+                    </div>
+                </div>
+
+                {/* KPI Cards BI */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', padding: '1rem 1.25rem' }}>
+                    {[
+                        { label: 'Total de Rotas', value: biLoading ? '...' : String(rotasBiData?.totalRotas ?? 0), color: '#FFD600', icon: <MapPinIcon style={{ width: 20, height: 20 }} /> },
+                        { label: 'Cidades Beneficiadas', value: biLoading ? '...' : String(rotasBiData?.cidadesBeneficiadas ?? 0), color: '#10B981', icon: <BuildingLibraryIcon style={{ width: 20, height: 20 }} /> },
+                        { label: 'Total de Inscritos', value: biLoading ? '...' : String(rotasBiData?.totalInscritos ?? 0), color: '#0EA5E9', icon: <UsersIcon style={{ width: 20, height: 20 }} /> },
+                    ].map(item => (
+                        <div key={item.label} style={{ background: '#1E293B', borderRadius: 12, padding: '1rem', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 10, background: `${item.color}18`, color: item.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</div>
+                            <div>
+                                <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.4rem', color: '#F1F5F9', lineHeight: 1 }}>{item.value}</div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Mapa interativo */}
+                <div style={{ padding: '0 1.25rem 1rem' }}>
+                    <MapaRotas rotas={rotasBiData?.rotas || []} />
+                </div>
+
+                {/* Tabela de rotas */}
+                <div style={{ margin: '0 1.25rem 1.25rem', background: '#1E293B', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <thead>
+                                <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                                    {['Cidade', 'Estado', 'Status', 'Início', 'Turmas', 'Inscritos'].map(h => (
+                                        <th key={h} style={{ padding: '0.6rem 0.875rem', textAlign: 'left', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748B', whiteSpace: 'nowrap' }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {!rotasBiData?.rotas?.length ? (
+                                    <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#475569' }}>Nenhuma rota encontrada</td></tr>
+                                ) : rotasBiData.rotas.slice(0, 10).map((r: any) => {
+                                    const statusStyle: Record<string, { bg: string; color: string }> = {
+                                        PLANEJADA: { bg: 'rgba(14,165,233,0.12)', color: '#0EA5E9' },
+                                        EM_ANDAMENTO: { bg: 'rgba(16,185,129,0.12)', color: '#10B981' },
+                                        CONCLUIDA: { bg: 'rgba(100,116,139,0.12)', color: '#64748B' },
+                                    };
+                                    const st = statusStyle[r.status] || statusStyle.PLANEJADA;
+                                    return (
+                                        <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                            <td style={{ padding: '0.6rem 0.875rem', color: '#F1F5F9', fontWeight: 600 }}>{r.cidade || '—'}</td>
+                                            <td style={{ padding: '0.6rem 0.875rem', color: '#94A3B8' }}>{r.estado || '—'}</td>
+                                            <td style={{ padding: '0.6rem 0.875rem' }}>
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 10px', borderRadius: 20, background: st.bg, color: st.color }}>
+                                                    {r.status?.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '0.6rem 0.875rem', color: '#94A3B8', fontFamily: 'monospace' }}>{r.dataInicio ? new Date(r.dataInicio).toLocaleDateString('pt-BR') : '—'}</td>
+                                            <td style={{ padding: '0.6rem 0.875rem', color: '#F1F5F9', textAlign: 'center' }}>{r.totalTurmas}</td>
+                                            <td style={{ padding: '0.6rem 0.875rem', color: '#FFD600', fontWeight: 700, textAlign: 'center' }}>{r.totalInscritos}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
