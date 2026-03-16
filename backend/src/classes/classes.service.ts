@@ -6,6 +6,7 @@ import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { Prisma, ClassStatus } from '@prisma/client';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class ClassesService {
@@ -13,6 +14,7 @@ export class ClassesService {
         private prisma: PrismaService,
         private coursesService: CoursesService,
         private trucksService: TrucksService,
+        private notifications: NotificationsGateway,
     ) { }
 
     async findPublicClasses(filters?: { state?: string; city?: string }) {
@@ -524,6 +526,17 @@ export class ClassesService {
                 }),
             ),
         );
+
+        // SF-01: Emitir evento WebSocket em tempo real
+        try {
+            this.notifications.notifyAdmins('frequencia_registrada', {
+                classId,
+                date,
+                totalRegistros: records.length,
+                timestamp: new Date().toISOString(),
+            });
+        } catch { /* WS opcional */ }
+
         return { message: `${records.length} registros salvos`, date };
     }
 }

@@ -4,10 +4,14 @@ import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { UpdateEnrollmentDto, EnrollmentStatus } from './dto/update-enrollment.dto';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class EnrollmentsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly notifications: NotificationsGateway,
+    ) { }
 
     async adminEnroll(studentId: string, classId: string) {
         // 1. Validate student exists
@@ -211,11 +215,18 @@ export class EnrollmentsService {
                 termsAccepted: createEnrollmentDto.termsAccepted,
                 privacyPolicyAccepted: createEnrollmentDto.dataProcessingConsent,
                 consentDate: new Date(),
-                // IP and user agent would be captured from request
             },
         });
 
-        // TODO: Send confirmation email/SMS
+        // SF-01: Emitir evento WebSocket em tempo real
+        try {
+            this.notifications.notifyAdmins('nova_inscricao', {
+                studentName: enrollment.student?.user?.name,
+                courseName: (enrollment.class as any)?.course?.name,
+                cidade: (enrollment.class as any)?.city?.name,
+                timestamp: new Date().toISOString(),
+            });
+        } catch { /* WS opcional */ }
 
         return enrollment;
     }
@@ -326,7 +337,14 @@ export class EnrollmentsService {
             },
         });
 
-        // TODO: Send approval notification
+        // SF-01: Emitir evento WebSocket em tempo real
+        try {
+            this.notifications.notifyAdmins('inscricao_aprovada', {
+                studentName: updated.student?.user?.name,
+                courseName: (updated.class as any)?.course?.name,
+                timestamp: new Date().toISOString(),
+            });
+        } catch { /* WS opcional */ }
 
         return updated;
     }

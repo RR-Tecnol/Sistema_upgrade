@@ -25,6 +25,8 @@ import { ReportsModule } from './reports/reports.module';
 import { CertificateModule } from './certificates/certificate.module';
 // REQ-14: Configurações globais de segurança e sistema
 import { SettingsModule } from './settings/settings.module';
+// SF-01: WebSocket real-time (notificações ao vivo)
+import { NotificationsModule } from './notifications/notifications.module';
 
 
 @Module({
@@ -52,6 +54,7 @@ import { SettingsModule } from './settings/settings.module';
         ReportsModule,       // REQ-11/12: PDFs provisórios
         CertificateModule,   // REQ-06: Portal do Aluno
         SettingsModule,      // REQ-14: Configurações de segurança (@Global)
+        NotificationsModule, // SF-01: WebSocket real-time (@Global)
     ],
 })
 export class AppModule {}

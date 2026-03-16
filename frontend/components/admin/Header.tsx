@@ -2,6 +2,7 @@
 
 import { BellIcon, MagnifyingGlassIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState, useRef } from 'react';
+import { useNotifications } from '@/hooks/useNotifications';
 
 interface HeaderProps {
     onMenuToggle?: () => void;
@@ -12,6 +13,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     const [currentDate, setCurrentDate] = useState('');
     const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
     const [showUserMenu, setShowUserMenu] = useState(false);
+    const { notifications, unreadCount, connected, markAllRead } = useNotifications();
 
     const notificationsRef = useRef<HTMLDivElement>(null);
     const userMenuRef = useRef<HTMLDivElement>(null);
@@ -91,35 +93,86 @@ export default function Header({ onMenuToggle }: HeaderProps) {
 
                 {/* Notifications */}
                 <div style={{ position: 'relative' }} ref={notificationsRef}>
+                    {/* Indicador WS */}
+                    {connected && (
+                        <span style={{
+                            position: 'absolute', top: -3, left: -3, width: 7, height: 7,
+                            borderRadius: '50%', background: '#10B981',
+                            border: '1.5px solid #fff', zIndex: 1,
+                        }} title="WebSocket conectado" />
+                    )}
                     <button
-                        onClick={() => setShowNotificationsPanel(!showNotificationsPanel)}
+                        onClick={() => { setShowNotificationsPanel(!showNotificationsPanel); if (!showNotificationsPanel) markAllRead(); }}
                         style={{
                             position: 'relative', padding: '0.45rem', borderRadius: 8,
-                            background: '#F9FAFB', border: '1px solid #E5E7EB',
+                            background: unreadCount > 0 ? '#FEF2F2' : '#F9FAFB',
+                            border: `1px solid ${unreadCount > 0 ? '#FECACA' : '#E5E7EB'}`,
                             cursor: 'pointer', display: 'flex', transition: 'all 0.2s',
                         }}>
-                        <BellIcon style={{ width: 16, height: 16, color: '#6B7280' }} />
-                        <span style={{ position: 'absolute', top: '0.35rem', right: '0.35rem', width: 6, height: 6, borderRadius: '50%', background: '#FFD600', boxShadow: '0 0 0 2px #fff' }} />
+                        <BellIcon style={{ width: 16, height: 16, color: unreadCount > 0 ? '#EF4444' : '#6B7280' }} />
+                        <span style={{
+                            position: 'absolute', top: '0.2rem', right: '0.2rem',
+                            minWidth: 16, height: 16, borderRadius: '50%',
+                            background: unreadCount > 0 ? '#EF4444' : '#FFD600',
+                            color: '#fff', fontSize: '0.55rem', fontWeight: 700,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 0 0 2px #fff',
+                        }}>
+                            {unreadCount > 0 ? unreadCount : ''}
+                        </span>
                     </button>
 
                     {showNotificationsPanel && (
                         <div style={{
                             position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-                            width: 300, background: '#fff', borderRadius: 8,
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100,
-                            border: '1px solid #E5E7EB',
+                            width: 340, background: '#fff', borderRadius: 12,
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 200,
+                            border: '1px solid #E5E7EB', overflow: 'hidden',
                         }}>
-                            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #E5E7EB', fontWeight: 600, fontSize: '0.875rem' }}>
-                                Notificações
+                            {/* Header painel */}
+                            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FFFDE7' }}>
+                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#111827' }}>Notificações</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    {connected && <span style={{ fontSize: '0.62rem', color: '#10B981', fontWeight: 700 }}>● AO VIVO</span>}
+                                    {notifications.length > 0 && (
+                                        <button onClick={markAllRead} style={{ fontSize: '0.68rem', color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Marcar como lidas</button>
+                                    )}
+                                </div>
                             </div>
-                            <div style={{ padding: '1rem', fontSize: '0.8rem', color: '#6B7280' }}>
-                                Nenhuma notificação nova.
+
+                            {/* Lista */}
+                            <div className="custom-scrollbar" style={{ maxHeight: 360, overflowY: 'auto' }}>
+                                {notifications.length === 0 ? (
+                                    <div style={{ padding: '1.5rem 1rem', textAlign: 'center', color: '#9CA3AF', fontSize: '0.82rem' }}>
+                                        Nenhuma notificação
+                                    </div>
+                                ) : notifications.map(n => {
+                                    const icons: Record<string, string> = {
+                                        nova_inscricao: '👤',
+                                        inscricao_aprovada: '✅',
+                                        frequencia_registrada: '✓',
+                                        custo_excessivo: '⚠️',
+                                    };
+                                    return (
+                                        <div key={n.id} style={{
+                                            padding: '0.7rem 1rem',
+                                            borderBottom: '1px solid #F9FAFB',
+                                            background: n.read ? '#fff' : '#FFFDE7',
+                                            display: 'flex', gap: '0.6rem', alignItems: 'flex-start',
+                                            transition: 'background 0.15s',
+                                        }}>
+                                            <span style={{ fontSize: '1rem', flexShrink: 0, marginTop: 1 }}>{icons[n.type] || '🔔'}</span>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <p style={{ fontSize: '0.78rem', color: '#111827', fontWeight: n.read ? 400 : 600, marginBottom: '0.15rem', lineHeight: 1.3 }}>{n.message}</p>
+                                                <p style={{ fontSize: '0.65rem', color: '#9CA3AF', fontFamily: 'JetBrains Mono, monospace' }}>
+                                                    {new Date(n.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                                </p>
+                                            </div>
+                                            {!n.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#EF4444', flexShrink: 0, marginTop: 4 }} />}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                            {/* Example notification item */}
-                            {/* <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #E5E7EB' }}>
-                                <p style={{ fontWeight: 500, marginBottom: '0.25rem' }}>Novo aluno matriculado!</p>
-                                <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>João Silva se matriculou no curso de React.</p>
-                            </div> */}
                         </div>
                     )}
                 </div>

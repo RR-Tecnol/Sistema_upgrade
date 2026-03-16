@@ -387,3 +387,25 @@ Esse erro é **esperado** quando MinIO não está configurado com credenciais co
 
 **Estado do projeto:** ~95% completo
 **Pendente final:** Socket.io real-time (notificações ao vivo)
+
+---
+
+## [16/03/2026] — Sprint Final: Socket.io Real-Time
+
+**SF-01:** NotificationsGateway backend — WebSocket NestJS com autenticação JWT no handshake (`handleConnection`). Salas por `user:${userId}` e sala `admins`. Eventos emitidos em:
+ - `EnrollmentsService.create()` → `nova_inscricao`
+ - `EnrollmentsService.approve()` → `inscricao_aprovada`
+ - `ClassesService.bulkAttendance()` → `frequencia_registrada`
+ `NotificationsModule @Global()` exportado e registrado no `AppModule`. ✅
+
+**SF-02:** Hook `useNotifications` — `socket.io-client` instalado. Hook em `frontend/hooks/useNotifications.ts` conecta ao namespace `/notifications` com JWT. `Header.tsx` admin atualizado: badge vermelho com contador de não lidas, indicador `● AO VIVO` verde quando conectado, painel dinâmico com ícones por tipo e `markAllRead`. ✅
+
+**SF-03:** Integração ao vivo — Backend e frontend rodando em localhost. Sistema validado: handshake WS autenticado via JWT, badge atualiza sem reload. ✅
+
+**SF-04:** Diário de Bordo atualizado. Build limpo. Git push final. ✅
+
+**🎉 SISTEMA UPGRADE — 100% COMPLETO**
+**Stack entregue:** NestJS 10 + Next.js 14 + PostgreSQL 15 + Prisma + Socket.io + Docker
+**Estados operacionais:** MA + PI + AC  
+**Módulos entregues:** 18 backend + 20+ frontend pages
+**Funcionalidades críticas:** PDFs frequência/concludentes, 2FA TOTP, Portal professor mobile-first, Dashboard BI, CI/CD GitHub Actions, Responsividade completa, Real-time WebSocket
