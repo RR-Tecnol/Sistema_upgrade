@@ -146,6 +146,6 @@ export class EnrollmentsController {
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Matrículas do próprio aluno autenticado (portal do aluno REQ-06)' })
     async myEnrollments(@Request() req: any) {
-        return this.enrollmentsService.findByUserId(req.user.sub);
+        return this.enrollmentsService.findByUserId(req.user.id);
     }
 }

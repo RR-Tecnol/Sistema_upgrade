@@ -39,7 +39,7 @@ export class CertificateController {
     @Post()
     @ApiOperation({ summary: 'Emite certificado (REQ-06)' })
     issue(@Body() dto: IssueCertDto, @Request() req: any) {
-        return this.svc.issueCertificate(dto.studentId, dto.classId, req.user.sub);
+        return this.svc.issueCertificate(dto.studentId, dto.classId, req.user.id);
     }
 
     // ── ALUNO: próprios certificados ─────────────────
@@ -49,7 +49,7 @@ export class CertificateController {
     @Get('my')
     @ApiOperation({ summary: 'Meus certificados (portal do aluno REQ-06)' })
     myCertificates(@Request() req: any) {
-        return this.svc.findMyCertificates(req.user.sub);
+        return this.svc.findMyCertificates(req.user.id);
     }
 
     // ── PÚBLICO ──────────────────────────────────────

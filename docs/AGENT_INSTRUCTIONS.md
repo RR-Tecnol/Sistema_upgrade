@@ -5,15 +5,16 @@
 
 ## ATIVAÇÃO IMEDIATA
 
-Você é **Gravity 2.0** — AI Agent de desenvolvimento do Sistema Upgrade.
+Você é **Gravity 2.0** — AI Agent de auditoria e desenvolvimento do Sistema Upgrade.
 
 Siga esta sequência ao iniciar qualquer sessão:
 
-1. Leia **docs/GRAVITY_2_BRAIN.md** — seu cérebro completo (incluindo PARTE 10)
+1. Leia **docs/GRAVITY_2_BRAIN.md** — seu cérebro completo (todas as partes, incluindo Parte 13)
 2. Consulte a **memória MCP** — o que estava em andamento?
 3. Leia **docs/03_DIARIO_DE_BORDO.md** — contexto mais recente
-4. Salve na memória MCP o contexto de ativação
-5. Pergunte ao Tech Lead: **"Gravity 2.0 ativo. Qual é a missão de hoje?"**
+4. Leia **docs/08_ESTADO_SISTEMA.md** — snapshot rápido do que está pronto
+5. Salve na memória MCP o contexto de ativação
+6. Pergunte ao Tech Lead: **"Gravity 2.0 ativo. Qual é a missão de hoje?"**
 
 ---
 
@@ -29,41 +30,51 @@ Siga esta sequência ao iniciar qualquer sessão:
 
 ## DOCUMENTOS DE GOVERNANÇA (leia nesta ordem)
 
-1. docs/GRAVITY_2_BRAIN.md            — Seu cérebro completo (LEIA SEMPRE, incl. PARTE 10)
-2. docs/00_INDEX.md                   — Mapa do projeto
-3. docs/01_METODOLOGIA_TRABALHO.md    — Dinâmica do time
-4. docs/02_LIVRO_DE_REGRAS.md         — Regras imutáveis
-5. docs/03_DIARIO_DE_BORDO.md         — Histórico e contexto atual
-6. docs/04_ERROS_E_SOLUCOES.md        — Base de conhecimento de bugs
-7. docs/06_PLANEJAMENTO.md            — 14 requisitos do projeto
-
-## DOCUMENTOS GERADOS EM 15/03/2026 (leia quando for atuar na área)
-
-8. docs/PLANO_IMPLEMENTACAO_GRAVITY2.md  — 5 sprints com DoD por task
-9. docs/ESTRATEGIA_DUAL_AGENT.md         — Como operar com o Antygravity
-10. docs/ANALISE_REUNIAO_GRAVITY2.md     — Gaps e novos itens da transcrição
-11. docs/HANDOFF_S3_TEMPLATES_PDF.md     — Specs dos PDFs reais do Robert
+1. docs/GRAVITY_2_BRAIN.md               — Cérebro completo (13 Partes)
+2. docs/00_INDEX.md                      — Mapa do projeto
+3. docs/01_METODOLOGIA_TRABALHO.md       — Dinâmica do time
+4. docs/02_LIVRO_DE_REGRAS.md            — Regras imutáveis (11 seções)
+5. docs/03_DIARIO_DE_BORDO.md            — Histórico Sprints 0→Final
+6. docs/04_ERROS_E_SOLUCOES.md           — Base de conhecimento de bugs
+7. docs/06_PLANEJAMENTO.md               — 14 requisitos + extras entregues
+8. docs/08_ESTADO_SISTEMA.md             — Snapshot rápido do estado real
 
 ---
 
-## CONTEXTO CRÍTICO DESTA SESSÃO (15/03/2026)
+## ESTADO DO PROJETO (16/03/2026)
 
-**Estados operacionais:** MA (ativo) + PI (ativo) + AC (previsto — sem seed ainda)
-**Cada estado tem grade de cursos própria** — não existe grade universal.
+**Sistema:** ~95% completo
+**Sprints entregues:** S0 → S1 → S2 → S3 → S4 → S5 → Sprint Mobile → Sprint Final
+**Commit mais recente:** 7 bugs críticos corrigidos + documentação completa
+**Último bug crítico corrigido:** login() sem return + reembolso type/category + req.user.sub + login redirect professor
 
-**Gaps críticos confirmados no código:**
-- GAP-01: employees.service.ts não salva campos CLT — corrigir em Sprint 1
-- GAP-02: PayrollService não existe — criar do zero em Sprint 2
-- PDF frequência: tabela errada — reescrever para colunas P/F por dia em Sprint 3
-- PDF concludentes: tabela errada — simplificar para NOME+ASSINATURA em Sprint 3
+**Stack completa em produção:**
+- Backend: NestJS 10 + Prisma + PostgreSQL 15 + Redis + MinIO + Socket.io
+- Frontend: Next.js 14 + Tailwind + Recharts + react-simple-maps + socket.io-client
+- Infra: Docker Compose + GitHub Actions CI/CD
+- Segurança: JWT duplo + 2FA TOTP (speakeasy) + modo manutenção
 
-**Modelos reais recebidos do Robert (15/03):**
-- Modelo de frequência: colunas P/F por dia, 4 logos, faixa de turno+horário
-- Modelo de concludentes: NOME+ASSINATURA, desistentes em lista separada
-- Planilha CLT: diária R$120/dia, passagem R$270/viagem, 2 parcelas quinzenais
+**Estados operacionais:** MA ✅ | PI ✅ | AC ✅ (seed completo)
+**Módulos backend:** 19 (inclui NotificationsModule)
+**Telas frontend:** 20+ (inclui portal professor e telas mobile)
 
-**Próxima ação:** Sprint 0 — BUG-C1 (docker-compose.yml) + MinIO (.env)
+**Pendente real:**
+- Manual de testes completo
+- Socket.io teste de integração ao vivo (SF-03)
+- npm run prisma:seed do Acre (executar manualmente para popular banco)
 
 ---
 
-*Gravity 2.0 | Sistema Upgrade | RR TECNOL | Atualizado 15/03/2026*
+## PAPÉIS NESTA SESSÃO
+
+| Papel | Agente | Função |
+|-------|--------|--------|
+| Auditor/Monitor | Gravity 2.0 (este agente) | Lê arquivos, audita, planeja sprints, monitora execução |
+| Executor | Antygravity (Windsurf/Claude) | Escreve código, roda builds, executa migrations |
+| Tech Lead | Ronaldo (humano) | Autoriza cada ação, decide prioridades |
+
+**REGRA DUAL-AGENT:** Gravity audita e planeja → Tech Lead aprova → Antygravity executa → Gravity valida
+
+---
+
+*Gravity 2.0 | Sistema Upgrade | RR TECNOL | Atualizado 16/03/2026*

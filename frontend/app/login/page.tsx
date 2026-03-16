@@ -27,7 +27,7 @@ export default function LoginPage() {
                 localStorage.setItem('student', JSON.stringify(response.student));
                 router.push('/student/dashboard');
             } else {
-                router.push('/professor/dashboard');
+                router.push('/teacher/dashboard');
             }
         } catch (err: any) {
             setError(err.response?.data?.message || 'Credenciais inválidas');

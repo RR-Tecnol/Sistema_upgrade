@@ -604,20 +604,20 @@ Admin solicita exportação 50k alunos
 
 | ID | Módulo | Requisito | Prioridade | Status |
 |----|--------|-----------|------------|--------|
-| REQ-01 | Turmas | Fluxo de criação em etapas + campo `reserveSlots` | 🔥 Alta | 🟡 Parcial |
-| REQ-02 | Turmas | Critério de aprovação = 80% frequência (sem prova) | 🔥 Alta | 🟡 Parcial |
-| REQ-03 | Aluno | Campo "Sempre estudou em escola pública?" | 🔥 Alta | 🔴 Pendente |
-| REQ-04 | Aluno | Adicionar "Pé de Meia" no enum `SocialProgram` | 🟠 Média | 🔴 Pendente |
-| REQ-05 | Aluno | Campo "Motivação" → opcional | 🟠 Média | 🔴 Pendente |
-| REQ-06 | Portal Aluno | Ver localização carreta + emitir certificado | 🔥 Alta | 🟡 Parcial |
-| REQ-07 | UI | Renomear "Ação" → "Período de Curso" em toda a UI | 🔥 Alta | 🔴 Pendente |
-| REQ-08 | Calendário | Feriado dinâmico — recálculo de dias úteis | 🔥 Alta — CRÍTICO | 🔴 Pendente |
-| REQ-09 | Financeiro | Modelo CLT — diária de custo + passagens variáveis | 🔥 Alta | 🔴 Pendente |
-| REQ-10 | Financeiro | Portal de reembolso mobile com foto de recibo | 🟠 Média | 🔴 Pendente |
-| REQ-11 | Relatórios | Lista de frequência PDF (dia 20, com logo, disparo e-mail) | 🔥 Alta | 🟡 Parcial |
-| REQ-12 | Relatórios | Lista de concludentes PDF (3ª semana, 80% freq.) | 🔥 Alta | 🔴 Pendente |
-| REQ-13 | Relatórios | Filtros avançados + exportação multi-formato | 🟠 Média | 🟡 Parcial |
-| REQ-14 | Config | Config de segurança, sessão, notificações, backup | 🟡 Baixa | 🟡 Parcial |
+| REQ-01 | Turmas | Fluxo criação + reserveSlots | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-02 | Turmas | Aprovação = 75% frequência | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-03 | Aluno | Campo escola pública | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-04 | Aluno | Pé de Meia no enum | 🟠 Média | ✅ IMPLEMENTADO |
+| REQ-05 | Aluno | Motivação → opcional | 🟠 Média | ✅ IMPLEMENTADO |
+| REQ-06 | Portal Aluno | Ver carreta + certificado | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-07 | UI | Renomear Ação → Período de Curso | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-08 | Calendário | Feriado dinâmico + recálculo | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-09 | Financeiro | Modelo CLT — diária + passagens | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-10 | Financeiro | Portal reembolso mobile + foto | 🟠 Média | ✅ IMPLEMENTADO |
+| REQ-11 | Relatórios | Lista frequência PDF dia 20 | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-12 | Relatórios | Lista concludentes PDF 3ª semana | 🔥 Alta | ✅ IMPLEMENTADO |
+| REQ-13 | Relatórios | Filtros avançados + exportação | 🟠 Média | ✅ IMPLEMENTADO |
+| REQ-14 | Config | Segurança, sessão, 2FA, backup | 🟡 Média | ✅ IMPLEMENTADO |
 
 ---
 
@@ -719,3 +719,40 @@ model ReimbursementRequest {  // NOVO MODELO
 - [`03_DIARIO_DE_BORDO.md`](./03_DIARIO_DE_BORDO.md) — Log de decisões (atualizar a cada implementação)
 - [`DOCUMENTACAO_COMPLETA.md`](./DOCUMENTACAO_COMPLETA.md) — Arquitetura atual do sistema (base técnica)
 - [`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma) — Schema do banco a ser alterado
+
+---
+
+## ✅ IMPLEMENTAÇÕES REALIZADAS ALÉM DO ESCOPO ORIGINAL
+
+Durante a execução dos sprints, foram implementadas funcionalidades além dos 14 requisitos originais da reunião de 12/03/2026:
+
+### Novos módulos entregues (não previstos na reunião)
+
+| Módulo | Sprint | Descrição |
+|--------|--------|-----------|
+| Parâmetros Financeiros Configuráveis | S3-00 | Admin configura diária, passagem, km limite, % alerta via painel — zero hardcode |
+| Portal do Professor completo | S4-01 | 7 telas: layout + dashboard + frequência + [classId] + reembolsos + histórico |
+| Bulk Attendance API | S4-01 | POST /classes/:id/attendance/bulk com upsert por classId_studentId_date |
+| Dashboard BI de Rotas | S4-02 | GET /dashboard/rotas-bi com filtros estado+ano + seção no dashboard admin |
+| Mapa Interativo MA/PI | S4-03 | MapaRotas.tsx com react-simple-maps, marcadores proporcionais, tooltip |
+| Seed do Acre (3º estado) | S5-01 | Grupo 1 AC + 10 cidades do Acre no seed |
+| UI ativação 2FA | S5-02 | Fluxo completo: QR Code + código 6 dígitos + estados idle/setup/active/disabling |
+| CI/CD GitHub Actions | S5-03 | .github/workflows/ci.yml — jobs backend+frontend com tsc+build |
+| Modo Manutenção | S5-04 | Middleware 503 no NestJS + página frontend /manutencao |
+| Sidebar Admin Mobile | SM-01 | Drawer + hamburger + overlay + fecha ao navegar |
+| Breakpoints Sistemáticos | SM-02 | globals.css com grid-4/3/2-cols + font-size 16px + min-height 44px |
+| Compressão de Imagem | SM-05 | browser-image-compression: max 500KB/1200px antes do upload |
+| WebSocket Real-Time | SF-01 | NotificationsGateway com auth JWT + salas por papel |
+| Hook useNotifications | SF-02 | socket.io-client + Header dinâmico com badge e painel ao vivo |
+
+### Bugs críticos encontrados e corrigidos (não previstos)
+
+| Bug | Impacto antes | Correção |
+|-----|---------------|----------|
+| login() sem return | Login retornava undefined — sistema inacessível | Adicionado return response no auth.service.ts |
+| ReimbursementType incompatível | Reembolso do professor sempre falhava (400) | Alinhado enum + campo type no frontend |
+| EnrollmentsModule sem NotificationsModule | Backend não subia (DI error) | NotificationsModule adicionado nos imports |
+| ClassesModule sem NotificationsModule | Backend não subia (DI error) | NotificationsModule adicionado nos imports |
+| teacher/layout.tsx transform fixo | Sidebar mobile nunca fechava | Corrigido translateX(-100%) quando fechado |
+| Login redirect professor | 404 para qualquer professor | /professor/dashboard → /teacher/dashboard |
+| req.user.sub em 3 controllers | Aluno não via inscrições nem certificados | req.user.sub → req.user.id em 3 endpoints |

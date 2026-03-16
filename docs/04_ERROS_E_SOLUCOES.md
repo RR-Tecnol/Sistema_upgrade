@@ -163,10 +163,84 @@
 
 ---
 
+---
+
+* **Data:** 16/03/2026
+* **Módulo/Arquivo afetado:** `enrollments.module.ts` + `classes.module.ts`
+* **Erro / Stack Trace:** `Nest can't resolve dependencies of the EnrollmentsService (?). Please make sure that the argument NotificationsGateway at index [1] is available in the EnrollmentsModule context.`
+* **Contexto:** Após implementação do Sprint Final (Socket.io), o backend não subia porque EnrollmentsService e ClassesService injetavam NotificationsGateway mas seus módulos não declaravam NotificationsModule.
+* **Causa Raiz:** NestJS requer que qualquer serviço injetado esteja disponível no contexto do módulo consumidor. @Global() garante que o token existe globalmente, mas o módulo ainda precisa declarar a dependência explicitamente.
+* **Solução Aplicada:**
+  - `enrollments.module.ts`: adicionado `NotificationsModule` ao array `imports`
+  - `classes.module.ts`: adicionado `NotificationsModule` ao array `imports`
+* **Prevenção Futura:** Sempre que um Service recebe injeção de dependência de outro módulo, verificar se o módulo pai declara o módulo externo em `imports[]`. Regra documentada em `02_LIVRO_DE_REGRAS.md` Seção 8.
+
+---
+
+* **Data:** 16/03/2026
+* **Módulo/Arquivo afetado:** `acoes.module.ts`
+* **Erro / Stack Trace:** Warning de import não utilizado / inconsistência de módulo
+* **Contexto:** `acoes.module.ts` importava `SettingsModule` no topo do arquivo mas não o declarava no array `imports: [PrismaModule]`.
+* **Causa Raiz:** `SettingsModule` é `@Global()` então o `SettingsService` funciona via DI global sem precisar ser declarado no módulo consumidor. O import era código morto que gerava confusão.
+* **Solução Aplicada:** Removida a linha `import { SettingsModule }` de `acoes.module.ts`.
+* **Prevenção Futura:** Módulos `@Global()` (SettingsModule, NotificationsModule) não precisam ser declarados em `imports[]` de outros módulos para funcionar. Nunca deixar imports TypeScript sem uso.
+
+---
+
+* **Data:** 16/03/2026
+* **Módulo/Arquivo afetado:** `backend/src/auth/auth.service.ts` — método `login()`
+* **Erro / Stack Trace:** Login retorna `undefined`. Frontend recebe resposta vazia. Nenhum erro no console do backend, nenhum erro de TypeScript.
+* **Contexto:** O método `login()` montava o objeto `response` com tokens e dados do usuário mas não tinha `return response` no final do fluxo normal (sem 2FA).
+* **Causa Raiz:** TypeScript não exige `return` explícito em funções `async` que retornam `Promise<any>`. O compilador aceita retorno implícito de `undefined` como válido.
+* **Solução Aplicada:** Adicionado `return response;` após o bloco `if (studentData)`.
+* **Prevenção Futura:** SEMPRE ter `return` explícito em métodos de serviço que montam objetos de resposta. Documentado em `02_LIVRO_DE_REGRAS.md` Seção 10.
+
+---
+
+* **Data:** 16/03/2026
+* **Módulo/Arquivo afetado:** `frontend/app/teacher/reembolsos/page.tsx`
+* **Erro / Stack Trace:** `POST /api/reimbursements` retorna HTTP 400 Bad Request. Nenhuma mensagem de erro visível ao usuário.
+* **Contexto:** O formulário enviava `category: 'ALIMENTACAO'` mas o backend esperava `type: ReimbursementType` com valores como `FOOD`, `CLASSROOM_MATERIAL`.
+* **Causa Raiz:** O frontend foi criado com valores convenientes em português sem verificar o enum real no backend.
+* **Solução Aplicada:**
+  - Array `TIPOS` reescrito com valores do enum do backend
+  - Campo `category: tipo` substituído por `type: tipo` no POST
+  - Exibição no histórico atualizada para `r.type`
+* **Prevenção Futura:** Sempre consultar o DTO do backend antes de criar formulários. Documentado em `02_LIVRO_DE_REGRAS.md` Seção 11.
+
+---
+
+* **Data:** 16/03/2026
+* **Módulo/Arquivo afetado:** `frontend/app/login/page.tsx` linha 30
+* **Erro / Stack Trace:** Professores fazem login e recebem 404. Tela branca.
+* **Contexto:** O redirect após login para role TEACHER apontava para `/professor/dashboard`, rota que nunca existiu. O portal do professor foi criado em `/teacher/` no Sprint 4.
+* **Causa Raiz:** Rota criada no Sprint 4 usou convenção `/teacher/` mas o login page nunca foi atualizado.
+* **Solução Aplicada:** `router.push('/professor/dashboard')` → `router.push('/teacher/dashboard')`
+* **Prevenção Futura:** Ao criar novo portal/rota, verificar todos os pontos que referenciam o role e a URL correspondente.
+
+---
+
+* **Data:** 16/03/2026
+* **Módulo/Arquivo afetado:** `enrollments.controller.ts` linha 149 + `certificate.controller.ts` linhas 42 e 52
+* **Erro / Stack Trace:** Aluno não vê suas inscrições. Certificado emitido sem `issuedBy`. Aluno não vê seus certificados.
+* **Contexto:** 3 endpoints usavam `req.user.sub` mas `JwtStrategy.validate()` retorna o campo `id`, não `sub`.
+* **Causa Raiz:** O payload do JWT tem `sub` (padrão JWT). Mas após validação pelo Guard, o objeto `req.user` é o retorno de `validate()` que usa `id`. Os dois campos existem em lugares diferentes.
+* **Solução Aplicada:** 3 ocorrências de `req.user.sub` → `req.user.id` nos 3 controllers.
+* **Prevenção Futura:** Nos controllers NestJS, usar SEMPRE `req.user.id`. O campo `sub` existe no token JWT mas não no objeto req.user. Documentado em `02_LIVRO_DE_REGRAS.md` Seção 10.
+
+---
+
 ## Erros Conhecidos Não Resolvidos (Monitoramento)
 
 | # | Data | Módulo | Descrição | Status |
 |---|------|--------|-----------|--------|
-| BUG-C1 | 13/03/2026 | PostgreSQL | Encoding de cidades com acentos corrompidos | ⚠️ Requer recriar banco com UTF-8 collation |
-| MinIO | 13/03/2026 | ReimbursementModule | Upload de comprovantes bloqueado | ⚠️ Requer servidor MinIO configurado |
-| PDF-TPL | 13/03/2026 | ReportsModule | Templates HTML provisórios | ⏳ Aguardando modelo visual do Robert |
+| BUG-C1 | 13/03/2026 | PostgreSQL | Encoding cidades com acentos | ✅ RESOLVIDO em Sprint 0 |
+| MinIO | 13/03/2026 | ReimbursementModule | Upload sem MinIO configurado | ✅ RESOLVIDO em Sprint 0 |
+| PDF-TPL | 13/03/2026 | ReportsModule | Templates provisórios | ✅ RESOLVIDO em Sprint 3 |
+| BUG-CERT | 13/03/2026 | Certificados | Alert genérico sem detalhes | ✅ RESOLVIDO |
+| BUG-WS-01 | 16/03/2026 | EnrollmentsModule | NotificationsModule não declarado | ✅ RESOLVIDO |
+| BUG-WS-02 | 16/03/2026 | ClassesModule | NotificationsModule não declarado | ✅ RESOLVIDO |
+| BUG-AUTH | 16/03/2026 | auth.service.ts | login() sem return | ✅ RESOLVIDO |
+| BUG-REIMB | 16/03/2026 | teacher/reembolsos | category vs type + enum errado | ✅ RESOLVIDO |
+| BUG-REDIRECT | 16/03/2026 | login/page.tsx | Professor redirected to /professor/dashboard | ✅ RESOLVIDO |
+| BUG-SUB | 16/03/2026 | enrollments + certificates | req.user.sub → req.user.id em 3 endpoints | ✅ RESOLVIDO |

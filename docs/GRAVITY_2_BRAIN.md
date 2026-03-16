@@ -1076,3 +1076,119 @@ Tudo que pode mudar por decisão do cliente vai em `SystemSettings`
 ou em campos configuráveis da entidade correspondente.
 
 *Gravity 2.0 — Parte 12 adicionada em 15/03/2026*
+
+---
+
+## PARTE 13 — ESTADO REAL PÓS-SPRINTS COMPLETOS
+### Atualização pós-sessão 16/03/2026 — Sprints 0 a Final entregues
+
+> Esta parte substitui os status da Parte 10 §10.1.
+> Prioridade máxima sobre informações anteriores.
+
+---
+
+### 13.1 — ESTADO REAL DO SISTEMA (substitui §10.1)
+
+**Status:** ~95% completo | Data: 16/03/2026
+
+| Componente | Estado |
+|---|---|
+| Schema Prisma + migrations | ✅ Completo (incl. 2FA, attendance unique) |
+| HolidayService | ✅ Funcional |
+| ReimbursementService + MinIO | ✅ Funcional |
+| PDF frequência (P/F por dia) | ✅ Implementado (Sprint 3) |
+| PDF concludentes (NOME+ASSINATURA) | ✅ Implementado (Sprint 3) |
+| Parâmetros financeiros configuráveis | ✅ 5 campos via SettingsService |
+| Portal do professor (7 telas) | ✅ Implementado (Sprint 4) |
+| Dashboard BI de rotas | ✅ Implementado (Sprint 4) |
+| Mapa interativo MA/PI | ✅ react-simple-maps (Sprint 4) |
+| Seed completo (MA+PI+AC) | ✅ 4 grupos + 30 cidades (Sprint 5) |
+| 2FA TOTP (speakeasy) | ✅ Backend + UI completa (Sprint 5) |
+| CI/CD GitHub Actions | ✅ jobs backend+frontend (Sprint 5) |
+| Modo manutenção | ✅ Middleware 503 + página frontend (Sprint 5) |
+| Sidebar mobile com drawer | ✅ hamburger + overlay (Sprint Mobile) |
+| Breakpoints responsivos | ✅ globals.css completo (Sprint Mobile) |
+| WebSocket NotificationsGateway | ✅ Auth JWT + salas (Sprint Final) |
+| Hook useNotifications frontend | ✅ badge + painel ao vivo (Sprint Final) |
+| BUG-C1 encoding UTF-8 | ✅ Resolvido (Sprint 0) |
+| login() return bug | ✅ Corrigido (16/03/2026) |
+| ReimbursementType alinhado | ✅ Corrigido (16/03/2026) |
+| NotificationsModule nos módulos | ✅ Corrigido (16/03/2026) |
+| login redirect professor | ✅ /teacher/dashboard (16/03/2026) |
+| req.user.sub → req.user.id | ✅ 3 endpoints corrigidos (16/03/2026) |
+
+**Pendente real:**
+- Manual de testes completo (próximo passo após documentação)
+- Teste de integração Socket.io ao vivo (SF-03)
+- npm run prisma:seed do Acre (executar manualmente)
+
+---
+
+### 13.2 — ARQUITETURA ATUAL COMPLETA
+
+```
+FRONTEND (Next.js 14 — localhost:3000)
+├── Portal Público (inscrição, catálogo, certificado)
+├── Painel Admin (20+ módulos — responsivo mobile)
+│   └── Dashboard com BI + Mapa + Socket.io
+├── Portal do Aluno (dashboard, freq, certificados)
+└── Portal do Professor (7 telas mobile-first)
+           │ HTTP REST + JWT Bearer
+           │ WebSocket Socket.io /notifications
+           ▼
+BACKEND (NestJS 10 — localhost:3001)
+├── Auth Module (JWT duplo + RBAC + 2FA TOTP)
+├── Notifications Module (WebSocket Gateway @Global)
+├── Classes Module (turmas + bulk attendance)
+├── Enrollments Module (inscrições + WS events)
+├── Dashboard Module (analytics + BI rotas)
+├── Settings Module (5 params financeiros @Global)
+└── + 13 outros módulos
+           │ Prisma ORM
+           ▼
+BANCO DE DADOS (PostgreSQL 15 — porta 5432, UTF-8)
+└── 35+ tabelas | cursos_db
+CACHE (Redis 7 — porta 6379)
+STORAGE (MinIO — porta 9000/9001)
+CI/CD (.github/workflows/ci.yml — GitHub Actions)
+```
+
+---
+
+### 13.3 — REGRAS DE NEGÓCIO CONFIRMADAS E IMPLEMENTADAS
+
+| Regra | Implementação |
+|---|---|
+| Aprovação = 75% presença (não 80%) | APPROVAL_THRESHOLD em pdf.service.ts |
+| Diária padrão = R$120/dia | SettingsService.valorDiariaPadrao |
+| Passagem = R$270/viagem | SettingsService.valorPassagemViagem |
+| Regra 200km (semanal/quinzenal) | AcoesService.calcularResumoFinanceiro() |
+| Alerta custo configurável (110%) | SettingsService.percentualAlertaCusto |
+| Decimal(10,2) — nunca Float | Todos os campos monetários no schema |
+| Soft delete (active=false) | Todos os modelos com active Boolean |
+| Uploads via MinIO Presigned URL | ReimbursementService + teacher/reembolsos |
+| Modo manutenção = bypass admin | main.ts middleware + /admin/* livre |
+| req.user.id (nunca req.user.sub) | Todos os controllers pós-16/03/2026 |
+
+---
+
+### 13.4 — COMANDOS ATUALIZADOS
+
+```powershell
+# Backend — iniciar (porta confirmada: 3001 no .env)
+cd backend
+npm run start:dev
+
+# Seed completo (MA + PI + AC)
+npm run prisma:seed
+
+# Verificar TypeScript antes de qualquer commit
+npx tsc --noEmit
+
+# Frontend
+cd frontend
+npm run dev
+```
+
+*Gravity 2.0 — Parte 13 adicionada em 16/03/2026*
+*Sprints 0→Final completos — sistema 95% operacional*
