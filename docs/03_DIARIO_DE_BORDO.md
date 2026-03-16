@@ -409,3 +409,75 @@ Esse erro é **esperado** quando MinIO não está configurado com credenciais co
 **Estados operacionais:** MA + PI + AC  
 **Módulos entregues:** 18 backend + 20+ frontend pages
 **Funcionalidades críticas:** PDFs frequência/concludentes, 2FA TOTP, Portal professor mobile-first, Dashboard BI, CI/CD GitHub Actions, Responsividade completa, Real-time WebSocket
+
+---
+
+## [16/03/2026] — Documentação Completa + Bug Fixes Pós-Sprint
+
+**Feature/Foco:** Atualização de toda a governança documental + correção de 7 bugs críticos identificados em auditoria pós-sprint.
+
+**Bugs corrigidos em sequência:**
+
+**FIX-01/02:** `enrollments.module.ts` e `classes.module.ts` sem `NotificationsModule` em `imports[]` → backend não subia (Nest can't resolve dependencies). Adicionado em ambos. ✅
+
+**FIX-03:** `acoes.module.ts` com import morto de `SettingsModule` (não estava no array `imports[]`). Removido. ✅
+
+**FIX-04:** `auth.service.ts` → método `login()` montava `response` mas não executava `return response;` no fluxo sem 2FA. TypeScript não detecta, resultado era login retornando undefined em runtime. Adicionado `return response;` explícito. ✅
+
+**FIX-05:** `teacher/reembolsos/page.tsx` → frontend enviava `category: 'ALIMENTACAO'` mas backend espera `type: 'FOOD'` (enum `ReimbursementType`). Corrigido array TIPOS e campo de envio. ✅
+
+**FIX-06 (crítico):** `login/page.tsx` linha 30 → redirecionamento do professor após login apontava para `/professor/dashboard` (rota inexistente criada em Sprint 4 como `/teacher/`). Professor recebia 404 ao fazer login. Corrigido para `/teacher/dashboard`. ✅
+
+**FIX-07 (crítico):** Três endpoints usavam `req.user.sub` mas `JwtStrategy.validate()` retorna campo `id`. Afetava: `GET /enrollments/my` (aluno não via inscrições), `POST /certificates` (issuedBy undefined), `GET /certificates/my`. Corrigidos em `enrollments.controller.ts` e `certificate.controller.ts`. ✅
+
+**Documentação atualizada:**
+- `00_INDEX.md` → 12 documentos indexados + WebSocket na tabela de serviços
+- `02_LIVRO_DE_REGRAS.md` → 5 novas seções (7-11): WS, NestJS DI, Mobile, Auth return, Enums
+- `04_ERROS_E_SOLUCOES.md` → 6 novos bugs + tabela atualizada (todos ✅ RESOLVIDOS)
+- `06_PLANEJAMENTO.md` → 14 requisitos = IMPLEMENTADO + 14 extras + 7 bugs corrigidos
+- `AGENT_INSTRUCTIONS.md` → Reescrito para estado real 16/03/2026
+- `GRAVITY_2_BRAIN.md` → Parte 13 adicionada
+- `08_ESTADO_SISTEMA.md` → **NOVO** — snapshot rápido para agentes
+
+**Bypasses/Pendências:**
+- `SPRINT_BUG_SEC_A.md` criado com 8 prompts sequenciais de segurança+bugs — aguardando autorização de Davi (chefe) para execução.
+- MinIO indisponível na rede no momento do `docker-compose up -d` → subido apenas postgres+redis.
+
+---
+
+## [16/03/2026] — Error Boundaries + Infraestrutura Frontend
+
+**Feature/Foco:** Correção do loop infinito "missing required error components" no Next.js 14 App Router + conflito de portas no servidor de desenvolvimento.
+
+**Problema encontrado:** Frontend entrava em loop de refreshing porque o Next.js 14 App Router exige arquivos especiais de error boundary no diretório raiz `app/` para montar o grafo de compilação. Sem eles, o framework não consegue processar nenhuma rota, incluindo `/login`.
+
+**Causa secundária:** `student/layout.tsx` sem `'use client'` — `StudentSidebar` e `StudentHeader` usam hooks, importá-los em um Server Component causava erro de hidratação.
+
+**Causa terciária:** Conflito de portas — 4 instâncias simultâneas do `npm run dev` tentavam subir na porta 3000 e o sistema escolhia portas alternativas (3004 etc.).
+
+**Ações tomadas:**
+
+- `app/error.tsx` criado com `'use client'` + design UPGRADE (amber/slate). ✅
+- `app/not-found.tsx` criado — 404 com número dourado. ✅
+- `app/global-error.tsx` criado com `'use client'` — error boundary de root. ✅
+- `app/student/layout.tsx` → `'use client'` adicionado como primeira linha. ✅
+- `frontend/.env` → WS URL ajustada para `:3002` (porta real do backend), `PORT=3000` adicionado. ✅
+- `docker-compose up -d postgres redis` → PostgreSQL + Redis ativos. ✅
+- Backend reiniciado: `✅ Database connected successfully` em `:3002`. ✅
+- Frontend limpo (`.next` deletado) e reiniciado em `:3000` (`Ready in 2.2s`). ✅
+
+**Estado após correções:**
+- Frontend: `http://localhost:3000` — login carregando corretamente ✅
+- Backend: `http://localhost:3002/api/docs` — Swagger disponível ✅
+- Dashboard Admin: verificado visualmente com screenshot — design e dados OK ✅
+
+**Credenciais de teste confirmadas:**
+| Perfil | Email | Senha | Rota após login |
+|--------|-------|-------|-----------------|
+| Admin | admin@qualifica.com | admin123 | /admin/dashboard |
+| Aluno | aluno@qualifica.com | aluno123 | /student/dashboard |
+| Professor* | (criado via painel admin) | — | /teacher/dashboard |
+
+*Portal professor requer criação manual de usuário TEACHER via painel admin ou seed.
+
+**`SPRINT_BUG_SEC_A.md` registrado:** Sprint de 8 prompts de segurança+bugs documentado no arquivo. **Status: PENDENTE — aguardando autorização de Davi (chefe técnico/cliente).**

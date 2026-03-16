@@ -16,7 +16,7 @@ export class AuthService {
         private usersService: UsersService,
     ) { }
 
-    async register(data: { email: string; password: string; name: string; phone?: string; role?: string }) {
+    async register(data: { email: string; password: string; name: string; phone?: string }) {
         // Check if user already exists
         const existingUser = await this.prisma.user.findUnique({
             where: { email: data.email },
@@ -36,7 +36,7 @@ export class AuthService {
                 password: hashedPassword,
                 name: data.name,
                 phone: data.phone,
-                role: (data.role as any) || 'STUDENT',
+                role: 'STUDENT',  // Registro público SEMPRE cria STUDENT — nunca aceitar role do body
             },
             select: {
                 id: true,

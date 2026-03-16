@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import api from '@/lib/api/client';
 
 /* ── Types ─────────────────────────────────────────── */
-type EmployeeRole = 'INSTRUCTOR' | 'DRIVER' | 'COORDINATOR' | 'NURSE' | 'TECHNICIAN' | 'ADMINISTRATIVE' | 'OTHER';
+type EmployeeRole = 'INSTRUCTOR' | 'DRIVER' | 'COORDINATOR' | 'TECHNICIAN' | 'ADMINISTRATIVE' | 'OTHER';
 type EmployeeDepartment = 'ACADEMIC' | 'OPERATIONS' | 'HEALTH' | 'FINANCIAL' | 'ADMINISTRATION' | 'LOGISTICS';
 
 interface Employee {
@@ -33,7 +33,6 @@ const ROLE_CONFIG: Record<EmployeeRole, { label: string; icon: string; color: st
     INSTRUCTOR: { label: 'Instrutor', icon: '🎓', color: '#FFD600', glow: 'rgba(255,214,0,0.5)', bg: 'rgba(255,214,0,0.08)' },
     DRIVER: { label: 'Motorista', icon: '🚛', color: '#0891B2', glow: 'rgba(8,145,178,0.5)', bg: 'rgba(8,145,178,0.08)' },
     COORDINATOR: { label: 'Coordenador', icon: '🎯', color: '#7C3AED', glow: 'rgba(124,58,237,0.5)', bg: 'rgba(124,58,237,0.08)' },
-    NURSE: { label: 'Enfermeiro', icon: '🏥', color: '#EC4899', glow: 'rgba(236,72,153,0.5)', bg: 'rgba(236,72,153,0.08)' },
     TECHNICIAN: { label: 'Técnico', icon: '🔧', color: '#EA580C', glow: 'rgba(234,88,12,0.5)', bg: 'rgba(234,88,12,0.08)' },
     ADMINISTRATIVE: { label: 'Administrativo', icon: '📋', color: '#059669', glow: 'rgba(5,150,105,0.5)', bg: 'rgba(5,150,105,0.08)' },
     OTHER: { label: 'Outros', icon: '👤', color: '#6B7280', glow: 'rgba(107,114,128,0.5)', bg: 'rgba(107,114,128,0.08)' },
@@ -50,6 +49,37 @@ const DEPT_CONFIG: Record<EmployeeDepartment, { label: string; color: string }> 
 
 const ROLES = Object.entries(ROLE_CONFIG) as [EmployeeRole, typeof ROLE_CONFIG[EmployeeRole]][];
 const DEPTS = Object.entries(DEPT_CONFIG) as [EmployeeDepartment, typeof DEPT_CONFIG[EmployeeDepartment]][];
+
+/* Formata CPF: 000.000.000-00 */
+function maskCPF(value: string): string {
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0,3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6)}`;
+    return `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}`;
+}
+
+/* Formata Telefone: (00) 00000-0000 celular | (00) 0000-0000 fixo */
+function maskPhone(value: string): string {
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 2) return digits.length ? `(${digits}` : '';
+    if (digits.length <= 6) return `(${digits.slice(0,2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0,2)}) ${digits.slice(2,6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`;
+}
+
+/* Formata moeda: R$ 1.234,56 */
+function maskCurrency(value: string): string {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return '';
+    const num = parseInt(digits, 10) / 100;
+    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/* Converte valor mascarado de volta para número */
+function parseCurrency(value: string): number {
+    return parseFloat(value.replace(/\./g, '').replace(',', '.')) || 0;
+}
 
 const EMPTY_FORM = {
     name: '', role: 'INSTRUCTOR' as EmployeeRole, department: 'ACADEMIC' as EmployeeDepartment,
@@ -160,7 +190,7 @@ function AnimCounter({ value, color }: { value: number; color: string }) {
 }
 
 /* ── Employee Card (horizontal, redesigned) ────────── */
-function EmployeeCard({ emp, onEdit, onToggle, onDelete }: { emp: Employee; onEdit: () => void; onToggle: () => void; onDelete: () => void; }) {
+function EmployeeCard({ emp, onEdit, onToggle, onDelete, onDetails }: { emp: Employee; onEdit: () => void; onToggle: () => void; onDelete: () => void; onDetails: () => void; }) {
     const role = ROLE_CONFIG[emp.role];
     const dept = DEPT_CONFIG[emp.department];
     const initials = emp.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
@@ -315,7 +345,25 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete }: { emp: Employee; onEd
                 {/* Divider */}
                 <div style={{ height: 1, background: `linear-gradient(90deg, ${role.color}30, transparent)`, marginBottom: '0.9rem' }} />
 
-                {/* Action buttons — always visible */}
+                {/* Action buttons */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <button
+                        onClick={onDetails}
+                        style={{
+                            padding: '0.55rem 0', borderRadius: 10, cursor: 'pointer',
+                            background: 'linear-gradient(135deg, #FFD600, #B89B00)',
+                            border: 'none',
+                            color: '#000', fontWeight: 800, fontSize: '0.76rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
+                            transition: 'all 0.18s', gridColumn: '1 / -1',
+                            boxShadow: '0 2px 10px rgba(255,214,0,0.3)',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(255,214,0,0.5)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 10px rgba(255,214,0,0.3)'; }}
+                    >
+                        🔍 Ver Detalhes
+                    </button>
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
                     <button
                         onClick={onEdit}
@@ -367,6 +415,205 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete }: { emp: Employee; onEd
 }
 
 
+/* ── Detail Modal (redesigned) ──────────────────────── */
+function EmployeeDetailModal({ employee, onClose, onEdit }: { employee: Employee; onClose: () => void; onEdit: () => void }) {
+    const role = ROLE_CONFIG[employee.role] ?? ROLE_CONFIG['OTHER'];
+    const dept = DEPT_CONFIG[employee.department] ?? DEPT_CONFIG['ADMINISTRATION'];
+    const initials = employee.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+
+    const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('pt-BR') : null;
+    const fmtMoney = (v?: number) => v != null ? `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : null;
+
+    /* Info pill — label + value */
+    const Pill = ({ icon, label, value, accent }: { icon: string; label: string; value?: string | number | null; accent?: string }) => {
+        if (!value && value !== 0) return null;
+        return (
+            <div style={{
+                background: accent ? `${accent}08` : '#F8FAFC',
+                border: `1.5px solid ${accent ? `${accent}22` : '#E2E8F0'}`,
+                borderRadius: 14, padding: '0.85rem 1rem',
+                display: 'flex', alignItems: 'center', gap: '0.75rem',
+                minWidth: 0,
+            }}>
+                <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>{icon}</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.6rem', fontWeight: 800, color: accent ?? '#94A3B8', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '0.18rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0F172A', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+                </div>
+            </div>
+        );
+    };
+
+    /* Section header */
+    const SectionTitle = ({ icon, title, color }: { icon: string; title: string; color: string }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}18`, border: `1.5px solid ${color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>{icon}</div>
+            <span style={{ fontSize: '0.7rem', fontWeight: 800, color, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{title}</span>
+            <div style={{ flex: 1, height: 1, background: `${color}20` }} />
+        </div>
+    );
+
+    return (
+        <div
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)' }}
+            onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+        >
+            <div style={{
+                width: '100%', maxWidth: 540,
+                height: '100%',
+                background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+                boxShadow: '-12px 0 60px rgba(0,0,0,0.3)',
+                display: 'flex', flexDirection: 'column',
+                overflow: 'hidden',
+                animation: 'slideInRight 0.3s cubic-bezier(0.22,1,0.36,1)',
+            }}>
+
+                {/* ═══ HEADER ═══ */}
+                <div style={{
+                    background: `linear-gradient(135deg, #0A0A0A 0%, ${role.color}22 100%)`,
+                    borderBottom: `3px solid ${role.color}`,
+                    padding: '1.75rem 1.75rem 1.25rem',
+                    position: 'relative', overflow: 'hidden', flexShrink: 0,
+                }}>
+                    {/* Grid decoration */}
+                    <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '32px 32px', pointerEvents: 'none' }} />
+                    {/* Glow */}
+                    <div style={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, borderRadius: '50%', background: `radial-gradient(circle, ${role.color}25 0%, transparent 70%)`, pointerEvents: 'none' }} />
+
+                    {/* Close */}
+                    <button onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, width: 32, height: 32, color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>✕</button>
+
+                    <div style={{ position: 'relative', display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+                        {/* Big Avatar */}
+                        <div style={{
+                            width: 80, height: 80, borderRadius: 20, flexShrink: 0,
+                            background: `linear-gradient(135deg, ${role.color}30, ${role.color}10)`,
+                            border: `2.5px solid ${role.color}70`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.6rem',
+                            color: role.color, boxShadow: `0 0 30px ${role.glow}, inset 0 1px 0 rgba(255,255,255,0.1)`,
+                        }}>{initials}</div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            {/* Status pill */}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.2rem 0.6rem', borderRadius: 100, fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', background: employee.active ? 'rgba(34,197,94,0.2)' : 'rgba(107,114,128,0.2)', color: employee.active ? '#4ADE80' : '#9CA3AF', border: `1px solid ${employee.active ? 'rgba(74,222,128,0.4)' : 'rgba(156,163,175,0.3)'}`, marginBottom: '0.4rem' }}>
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: employee.active ? '#4ADE80' : '#9CA3AF', display: 'inline-block', boxShadow: employee.active ? '0 0 6px #4ADE80' : 'none' }} />
+                                {employee.active ? 'ATIVO' : 'INATIVO'}
+                            </span>
+
+                            {/* Name */}
+                            <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: '#FFFFFF', letterSpacing: '0.04em', lineHeight: 1.2, marginBottom: '0.5rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {employee.name}
+                            </div>
+
+                            {/* Tags */}
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.28rem 0.7rem', borderRadius: 100, background: `${role.color}22`, border: `1px solid ${role.color}50`, fontSize: '0.72rem', fontWeight: 700, color: role.color }}>
+                                    {role.icon} {role.label}
+                                </span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.28rem 0.7rem', borderRadius: 100, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.72rem', fontWeight: 600, color: dept.color }}>
+                                    {dept.label}
+                                </span>
+                                {employee.contractType && (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0.28rem 0.7rem', borderRadius: 100, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', fontSize: '0.72rem', fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>
+                                        {employee.contractType}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ═══ BODY ═══ */}
+                <div style={{ flex: 1, padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto', minHeight: 0 }}>
+
+                    {/* Identificação */}
+                    <div>
+                        <SectionTitle icon="🪪" title="Identificação" color="#6366F1" />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                            <Pill icon="🪪" label="CPF" value={employee.cpf} accent="#6366F1" />
+                            <Pill icon="📄" label="RG" value={employee.rg} accent="#6366F1" />
+                            <Pill icon="📅" label="Data de Admissão" value={fmtDate(employee.hireDate)} accent="#6366F1" />
+                            <Pill icon="⭐" label="Especialidade" value={employee.specialty} accent="#6366F1" />
+                        </div>
+                    </div>
+
+                    {/* Contato */}
+                    <div>
+                        <SectionTitle icon="📞" title="Contato" color="#0891B2" />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                            <Pill icon="📱" label="WhatsApp" value={employee.phone} accent="#0891B2" />
+                            <Pill icon="📧" label="E-mail" value={employee.email} accent="#0891B2" />
+                        </div>
+                    </div>
+
+                    {/* Financeiro */}
+                    <div>
+                        <SectionTitle icon="💰" title="Financeiro" color="#059669" />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                            <Pill icon="📋" label="Tipo de Contrato" value={employee.contractType} accent="#059669" />
+                            <Pill icon="💵" label="Custo Diária" value={fmtMoney(employee.dailyCost)} accent="#059669" />
+                            {employee.monthlySalaryCLT != null && (
+                                <Pill icon="🏦" label="Salário Base CLT" value={fmtMoney(employee.monthlySalaryCLT)} accent="#059669" />
+                            )}
+                            {employee.travelRuleKm != null && (
+                                <Pill icon="📍" label="Limite KM Passagem" value={`${employee.travelRuleKm} km`} accent="#059669" />
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Observações */}
+                    {employee.notes && (
+                        <div>
+                            <SectionTitle icon="📝" title="Observações" color="#EA580C" />
+                            <div style={{ background: 'rgba(234,88,12,0.04)', border: '1.5px solid rgba(234,88,12,0.2)', borderRadius: 14, padding: '1rem 1.1rem', fontSize: '0.9rem', color: '#374151', lineHeight: 1.7, fontStyle: 'italic' }}>
+                                {employee.notes}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Sistema */}
+                    <div>
+                        <SectionTitle icon="🕐" title="Sistema" color="#6B7280" />
+                        <Pill icon="📅" label="Cadastrado em" value={fmtDate(employee.createdAt)} accent="#6B7280" />
+                    </div>
+                </div>
+
+                {/* ═══ FOOTER ═══ */}
+                <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #E2E8F0', background: '#FFFFFF', display: 'flex', gap: '0.75rem', flexShrink: 0 }}>
+                    <button onClick={onClose} style={{
+                        flex: 1, padding: '0.75rem', borderRadius: 12, border: '1.5px solid #E2E8F0',
+                        background: 'transparent', color: '#6B7280', fontWeight: 700, fontSize: '0.85rem',
+                        cursor: 'pointer', transition: 'all 0.18s',
+                    }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#F8FAFC'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                    >
+                        ✕ Fechar
+                    </button>
+                    <button
+                        onClick={() => { onClose(); onEdit(); }}
+                        style={{
+                            flex: 2, padding: '0.75rem', borderRadius: 12, border: 'none',
+                            background: 'linear-gradient(135deg, #FFD600, #B89B00)',
+                            color: '#000', fontWeight: 900, fontSize: '0.88rem',
+                            cursor: 'pointer', boxShadow: '0 4px 20px rgba(255,214,0,0.4)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                            transition: 'all 0.18s',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 28px rgba(255,214,0,0.55)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 20px rgba(255,214,0,0.4)'; }}
+                    >
+                        ✏️ Editar Funcionário
+                    </button>
+                </div>
+            </div>
+            <style>{`@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
+        </div>
+    );
+}
+
+
 
 /* ── Modal ─────────────────────────────────────────── */
 function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | null; onClose: () => void; onSave: () => void }) {
@@ -396,11 +643,11 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                 cpf: form.cpf || undefined, rg: form.rg || undefined,
                 phone: form.phone || undefined, email: form.email || undefined,
                 specialty: form.specialty || undefined,
-                dailyCost: form.dailyCost ? parseFloat(form.dailyCost as string) : undefined,
+                dailyCost: form.dailyCost ? parseCurrency(form.dailyCost as string) : undefined,
                 hireDate: form.hireDate || undefined, notes: form.notes || undefined,
                 active: form.active,
                 contractType: form.contractType || undefined,
-                monthlySalaryCLT: form.monthlySalaryCLT ? parseFloat(form.monthlySalaryCLT as string) : undefined,
+                monthlySalaryCLT: form.monthlySalaryCLT ? parseCurrency(form.monthlySalaryCLT as string) : undefined,
                 travelRuleKm: form.travelRuleKm ? parseInt(String(form.travelRuleKm)) : undefined,
             };
             if (employee?.id) {
@@ -469,7 +716,7 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                 <div>
                                     <label className="form-label">CPF</label>
-                                    <input className="form-input" value={form.cpf} onChange={e => set('cpf', e.target.value)} placeholder="000.000.000-00" />
+                                    <input className="form-input" value={form.cpf} onChange={e => set('cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} inputMode="numeric" />
                                 </div>
                                 <div>
                                     <label className="form-label">RG</label>
@@ -540,9 +787,13 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                             {form.contractType === 'CLT' && (
                                 <div>
                                     <label className="form-label">Salário Base Mensal (R$)</label>
-                                    <input type="number" step="0.01" className="form-input"
-                                        value={form.monthlySalaryCLT || ''} onChange={e => set('monthlySalaryCLT', e.target.value)}
-                                        placeholder="Ex: 3500,00" />
+                                    <div style={{ position: 'relative' }}>
+                                        <span style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.82rem', color: '#6B7280', pointerEvents: 'none', fontWeight: 600 }}>R$</span>
+                                        <input className="form-input" style={{ paddingLeft: '2.2rem' }}
+                                            value={form.monthlySalaryCLT || ''}
+                                            onChange={e => set('monthlySalaryCLT', maskCurrency(e.target.value))}
+                                            placeholder="0,00" inputMode="numeric" />
+                                    </div>
                                 </div>
                             )}
                             {form.contractType === 'CLT' && (
@@ -558,7 +809,13 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                             )}
                             <div>
                                 <label className="form-label">Custo Diária (R$)</label>
-                                <input type="number" step="0.01" className="form-input" value={form.dailyCost} onChange={e => set('dailyCost', e.target.value)} placeholder="0,00" />
+                                <div style={{ position: 'relative' }}>
+                                    <span style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.82rem', color: '#6B7280', pointerEvents: 'none', fontWeight: 600 }}>R$</span>
+                                    <input className="form-input" style={{ paddingLeft: '2.2rem' }}
+                                        value={form.dailyCost}
+                                        onChange={e => set('dailyCost', maskCurrency(e.target.value))}
+                                        placeholder="0,00" inputMode="numeric" />
+                                </div>
                             </div>
                         </div>
                     )}
@@ -568,7 +825,7 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                             <div>
                                 <label className="form-label">Telefone / WhatsApp</label>
-                                <input className="form-input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(98) 99999-9999" />
+                                <input className="form-input" value={form.phone} onChange={e => set('phone', maskPhone(e.target.value))} placeholder="(98) 99999-9999" maxLength={15} inputMode="numeric" />
                             </div>
                             <div>
                                 <label className="form-label">E-mail</label>
@@ -621,6 +878,7 @@ export default function FuncionariosPage() {
     const [kpis, setKpis] = useState({ total: 0, active: 0, byRole: [] as any[], byDept: [] as any[] });
     const [modalOpen, setModalOpen] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+    const [detailEmployee, setDetailEmployee] = useState<Employee | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
     const fetchEmployees = useCallback(async () => {
@@ -836,6 +1094,7 @@ export default function FuncionariosPage() {
                                 onEdit={() => handleEdit(emp)}
                                 onToggle={() => handleToggleActive(emp.id)}
                                 onDelete={() => setDeleteConfirm(emp.id)}
+                                onDetails={() => setDetailEmployee(emp)}
                             />
                         </div>
                     ))}
@@ -894,6 +1153,7 @@ export default function FuncionariosPage() {
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                                <button onClick={() => setDetailEmployee(emp)} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.25)', color: '#4F46E5', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>🔍</button>
                                                 <button onClick={() => handleEdit(emp)} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.3)', color: '#B89B00', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>✏️</button>
                                                 <button onClick={() => handleToggleActive(emp.id)} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: emp.active ? 'rgba(234,88,12,0.08)' : 'rgba(5,150,105,0.08)', border: `1px solid ${emp.active ? 'rgba(234,88,12,0.25)' : 'rgba(5,150,105,0.25)'}`, color: emp.active ? '#EA580C' : '#059669', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>{emp.active ? '⏸' : '▶️'}</button>
                                                 <button onClick={() => setDeleteConfirm(emp.id)} style={{ padding: '0.3rem 0.6rem', borderRadius: 6, background: 'rgba(220,38,38,0.07)', border: '1px solid rgba(220,38,38,0.2)', color: '#DC2626', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>🗑️</button>
@@ -912,6 +1172,15 @@ export default function FuncionariosPage() {
                 <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
                     Exibindo {employees.length} de {kpis.total} funcionários
                 </div>
+            )}
+
+            {/* ── DETAIL PANEL ── */}
+            {detailEmployee && (
+                <EmployeeDetailModal
+                    employee={detailEmployee}
+                    onClose={() => setDetailEmployee(null)}
+                    onEdit={() => { setEditingEmployee(detailEmployee); setModalOpen(true); }}
+                />
             )}
 
             {/* ── MODAL ── */}

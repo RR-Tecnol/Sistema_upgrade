@@ -14,7 +14,7 @@ export class AuthController {
     @ApiResponse({ status: 201, description: 'User registered successfully' })
     @ApiResponse({ status: 400, description: 'Email already registered' })
     async register(
-        @Body() body: { email: string; password: string; name: string; phone?: string; role?: string },
+        @Body() body: { email: string; password: string; name: string; phone?: string },
     ) {
         return this.authService.register(body);
     }

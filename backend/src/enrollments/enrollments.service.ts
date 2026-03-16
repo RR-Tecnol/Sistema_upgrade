@@ -4,6 +4,7 @@ import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { UpdateEnrollmentDto, EnrollmentStatus } from './dto/update-enrollment.dto';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
@@ -47,178 +48,157 @@ export class EnrollmentsService {
     }
 
     async create(createEnrollmentDto: CreateEnrollmentDto) {
-        // 1. Validate class exists and has open enrollment
+        // Validações FORA da transação (leituras sem lock)
         const classData = await this.prisma.class.findUnique({
             where: { id: createEnrollmentDto.classId },
-            include: {
-                course: true,
-                _count: {
-                    select: { enrollments: true },
-                },
-            },
+            include: { course: true },
         });
-
-        if (!classData) {
-            throw new NotFoundException('Turma não encontrada');
-        }
-
+        if (!classData) throw new NotFoundException('Turma não encontrada');
         if (classData.status !== 'ENROLLMENT_OPEN') {
             throw new BadRequestException('Inscrições não estão abertas para esta turma');
         }
 
-        // 2. Check if CPF is already enrolled in this class
+        // Verificar CPF duplicado fora da transação
         const existingEnrollment = await this.prisma.enrollment.findFirst({
             where: {
                 classId: createEnrollmentDto.classId,
-                student: {
-                    cpf: createEnrollmentDto.cpf,
-                },
+                student: { cpf: createEnrollmentDto.cpf },
             },
         });
+        if (existingEnrollment) throw new ConflictException('CPF já cadastrado nesta turma');
 
-        if (existingEnrollment) {
-            throw new ConflictException('CPF já cadastrado nesta turma');
-        }
-
-        // 3. Check if class is full
-        if (classData._count.enrollments >= classData.vacancies) {
-            throw new BadRequestException('Turma sem vagas disponíveis');
-        }
-
-        // 4. Generate protocol number
+        // Protocolo gerado antes da transação
         const protocol = this.generateProtocol();
 
-        // 5. Create student if doesn't exist
-        let student = await this.prisma.student.findUnique({
-            where: { cpf: createEnrollmentDto.cpf },
-        });
+        // ── TRANSAÇÃO ATÔMICA ──────────────────────────────────
+        // Re-verifica vagas DENTRO da transação para eliminar
+        // race condition TOCTOU entre check e insert.
+        const enrollment = await this.prisma.$transaction(async (tx) => {
 
-        if (!student) {
-            // Create user first
-            const user = await this.prisma.user.create({
-                data: {
-                    email: createEnrollmentDto.email,
-                    name: createEnrollmentDto.fullName,
-                    phone: createEnrollmentDto.phone,
-                    role: 'STUDENT',
-                    active: true,
-                    // Password will be set later or sent via email
-                    password: await this.hashPassword(this.generateTemporaryPassword()),
-                },
+            // Re-verificar vagas com lock implícito do Prisma
+            const freshClass = await tx.class.findUnique({
+                where: { id: createEnrollmentDto.classId },
+                include: { _count: { select: { enrollments: true } } },
+            });
+            if (!freshClass) throw new NotFoundException('Turma não encontrada');
+            if (freshClass._count.enrollments >= freshClass.vacancies) {
+                throw new BadRequestException('Turma sem vagas disponíveis');
+            }
+
+            // Criar ou buscar aluno DENTRO da transação
+            let student = await tx.student.findUnique({
+                where: { cpf: createEnrollmentDto.cpf },
             });
 
-            // Create student profile
-            student = await this.prisma.student.create({
-                data: {
-                    userId: user.id,
-                    cpf: createEnrollmentDto.cpf,
-                    rg: createEnrollmentDto.rg,
-                    rgIssuer: createEnrollmentDto.rgIssuer,
-                    birthDate: new Date(createEnrollmentDto.birthDate),
-                    gender: createEnrollmentDto.gender,
-                    raceColor: createEnrollmentDto.raceColor,
-                    maritalStatus: createEnrollmentDto.maritalStatus,
-                    motherName: createEnrollmentDto.motherName,
-                    fatherName: createEnrollmentDto.fatherName,
-                    nationality: createEnrollmentDto.nationality,
-                    birthCity: createEnrollmentDto.birthCity,
-                    birthState: createEnrollmentDto.birthState,
-                    socialName: createEnrollmentDto.socialName,
-                },
-            });
-
-            // Create contact
-            await this.prisma.studentContact.create({
-                data: {
-                    studentId: student.id,
-                    email: createEnrollmentDto.email,
-                    phone: createEnrollmentDto.phone,
-                    hasWhatsapp: createEnrollmentDto.hasWhatsApp,
-                    phoneAlt: createEnrollmentDto.phoneAlt,
-                    allowWhatsappContact: createEnrollmentDto.allowWhatsAppContact,
-                    allowEmailContact: createEnrollmentDto.allowEmailContact,
-                },
-            });
-
-            // Create address
-            await this.prisma.studentAddress.create({
-                data: {
-                    studentId: student.id,
-                    cep: createEnrollmentDto.cep,
-                    street: createEnrollmentDto.street,
-                    number: createEnrollmentDto.number,
-                    complement: createEnrollmentDto.complement,
-                    neighborhood: createEnrollmentDto.neighborhood,
-                    city: createEnrollmentDto.city,
-                    state: createEnrollmentDto.state,
-                    zone: createEnrollmentDto.zone,
-                },
-            });
-
-            // Create socioeconomic data
-            await this.prisma.studentSocioeconomic.create({
-                data: {
-                    studentId: student.id,
-                    educationLevel: createEnrollmentDto.educationLevel,
-                    employmentStatus: createEnrollmentDto.employmentStatus,
-                    familyIncome: createEnrollmentDto.familyIncome,
-                    familyMembersCount: createEnrollmentDto.familyMembersCount,
-                    socialProgram: createEnrollmentDto.socialProgram,
-                    hasDisability: createEnrollmentDto.hasDisability,
-                    disabilityType: createEnrollmentDto.disabilityType,
-                    disabilityAdaptation: createEnrollmentDto.disabilityAdaptation,
-                },
-            });
-
-            // Create professional data
-            await this.prisma.studentProfessional.create({
-                data: {
-                    studentId: student.id,
-                    previousQualification: createEnrollmentDto.previousQualification,
-                    professionalInterest: createEnrollmentDto.professionalInterest,
-                    careerGoal: createEnrollmentDto.careerGoal,
-                    howHeardAbout: createEnrollmentDto.howHeardAbout,
-                    ...(createEnrollmentDto.motivation ? { motivation: createEnrollmentDto.motivation } : {}),
-                },
-            });
-        }
-
-        // 6. Create enrollment
-        const enrollment = await this.prisma.enrollment.create({
-            data: {
-                studentId: student.id,
-                classId: createEnrollmentDto.classId,
-                protocol,
-                status: 'PENDING',
-            },
-            include: {
-                student: {
-                    include: {
-                        user: true,
+            if (!student) {
+                const user = await tx.user.create({
+                    data: {
+                        email: createEnrollmentDto.email,
+                        name: createEnrollmentDto.fullName,
+                        phone: createEnrollmentDto.phone,
+                        role: 'STUDENT',
+                        active: true,
+                        password: await this.hashPassword(this.generateTemporaryPassword()),
                     },
-                },
-                class: {
-                    include: {
-                        course: true,
-                        city: true,
+                });
+                student = await tx.student.create({
+                    data: {
+                        userId: user.id,
+                        cpf: createEnrollmentDto.cpf,
+                        rg: createEnrollmentDto.rg,
+                        rgIssuer: createEnrollmentDto.rgIssuer,
+                        birthDate: new Date(createEnrollmentDto.birthDate),
+                        gender: createEnrollmentDto.gender,
+                        raceColor: createEnrollmentDto.raceColor,
+                        maritalStatus: createEnrollmentDto.maritalStatus,
+                        motherName: createEnrollmentDto.motherName,
+                        fatherName: createEnrollmentDto.fatherName,
+                        nationality: createEnrollmentDto.nationality,
+                        birthCity: createEnrollmentDto.birthCity,
+                        birthState: createEnrollmentDto.birthState,
+                        socialName: createEnrollmentDto.socialName,
                     },
+                });
+                await tx.studentContact.create({
+                    data: {
+                        studentId: student.id,
+                        email: createEnrollmentDto.email,
+                        phone: createEnrollmentDto.phone,
+                        hasWhatsapp: createEnrollmentDto.hasWhatsApp,
+                        phoneAlt: createEnrollmentDto.phoneAlt,
+                        allowWhatsappContact: createEnrollmentDto.allowWhatsAppContact,
+                        allowEmailContact: createEnrollmentDto.allowEmailContact,
+                    },
+                });
+                await tx.studentAddress.create({
+                    data: {
+                        studentId: student.id,
+                        cep: createEnrollmentDto.cep,
+                        street: createEnrollmentDto.street,
+                        number: createEnrollmentDto.number,
+                        complement: createEnrollmentDto.complement,
+                        neighborhood: createEnrollmentDto.neighborhood,
+                        city: createEnrollmentDto.city,
+                        state: createEnrollmentDto.state,
+                        zone: createEnrollmentDto.zone,
+                    },
+                });
+                await tx.studentSocioeconomic.create({
+                    data: {
+                        studentId: student.id,
+                        educationLevel: createEnrollmentDto.educationLevel,
+                        employmentStatus: createEnrollmentDto.employmentStatus,
+                        familyIncome: createEnrollmentDto.familyIncome,
+                        familyMembersCount: createEnrollmentDto.familyMembersCount,
+                        socialProgram: createEnrollmentDto.socialProgram,
+                        hasDisability: createEnrollmentDto.hasDisability,
+                        disabilityType: createEnrollmentDto.disabilityType,
+                        disabilityAdaptation: createEnrollmentDto.disabilityAdaptation,
+                    },
+                });
+                await tx.studentProfessional.create({
+                    data: {
+                        studentId: student.id,
+                        previousQualification: createEnrollmentDto.previousQualification,
+                        professionalInterest: createEnrollmentDto.professionalInterest,
+                        careerGoal: createEnrollmentDto.careerGoal,
+                        howHeardAbout: createEnrollmentDto.howHeardAbout,
+                        ...(createEnrollmentDto.motivation ? { motivation: createEnrollmentDto.motivation } : {}),
+                    },
+                });
+            }
+
+            // Criar enrollment DENTRO da transação
+            const newEnrollment = await tx.enrollment.create({
+                data: {
+                    studentId: student.id,
+                    classId: createEnrollmentDto.classId,
+                    protocol,
+                    status: 'PENDING',
                 },
-            },
-        });
+                include: {
+                    student: { include: { user: true } },
+                    class: { include: { course: true, city: true } },
+                },
+            });
 
-        // 7. Create consent record
-        await this.prisma.enrollmentConsent.create({
-            data: {
-                enrollmentId: enrollment.id,
-                dataProcessing: createEnrollmentDto.dataProcessingConsent,
-                imageUse: createEnrollmentDto.imageUseAuthorization,
-                termsAccepted: createEnrollmentDto.termsAccepted,
-                privacyPolicyAccepted: createEnrollmentDto.dataProcessingConsent,
-                consentDate: new Date(),
-            },
-        });
+            // Criar consent DENTRO da transação
+            await tx.enrollmentConsent.create({
+                data: {
+                    enrollmentId: newEnrollment.id,
+                    dataProcessing: createEnrollmentDto.dataProcessingConsent,
+                    imageUse: createEnrollmentDto.imageUseAuthorization,
+                    termsAccepted: createEnrollmentDto.termsAccepted,
+                    privacyPolicyAccepted: createEnrollmentDto.dataProcessingConsent,
+                    consentDate: new Date(),
+                },
+            });
 
-        // SF-01: Emitir evento WebSocket em tempo real
+            return newEnrollment;
+        }); // ── FIM DA TRANSAÇÃO ──────────────────────────────────
+
+        // Notificação WS FORA da transação
+        // (operação externa — nunca deve bloquear rollback)
         try {
             this.notifications.notifyAdmins('nova_inscricao', {
                 studentName: enrollment.student?.user?.name,
@@ -226,7 +206,7 @@ export class EnrollmentsService {
                 cidade: (enrollment.class as any)?.city?.name,
                 timestamp: new Date().toISOString(),
             });
-        } catch { /* WS opcional */ }
+        } catch { /* WS opcional — nunca bloqueia a inscrição */ }
 
         return enrollment;
     }
@@ -482,7 +462,6 @@ export class EnrollmentsService {
     }
 
     private async hashPassword(password: string): Promise<string> {
-        const bcrypt = require('bcrypt');
         return bcrypt.hash(password, 10);
     }
 }

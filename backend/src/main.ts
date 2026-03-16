@@ -1,11 +1,18 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { SettingsService } from './settings/settings.service';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
+
+    // Segurança HTTP — headers de proteção (SEC-04)
+    app.use(helmet({
+        crossOriginEmbedderPolicy: false, // Necessário para Swagger funcionar
+        contentSecurityPolicy: false,     // Configurar CSP com domínios em produção
+    }));
 
     // Global prefix
     app.setGlobalPrefix('api');
@@ -53,9 +60,13 @@ async function bootstrap() {
         if (settingsService.isMaintenanceMode()) {
             // Permitir: login + rotas admin + health
             const allowed = ['/api/auth/login', '/api/settings', '/api/health'];
+            const maintenanceKey = process.env.MAINTENANCE_KEY;
+            const bypassValid =
+                !!maintenanceKey &&
+                maintenanceKey.length > 0 &&
+                req.headers['x-admin-bypass'] === maintenanceKey;
             const isAllowed =
-                allowed.some(p => req.path.startsWith(p)) ||
-                req.headers['x-admin-bypass'] === process.env.MAINTENANCE_KEY;
+                allowed.some((p: string) => req.path.startsWith(p)) || bypassValid;
             if (!isAllowed) {
                 return res.status(503).json({
                     statusCode: 503,

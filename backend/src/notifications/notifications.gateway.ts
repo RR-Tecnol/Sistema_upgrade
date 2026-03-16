@@ -7,6 +7,7 @@ import {
     ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
 @WebSocketGateway({
@@ -23,6 +24,7 @@ export class NotificationsGateway
     server: Server;
 
     private connectedUsers = new Map<string, string>(); // userId -> socketId
+    private readonly logger = new Logger(NotificationsGateway.name);
 
     constructor(private jwtService: JwtService) {}
 
@@ -33,14 +35,22 @@ export class NotificationsGateway
                 (client.handshake.headers?.authorization as string)?.replace('Bearer ', '');
             if (!token) { client.disconnect(); return; }
             const payload = this.jwtService.verify(token);
-            client.data.userId = payload.sub || payload.id;
-            this.connectedUsers.set(client.data.userId, client.id);
-            // Entrar em sala pessoal e sala de admins
-            client.join(`user:${client.data.userId}`);
-            if (payload.role === 'ADMIN' || payload.role === 'SUPER_ADMIN') {
+            // SEC-07: usar payload.sub explicitamente — JWT sempre gera com sub
+            // Falhar rápido se sub ausente em vez de propagar undefined
+            const userId = payload.sub as string | undefined;
+            if (!userId) {
+                this.logger.warn('WS rejeitado: token sem campo sub');
+                client.disconnect();
+                return;
+            }
+            client.data.userId = userId;
+            this.connectedUsers.set(userId, client.id);
+            client.join(`user:${userId}`);
+            if (payload.role === 'ADMIN' || payload.role === 'COORDINATOR') {
                 client.join('admins');
             }
-            console.log(`WS connected: ${client.data.userId}`);
+            // BUG-13: userId mascarado nos logs — LGPD
+            this.logger.debug(`WS conectado: ...${userId.slice(-8)}`);
         } catch {
             client.disconnect();
         }
@@ -50,7 +60,7 @@ export class NotificationsGateway
         if (client.data?.userId) {
             this.connectedUsers.delete(client.data.userId);
         }
-        console.log(`WS disconnected: ${client.id}`);
+        this.logger.debug(`WS desconectado: ${client.id}`);
     }
 
     // Métodos de emissão — usados por outros serviços

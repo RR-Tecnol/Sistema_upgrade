@@ -1,3 +1,5 @@
+'use client';
+
 import StudentSidebar from '@/components/student/Sidebar';
 import StudentHeader from '@/components/student/Header';
 

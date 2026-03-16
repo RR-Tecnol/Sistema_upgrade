@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReimbursementType, ExpenseStatus } from '@prisma/client';
+import { MinioService } from './minio.service';
 
 /**
  * ReimbursementService — REQ-10
@@ -22,7 +23,10 @@ import { ReimbursementType, ExpenseStatus } from '@prisma/client';
  */
 @Injectable()
 export class ReimbursementService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+      private prisma: PrismaService,
+      private minio: MinioService,
+  ) {}
 
   /**
    * Gera uma Presigned URL do MinIO para o professor/motorista
@@ -36,30 +40,10 @@ export class ReimbursementService {
     filename: string,
     contentType: string,
   ): Promise<{ uploadUrl: string; fileKey: string }> {
-    // Importação dinâmica do MinIO para evitar circular deps
-    const { Client } = await import('minio');
-
-    const minioClient = new Client({
-      endPoint: process.env.MINIO_ENDPOINT || 'localhost',
-      port: parseInt(process.env.MINIO_PORT || '9000', 10),
-      useSSL: process.env.MINIO_USE_SSL === 'true',
-      accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-      secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
-    });
-
-    const bucket = 'reimbursements';
-    const fileKey = `${userId}/${Date.now()}_${filename}`;
-
-    // Garantir que o bucket existe
-    const bucketExists = await minioClient.bucketExists(bucket);
-    if (!bucketExists) {
-      await minioClient.makeBucket(bucket, 'us-east-1');
-    }
-
-    // Presigned URL válida por 15 minutos
-    const uploadUrl = await minioClient.presignedPutObject(bucket, fileKey, 900);
-
-    return { uploadUrl, fileKey };
+      const bucket = process.env.MINIO_BUCKET_REIMBURSEMENT || 'reimbursements';
+      const fileKey = `${userId}/${Date.now()}_${filename}`;
+      const uploadUrl = await this.minio.presignedPutUrl(bucket, fileKey, 900);
+      return { uploadUrl, fileKey };
   }
 
   /**
