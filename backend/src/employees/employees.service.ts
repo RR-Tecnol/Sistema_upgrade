@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeeRole, EmployeeDepartment } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class EmployeesService {
@@ -17,6 +18,31 @@ export class EmployeesService {
         if (dto.email) {
             const existing = await this.prisma.employee.findUnique({ where: { email: dto.email } });
             if (existing) throw new ConflictException('E-mail já cadastrado');
+        }
+
+        // Se senha fornecida, criar User de acesso com role mapeado
+        let userId: string | undefined;
+        if (dto.password && dto.password.length >= 6) {
+            const roleMap: Record<string, string> = {
+                INSTRUCTOR: 'TEACHER',
+                NURSE: 'TEACHER',
+                TECHNICIAN: 'TEACHER',
+                ADMINISTRATIVE: 'TEACHER',
+                OTHER: 'TEACHER',
+                COORDINATOR: 'COORDINATOR',
+                DRIVER: 'DRIVER',
+            };
+            const userRole = roleMap[dto.role] ?? 'TEACHER';
+            const hashed = await bcrypt.hash(dto.password, 10);
+            const user = await this.prisma.user.create({
+                data: {
+                    name: dto.name,
+                    email: dto.email!,
+                    password: hashed,
+                    role: userRole as any,
+                },
+            });
+            userId = user.id;
         }
 
         return this.prisma.employee.create({
@@ -37,9 +63,11 @@ export class EmployeesService {
                 notes: dto.notes,
                 photoUrl: dto.photoUrl,
                 active: dto.active ?? true,
+                ...(userId ? { userId } : {}),
             },
         });
     }
+
 
     async findAll(filters?: {
         role?: string;

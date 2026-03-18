@@ -85,6 +85,7 @@ const EMPTY_FORM = {
     name: '', role: 'INSTRUCTOR' as EmployeeRole, department: 'ACADEMIC' as EmployeeDepartment,
     cpf: '', rg: '', phone: '', email: '', specialty: '', dailyCost: '', hireDate: '', notes: '', active: true,
     contractType: '', monthlySalaryCLT: '', travelRuleKm: 200,
+    password: '', confirmPassword: '',
 };
 
 /* ── 3D Tilt Card ──────────────────────────────────── */
@@ -626,6 +627,7 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
         contractType: employee.contractType || '',
         monthlySalaryCLT: employee.monthlySalaryCLT?.toString() || '',
         travelRuleKm: employee.travelRuleKm || 200,
+        password: '', confirmPassword: '',
     } : { ...EMPTY_FORM });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -635,10 +637,15 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
 
     const handleSubmit = async () => {
         if (!form.name.trim()) { setError('Nome é obrigatório'); return; }
+        // Validação de senha — só quando preenchida
+        if (form.password) {
+            if (form.password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres'); return; }
+            if (form.password !== form.confirmPassword) { setError('As senhas não coincidem'); return; }
+        }
         setSaving(true);
         setError('');
         try {
-            const payload = {
+            const payload: any = {
                 name: form.name, role: form.role, department: form.department,
                 cpf: form.cpf || undefined, rg: form.rg || undefined,
                 phone: form.phone || undefined, email: form.email || undefined,
@@ -649,6 +656,7 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                 contractType: form.contractType || undefined,
                 monthlySalaryCLT: form.monthlySalaryCLT ? parseCurrency(form.monthlySalaryCLT as string) : undefined,
                 travelRuleKm: form.travelRuleKm ? parseInt(String(form.travelRuleKm)) : undefined,
+                ...(form.password ? { password: form.password } : {}),
             };
             if (employee?.id) {
                 await api.put(`/employees/${employee.id}`, payload);
@@ -831,6 +839,29 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
                                 <label className="form-label">E-mail</label>
                                 <input type="email" className="form-input" value={form.email} onChange={e => set('email', e.target.value)} placeholder="funcionario@upgrade.ma" />
                             </div>
+                            {/* Campos de acesso ao sistema — só mostrar em novo funcionário */}
+                            {!employee && (
+                                <>
+                                    <div style={{ padding: '0.75rem 1rem', borderRadius: 12, background: 'rgba(8,145,178,0.05)', border: '1px solid rgba(8,145,178,0.2)' }}>
+                                        <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0891B2', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                                            🔑 Acesso ao Sistema (opcional)
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#6B7280', marginBottom: '0.75rem' }}>
+                                            Preencha para criar login. Deixe em branco se o funcionário não precisa acessar o sistema.
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                            <div>
+                                                <label className="form-label">Senha</label>
+                                                <input type="password" className="form-input" value={form.password || ''} onChange={e => set('password', e.target.value)} placeholder="Mínimo 6 caracteres" autoComplete="new-password" />
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Confirmar Senha</label>
+                                                <input type="password" className="form-input" value={form.confirmPassword || ''} onChange={e => set('confirmPassword', e.target.value)} placeholder="Repita a senha" autoComplete="new-password" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                             <div>
                                 <label className="form-label">Observações</label>
                                 <textarea className="form-input" value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Informações adicionais..." rows={3} style={{ resize: 'vertical' }} />

@@ -26,6 +26,8 @@ export default function LoginPage() {
             } else if (response.user.role === 'STUDENT') {
                 localStorage.setItem('student', JSON.stringify(response.student));
                 router.push('/student/dashboard');
+            } else if (response.user.role === 'DRIVER') {
+                router.push('/driver/dashboard');
             } else {
                 router.push('/teacher/dashboard');
             }

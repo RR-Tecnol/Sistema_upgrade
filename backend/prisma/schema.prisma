@@ -20,6 +20,7 @@ enum UserRole {
   FINANCIAL
   TEACHER
   STUDENT
+  DRIVER
 }
 
 enum Gender {
@@ -285,6 +286,8 @@ model User {
   acaoEquipe        AcaoEquipe[] @relation("UserAcaoEquipe")
   acaoCustos        AcaoCusto[]  @relation("UserAcaoCustos")
   classHolidaysRegistered ClassHoliday[] @relation("HolidayRegistrar") // REQ-08
+  employee          Employee?
+  tripsAsDriver     Trip[]    @relation("TripDriver") // EXEC-02
 
   @@index([email])
   @@index([role])
@@ -852,6 +855,7 @@ model Trip {
   actualArrivalDate   DateTime?
   driverName          String
   driverPhone         String?
+  driverUserId        String?   // FK para User com role DRIVER (adicionado EXEC-02)
   kmStart             Int?
   kmEnd               Int?
   status              TripStatus @default(PLANNED)
@@ -863,10 +867,12 @@ model Trip {
   truck           Truck    @relation(fields: [truckId], references: [id])
   originCity      City     @relation("TripOrigin", fields: [originCityId], references: [id])
   destinationCity City     @relation("TripDestination", fields: [destinationCityId], references: [id])
+  driverUser      User?    @relation("TripDriver", fields: [driverUserId], references: [id])
   expenses        Expense[]
 
   @@index([truckId])
   @@index([status])
+  @@index([driverUserId])
   @@map("trips")
 }
 
@@ -1035,6 +1041,8 @@ model Employee {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
+  userId            String?            @unique      // FK para User (acesso ao sistema)
+  user              User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   acaoFuncionarios  AcaoFuncionario[]
   reimbursements    Reimbursement[]
 

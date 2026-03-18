@@ -7,6 +7,7 @@ import { CitiesModule } from './cities/cities.module';
 import { GroupsModule } from './groups/groups.module';
 import { CoursesModule } from './courses/courses.module';
 import { TrucksModule } from './trucks/trucks.module';
+import { TripsModule } from './trips/trips.module';
 import { ClassesModule } from './classes/classes.module';
 import { EnrollmentsModule } from './enrollments/enrollments.module';
 import { StudentsModule } from './students/students.module';
@@ -41,6 +42,7 @@ import { NotificationsModule } from './notifications/notifications.module';
         GroupsModule,
         CoursesModule,
         TrucksModule,
+        TripsModule,
         ClassesModule,
         EnrollmentsModule,
         StudentsModule,

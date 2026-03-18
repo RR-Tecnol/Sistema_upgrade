@@ -7,6 +7,20 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import api from '@/lib/api/client';
 
+interface AnalyticsData {
+    inscricoesPorMes: { month: string; total: number; aprovados: number }[];
+    alunosPorCurso: { curso: string; alunos: number; turmas: number }[];
+    distribuicaoEstado: { name: string; value: number; color: string }[];
+    statusInscricoes: { name: string; value: number; color: string }[];
+    resumo: {
+        totalStudents: number;
+        totalCourses: number;
+        totalClasses: number;
+        totalEnrollments: number;
+        totalActions: number;
+    };
+}
+
 const MapaRotas = dynamic(() => import('@/components/MapaRotas'), { ssr: false, loading: () => (
     <div style={{ height: 360, background: '#0F172A', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: '0.85rem' }}>Carregando mapa...</div>
 ) });
@@ -70,9 +84,7 @@ function KPI({ label, value, sub, color, bg, border, spark, suffix = '' }: {
     );
 }
 
-const SPARK_ENROLL = [4, 8, 6, 14, 10, 18, 15, 20, 24, 21, 28];
-const SPARK_ATTEND = [80, 83, 81, 86, 88, 84, 90, 88, 92, 90, 91];
-const SPARK_CERT = [2, 5, 4, 9, 7, 12, 10, 14, 16, 15, 18];
+// Sparklines calculadas de dados reais no componente (ver sparkEnroll, sparkAprovados)
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -84,6 +96,7 @@ export default function AdminDashboard() {
     const [biEstado, setBiEstado] = useState('TODOS');
     const [biAno, setBiAno] = useState(new Date().getFullYear().toString());
     const [biLoading, setBiLoading] = useState(false);
+    const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
 
     useEffect(() => {
         load();
@@ -96,12 +109,16 @@ export default function AdminDashboard() {
 
     const load = async () => {
         try {
-            const [s, a, u] = await Promise.all([
+            const [s, a, u, analyticsRes] = await Promise.all([
                 dashboardApi.getStats(),
                 dashboardApi.getRecentActivity(),
                 dashboardApi.getUpcomingClasses(),
+                api.get('/dashboard/analytics').catch(() => ({ data: null })),
             ]);
-            setStats(s); setActivities(a); setUpcoming(u);
+            setStats(s);
+            setActivities(a);
+            setUpcoming(u);
+            if (analyticsRes.data) setAnalytics(analyticsRes.data);
             setLastUpdate(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
         } catch { /* noop */ } finally { setLoading(false); }
     };
@@ -121,6 +138,17 @@ export default function AdminDashboard() {
     const totalStudents = stats?.students.total || 0;
     const maPct = totalStudents ? Math.round((maStudents / totalStudents) * 100) : 0;
     const piPct = 100 - maPct;
+
+    // Sparklines calculadas dos dados reais (array vazio enquanto carrega — Sparkline retorna null para < 2 pontos)
+    const sparkEnroll = analytics?.inscricoesPorMes.map(m => m.total) ?? [];
+    const sparkAprovados = analytics?.inscricoesPorMes.map(m => m.aprovados) ?? [];
+    const taxaAprovacao = analytics?.inscricoesPorMes.length
+        ? Math.round(
+            (analytics.inscricoesPorMes.reduce((acc, m) => acc + m.aprovados, 0) /
+             Math.max(analytics.inscricoesPorMes.reduce((acc, m) => acc + m.total, 0), 1)) * 100
+          )
+        : 0;
+    const certCount = analytics?.statusInscricoes?.find(s => s.name === 'Aprovadas')?.value ?? 0;
 
     if (loading) return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
@@ -152,14 +180,14 @@ export default function AdminDashboard() {
                 <KPI label="Cursos Ativos" value={stats?.courses.active || 0} sub={`de ${stats?.courses.total || 0} cursos`} color="#B89B00" bg="#FFFDE7" border="#FEF08A" spark={[3, 5, 4, 7, 6, 8, 7, 9, 8, 10, 9]} />
                 <KPI label="Total de Alunos" value={totalStudents} sub={`MA ${maStudents} · PI ${piStudents}`} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" spark={[10, 15, 13, 18, 16, 20, 19, 22, 24, 21, 26]} />
                 <KPI label="Turmas Ativas" value={stats?.classes.active || 0} sub={`de ${stats?.classes.total || 0} turmas`} color="#059669" bg="#F0FDF4" border="#BBF7D0" spark={[2, 3, 3, 5, 4, 6, 5, 7, 6, 8, 7]} />
-                <KPI label="Inscrições Pendentes" value={stats?.enrollments.pending || 0} sub={`${stats?.enrollments.total || 0} inscrições total`} color="#EA580C" bg="#FFF7ED" border="#FED7AA" spark={SPARK_ENROLL} />
+                <KPI label="Inscrições Pendentes" value={stats?.enrollments.pending || 0} sub={`${stats?.enrollments.total || 0} inscrições total`} color="#EA580C" bg="#FFF7ED" border="#FED7AA" spark={sparkEnroll} />
             </div>
 
             {/* ── ROW 2: SECONDARY METRICS ── */}
             <div className="grid-3-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
-                <KPI label="Taxa de Aprovação" value={87} suffix="%" color="#B89B00" bg="#FFFDE7" border="#FEF08A" spark={[60, 70, 65, 80, 75, 82, 87, 85, 89, 88, 87]} />
-                <KPI label="Frequência Média" value={91} suffix="%" color="#059669" bg="#F0FDF4" border="#BBF7D0" spark={SPARK_ATTEND} />
-                <KPI label="Certificados Emitidos" value={stats?.enrollments.total ? Math.floor(stats.enrollments.total * 0.3) : 0} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" spark={SPARK_CERT} />
+                <KPI label="Taxa de Aprovação" value={taxaAprovacao} suffix="%" color="#B89B00" bg="#FFFDE7" border="#FEF08A" spark={sparkAprovados} />
+                <KPI label="Frequência Média" value={91} suffix="%" color="#059669" bg="#F0FDF4" border="#BBF7D0" spark={sparkEnroll} />
+                <KPI label="Certificados Emitidos" value={certCount} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" spark={sparkAprovados} />
             </div>
 
             {/* ── ROW 3: STATES BAR ── */}

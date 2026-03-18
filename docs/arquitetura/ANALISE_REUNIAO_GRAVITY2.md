@@ -1,3 +1,8 @@
+> ⚠️ **DOCUMENTO HISTÓRICO** — escrito em 15/03/2026, antes dos Sprints 1→BUG+SEC-A.
+> Todos os GAPs e o plano de sprints das Partes 2, 3 e 5 estão **IMPLEMENTADOS**.
+> Valor atual: referência de contexto da reunião com timestamps. Não reimplementar.
+> Estado atual do sistema: ver [ROADMAP_EPICOS.md](./ROADMAP_EPICOS.md) e [PLANO_IMPLEMENTACAO_FASES.md](./PLANO_IMPLEMENTACAO_FASES.md).
+
 # ANÁLISE DA TRANSCRIÇÃO — REUNIÃO UPGRADE × RR TECNOL (12/03/2026)
 ## Gravity 2.0 · Sistema Upgrade · Atualizado em 15/03/2026
 

@@ -1,3 +1,14 @@
+# SPECS PDF GOVERNAMENTAL — Modelos Reais Aprovados pelo Cliente
+## Sistema Upgrade | Robert S. Pimentel | Gravity 2.0 | 15/03/2026
+
+> **CRÍTICO PARA O NEGÓCIO:** Estes são os modelos reais de PDF enviados pelo Robert.
+> O PDF gerado pelo sistema DEVE corresponder exatamente a esses modelos.
+> Se não corresponder, a secretaria do governo NÃO aceita e a empresa NÃO recebe o pagamento.
+>
+> **Referencia:** Lido obrigatoriamente antes de executar EXEC-05.
+
+---
+
 # HANDOFF S3-01 e S3-02 — TEMPLATES PDF REAIS
 ## Para o Antygravity executar · Gravity 2.0 · 15/03/2026
 
@@ -176,7 +187,7 @@ total = salarioCLT_proporcional + diarias + passagens
 
 ---
 
-## ARQUIVOS A MODIFICAR (para o Antygravity)
+## ARQUIVOS A MODIFICAR (para o Antygravity — EXEC-05)
 
 ```
 backend/src/reports/pdf.service.ts
@@ -199,7 +210,7 @@ cd backend
 npm run build
 npx tsc --noEmit
 # Se build OK:
-$env:PORT=3002; npm run start:dev
+npm run start:dev
 # Testar via Swagger: GET /reports/frequency/:classId
 # Testar via Swagger: GET /reports/concludents/:classId
 ```

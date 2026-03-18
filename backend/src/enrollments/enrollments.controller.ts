@@ -60,6 +60,19 @@ export class EnrollmentsController {
         return this.enrollmentsService.findAll({ status, classId, search });
     }
 
+    /**
+     * REQ-06 — Portal do Aluno
+     * Retorna as matrículas do aluno autenticado com dados de turma, curso, cidade e carreta.
+     * IMPORTANTE: deve ficar ANTES de @Get(':id') para não ser capturado como id='my'
+     */
+    @Get('my')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Matrículas do próprio aluno autenticado (portal do aluno REQ-06)' })
+    async myEnrollments(@Request() req: any) {
+        return this.enrollmentsService.findByUserId(req.user.id);
+    }
+
     @Get(':id')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
@@ -137,15 +150,4 @@ export class EnrollmentsController {
         return this.enrollmentsService.getWaitlist(classId);
     }
 
-    /**
-     * REQ-06 — Portal do Aluno
-     * Retorna as matrículas do aluno autenticado com dados de turma, curso, cidade e carreta.
-     */
-    @Get('my')
-    @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({ summary: 'Matrículas do próprio aluno autenticado (portal do aluno REQ-06)' })
-    async myEnrollments(@Request() req: any) {
-        return this.enrollmentsService.findByUserId(req.user.id);
-    }
 }

@@ -4,6 +4,20 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+/* ═══════════════════════════════════════════════════════
+   RESET GLOBAL CRÍTICO — garante que o app ocupa 100% do viewport
+   em TODOS os tamanhos e dispositivos, sem espaços brancos.
+   NOTA: Estes resets ficam DENTRO do @layer base para não conflitar
+   com o Tailwind PostCSS. O @layer base é processado após o Preflight.
+═══════════════════════════════════════════════════════ */
+
+/* Garante que o container raiz do Next.js também seja 100% */
+#__next,
+[data-nextjs-scroll-focus-boundary] {
+    width: 100%;
+    min-height: 100%;
+}
+
 @layer base {
   :root {
     /* UPGRADE Brand — Yellow Primary */
@@ -49,16 +63,25 @@
     --neon-purple-glow: rgba(124, 58, 237, 0.2);
   }
 
-  * {
+  /* Reset reforçado — garante 100% de largura e sem margens em todo device */
+  *,
+  *::before,
+  *::after {
     border-color: var(--border-subtle);
     box-sizing: border-box;
   }
 
   html {
+    width: 100%;
+    height: 100%;
+    overflow-x: hidden;
     scroll-behavior: smooth;
   }
 
   body {
+    width: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-family: 'Inter', sans-serif;

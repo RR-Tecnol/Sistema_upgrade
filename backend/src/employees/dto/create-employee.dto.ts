@@ -77,4 +77,14 @@ export class CreateEmployeeDto {
     @ApiPropertyOptional({ description: 'Distância limite (km) para passagem semanal vs quinzenal. Default: 200' })
     @IsOptional()
     travelRuleKm?: number;
+
+    @ApiPropertyOptional({ description: 'Senha de acesso ao sistema (opcional — preencha para criar login)' })
+    @IsOptional()
+    @IsString()
+    password?: string;
+
+    @ApiPropertyOptional({ description: 'Confirmação da senha (validação no frontend)' })
+    @IsOptional()
+    @IsString()
+    confirmPassword?: string;
 }

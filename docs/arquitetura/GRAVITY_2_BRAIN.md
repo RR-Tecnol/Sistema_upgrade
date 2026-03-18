@@ -364,7 +364,7 @@ FRONTEND (Next.js 14 — localhost:3000)
     └── Portal do Aluno (dashboard, frequência, certificados)
             │ HTTP REST + JWT Bearer
             ▼
-BACKEND (NestJS 10 — localhost:3002)
+BACKEND (NestJS 10 — localhost:3001)
     ├── Auth Module (JWT duplo + RBAC)
     ├── Students Module (CRUD + MinIO upload)
     ├── Classes Module (turmas + ciclo de vida)
@@ -538,7 +538,7 @@ Salvar obrigatoriamente na memória MCP:
 cd C:\Users\Desktop\Downloads\Sistema_upgrade-main_atual\backend
 
 # Desenvolvimento
-$env:PORT=3002; npm run start:dev
+npm run start:dev  # porta 3001 definida em backend/.env
 
 # Build e verificação TypeScript
 npm run build
@@ -552,7 +552,7 @@ npm run prisma:seed
 npm run seed:test
 
 # Matar porta em uso
-netstat -ano | findstr :3002
+netstat -ano | findstr :3001
 taskkill /F /PID <PID>
 ```
 
@@ -617,8 +617,8 @@ MinIO Console: http://localhost:9001
   User: minioadmin
   Pass: minioadmin123
 
-Backend: http://localhost:3002/api
-Swagger: http://localhost:3002/api/docs
+Backend: http://localhost:3001/api
+Swagger: http://localhost:3001/api/docs
 Frontend: http://localhost:3000
 ```
 
