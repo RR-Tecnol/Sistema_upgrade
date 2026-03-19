@@ -911,6 +911,12 @@ export default function FuncionariosPage() {
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
     const [detailEmployee, setDetailEmployee] = useState<Employee | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+    // Aba Pendentes — usuários auto-cadastrados aguardando aprovação
+    const [activeTab, setActiveTab] = useState<'employees' | 'pending'>('employees');
+    const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+    const [loadingPending, setLoadingPending] = useState(false);
+    const [pendingAction, setPendingAction] = useState<string | null>(null);
+    const [pendingToast, setPendingToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
     const fetchEmployees = useCallback(async () => {
         setLoading(true);
@@ -946,6 +952,46 @@ export default function FuncionariosPage() {
     };
 
     const handleModalSave = () => { setModalOpen(false); setEditingEmployee(null); fetchEmployees(); };
+
+    // ── Pendentes: buscar users com active=false cadastrados via /registro
+    const fetchPending = useCallback(async () => {
+        setLoadingPending(true);
+        try {
+            const res = await api.get('/users', { params: { active: 'false', limit: 100 } });
+            const data = res.data;
+            const all: any[] = Array.isArray(data) ? data : data.users || data.data || [];
+            // Filtrar apenas TEACHER e DRIVER sem Employee (auto-cadastrado)
+            setPendingUsers(all.filter((u: any) => !u.active && (u.role === 'TEACHER' || u.role === 'DRIVER')));
+        } catch { setPendingUsers([]); } finally { setLoadingPending(false); }
+    }, []);
+
+    useEffect(() => { if (activeTab === 'pending') fetchPending(); }, [activeTab, fetchPending]);
+
+    const showPendingToast = (msg: string, ok: boolean) => {
+        setPendingToast({ msg, ok }); setTimeout(() => setPendingToast(null), 3500);
+    };
+
+    const handleApprove = async (userId: string, userName: string) => {
+        setPendingAction(userId + 'approve');
+        try {
+            await api.patch(`/users/${userId}`, { active: true });
+            showPendingToast(`✅ ${userName} aprovado com sucesso!`, true);
+            fetchPending();
+        } catch {
+            showPendingToast('Erro ao aprovar usuário', false);
+        } finally { setPendingAction(null); }
+    };
+
+    const handleReject = async (userId: string, userName: string) => {
+        setPendingAction(userId + 'reject');
+        try {
+            await api.delete(`/users/${userId}`);
+            showPendingToast(`🗑️ Cadastro de ${userName} rejeitado.`, true);
+            fetchPending();
+        } catch {
+            showPendingToast('Erro ao rejeitar usuário', false);
+        } finally { setPendingAction(null); }
+    };
 
     const topRole = kpis.byRole.sort((a, b) => b._count._all - a._count._all)[0];
 
@@ -1020,8 +1066,91 @@ export default function FuncionariosPage() {
                 </div>
             </div>
 
-            {/* ── ROLE KPI CARDS ── */}
-            {kpis.byRole.length > 0 && (
+
+
+            {/* ── TABS ── */}
+            <div style={{ display: 'flex', gap: '0.4rem', borderBottom: '2px solid #F3F4F6', paddingBottom: 0 }}>
+                {([
+                    { key: 'employees' as const, label: '👥 Funcionários', count: kpis.total, accent: '#FFD600' },
+                    { key: 'pending' as const, label: '⏳ Pendentes', count: pendingUsers.length, accent: '#DC2626' },
+                ]).map(tab => (
+                    <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+                        padding: '0.6rem 1.1rem', border: 'none', cursor: 'pointer', background: 'transparent',
+                        fontWeight: activeTab === tab.key ? 800 : 500, fontSize: '0.82rem',
+                        color: activeTab === tab.key ? '#111827' : '#6B7280',
+                        borderBottom: `3px solid ${activeTab === tab.key ? tab.accent : 'transparent'}`,
+                        display: 'inline-flex', alignItems: 'center', gap: '0.45rem', transition: 'all 0.15s',
+                        marginBottom: -2,
+                    }}>
+                        {tab.label}
+                        {tab.count > 0 && (
+                            <span style={{
+                                background: tab.accent, color: tab.key === 'pending' ? '#fff' : '#000',
+                                fontSize: '0.6rem', fontWeight: 900, padding: '1px 5px', borderRadius: 100,
+                            }}>{tab.count}</span>
+                        )}
+                    </button>
+                ))}
+            </div>
+
+            {/* ── ABA PENDENTES ── */}
+            {activeTab === 'pending' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {pendingToast && (
+                        <div className="animate-scale-in" style={{
+                            position: 'fixed', top: 80, right: 24, zIndex: 9999, padding: '12px 20px',
+                            background: pendingToast.ok ? '#D1FAE5' : '#FEE2E2',
+                            border: `1px solid ${pendingToast.ok ? '#6EE7B7' : '#FCA5A5'}`,
+                            borderRadius: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+                            fontSize: '0.85rem', fontWeight: 600, color: pendingToast.ok ? '#065F46' : '#991B1B',
+                        }}>{pendingToast.msg}</div>
+                    )}
+                    <div style={{ background: 'rgba(251,191,36,0.08)', borderRadius: 14, border: '1.5px solid rgba(251,191,36,0.4)', padding: '0.9rem 1.2rem' }}>
+                        <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.65rem', fontWeight: 800, color: '#92400E', letterSpacing: '0.12em', marginBottom: '0.3rem' }}>⚠️ CADASTROS AGUARDANDO APROVAÇÃO</div>
+                        <div style={{ fontSize: '0.78rem', color: '#6B7280' }}>Usuários que se auto-cadastraram via <strong>/registro</strong> enquanto aguardam aprovação do administrador.</div>
+                    </div>
+                    {loadingPending ? (
+                        <div style={{ textAlign: 'center', padding: '3rem', color: '#9CA3AF' }}><div className="spinner" style={{ margin: '0 auto 1rem', width: 38, height: 38 }} /> Carregando...</div>
+                    ) : pendingUsers.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '4rem', background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>✅</div>
+                            <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.72rem', letterSpacing: '0.15em', color: '#059669' }}>NENHUM CADASTRO PENDENTE</div>
+                        </div>
+                    ) : pendingUsers.map((u: any) => {
+                        const isTeacher = u.role === 'TEACHER';
+                        const roleStyle = isTeacher
+                            ? { label: 'Professor', icon: '🎓', color: '#FFD600', bg: 'rgba(255,214,0,0.1)' }
+                            : { label: 'Motorista', icon: '🚛', color: '#0891B2', bg: 'rgba(8,145,178,0.1)' };
+                        const initials = u.name?.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase() || '??';
+                        const approving = pendingAction === u.id + 'approve';
+                        const rejecting = pendingAction === u.id + 'reject';
+                        return (
+                            <div key={u.id} className="animate-scale-in" style={{ background: '#fff', borderRadius: 16, border: `1.5px solid ${roleStyle.color}30`, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                                <div style={{ width: 50, height: 50, borderRadius: 14, background: roleStyle.bg, border: `1.5px solid ${roleStyle.color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Orbitron, sans-serif', fontWeight: 900, color: roleStyle.color, flexShrink: 0 }}>{initials}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827', marginBottom: '0.2rem' }}>{u.name}</div>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.18rem 0.5rem', borderRadius: 100, background: roleStyle.bg, border: `1px solid ${roleStyle.color}30`, fontSize: '0.7rem', fontWeight: 700, color: roleStyle.color }}>{roleStyle.icon} {roleStyle.label}</span>
+                                        {u.email && <span style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>📧 {u.email}</span>}
+                                        {u.phone && <span style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>📞 {u.phone}</span>}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                                    <button onClick={() => handleApprove(u.id, u.name)} disabled={!!pendingAction} style={{ padding: '0.5rem 0.9rem', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#10B981,#059669)', color: '#fff', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', opacity: pendingAction ? 0.6 : 1, minWidth: 85 }}>
+                                        {approving ? '...' : '✅ Aprovar'}
+                                    </button>
+                                    <button onClick={() => handleReject(u.id, u.name)} disabled={!!pendingAction} style={{ padding: '0.5rem 0.85rem', borderRadius: 10, background: 'rgba(220,38,38,0.07)', border: '1px solid rgba(220,38,38,0.25)', color: '#DC2626', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', opacity: pendingAction ? 0.6 : 1, minWidth: 85 }}>
+                                        {rejecting ? '...' : '🗑️ Rejeitar'}
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* ── ROLE KPI CARDS (aba Funcionários) ── */}
+            {activeTab === 'employees' && kpis.byRole.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
                     {kpis.byRole.map((r: any, i: number) => {
                         const cfg = ROLE_CONFIG[r.role as EmployeeRole];

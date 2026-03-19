@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useEnrollmentStore } from '@/stores/useEnrollmentStore';
 import { CheckIcon } from '@heroicons/react/24/solid';
@@ -28,6 +28,7 @@ export default function EnrollmentPage() {
     const params = useParams();
     const router = useRouter();
     const { currentStep, setClassId, reset } = useEnrollmentStore();
+    const [confirmCancel, setConfirmCancel] = useState(false);
 
     useEffect(() => {
         const classId = params.classId as string;
@@ -109,19 +110,22 @@ export default function EnrollmentPage() {
                     {CurrentStepComponent && <CurrentStepComponent />}
                 </div>
 
-                <div style={{ textAlign: 'center' }}>
+                {!confirmCancel ? (
                     <button
-                        onClick={() => {
-                            if (confirm('Cancelar inscrição? Todos os dados serão perdidos.')) {
-                                reset();
-                                router.push('/cursos');
-                            }
-                        }}
+                        onClick={() => setConfirmCancel(true)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: '0.82rem', textDecoration: 'underline' }}
                     >
                         Cancelar Inscrição
                     </button>
-                </div>
+                ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '0.82rem', color: '#DC2626', fontWeight: 600 }}>Cancelar inscrição? Todos os dados serão perdidos.</span>
+                        <button onClick={() => { reset(); router.push('/cursos'); }}
+                            style={{ padding: '0.35rem 0.85rem', borderRadius: 8, background: '#DC2626', border: 'none', color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>Sim, cancelar</button>
+                        <button onClick={() => setConfirmCancel(false)}
+                            style={{ padding: '0.35rem 0.85rem', borderRadius: 8, background: '#F3F4F6', border: '1px solid #E5E7EB', color: '#6B7280', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>Continuar</button>
+                    </div>
+                )}
             </div>
         </div>
     );

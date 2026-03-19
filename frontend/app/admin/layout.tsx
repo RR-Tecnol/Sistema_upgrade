@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '@/components/admin/Sidebar';
 import Header from '@/components/admin/Header';
+import { ToastContainer } from '@/components/ui/Toast';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
     const router = useRouter();
@@ -39,6 +40,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
     return (
         <div className="admin-layout">
+            <ToastContainer />
             <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
             <div className="admin-main">
                 <Header onMenuToggle={() => setSidebarOpen(s => !s)} />

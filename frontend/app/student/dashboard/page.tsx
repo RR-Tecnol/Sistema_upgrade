@@ -89,8 +89,15 @@ export default function StudentDashboard() {
                 setCertificates(Array.isArray(certRes.value.data) ? certRes.value.data : []);
             }
 
-            // Attendance mock if not available
-            setAttendance({ totalClasses: 32, presentCount: 28, absentCount: 4, rate: 87 });
+            // EXEC-04: buscar frequência real do endpoint
+            try {
+                const attRes = await api.get('/students/me/attendance-summary');
+                if (attRes.data && typeof attRes.data.rate === 'number') {
+                    setAttendance(attRes.data);
+                }
+            } catch {
+                // sem dados de frequência ainda — mantém zeros
+            }
         } catch (e) {
             console.error(e);
         } finally {
@@ -140,10 +147,10 @@ export default function StudentDashboard() {
             {/* Stats row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
                 {[
-                    { icon: <AcademicCapIcon style={{ width: 20, height: 20 }} />, label: 'Matrículas Ativas', value: activeEnrollments.length, color: '#FFD600', iconBg: '#000', suffix: '' },
-                    { icon: <CheckCircleIcon style={{ width: 20, height: 20 }} />, label: 'Frequência', value: attendance.rate, color: attendance.rate >= 75 ? '#059669' : '#DC2626', iconBg: attendance.rate >= 75 ? '#059669' : '#DC2626', suffix: '%' },
-                    { icon: <TrophyIcon style={{ width: 20, height: 20 }} />, label: 'Certificados', value: certificates.length, color: '#7C3AED', iconBg: '#7C3AED', suffix: '' },
-                    { icon: <DocumentTextIcon style={{ width: 20, height: 20 }} />, label: 'Inscrições', value: enrollments.length, color: '#0891B2', iconBg: '#0891B2', suffix: '' },
+                    { icon: <AcademicCapIcon style={{ width: 20, height: 20 }} />, label: 'Matrículas Ativas', value: activeEnrollments.length, color: '#92400E', iconBg: '#FFD600', suffix: '' },
+                    { icon: <CheckCircleIcon style={{ width: 20, height: 20 }} />, label: 'Frequência', value: attendance.rate, color: attendance.rate >= 75 ? '#059669' : '#DC2626', iconBg: attendance.rate >= 75 ? '#D1FAE5' : '#FEE2E2', suffix: '%' },
+                    { icon: <TrophyIcon style={{ width: 20, height: 20 }} />, label: 'Certificados', value: certificates.length, color: '#7C3AED', iconBg: '#EDE9FE', suffix: '' },
+                    { icon: <DocumentTextIcon style={{ width: 20, height: 20 }} />, label: 'Inscrições', value: enrollments.length, color: '#0891B2', iconBg: '#E0F2FE', suffix: '' },
                 ].map((s, i) => (
                     <div key={i} className="stat-card animate-scale-in" style={{ animationDelay: `${i * 80}ms` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.85rem' }}>

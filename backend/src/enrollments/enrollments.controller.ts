@@ -17,11 +17,15 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
+import { AuditLogService } from '../audit-log/audit-log.service';
 
 @ApiTags('enrollments')
 @Controller('enrollments')
 export class EnrollmentsController {
-    constructor(private readonly enrollmentsService: EnrollmentsService) { }
+    constructor(
+        private readonly enrollmentsService: EnrollmentsService,
+        private readonly auditLog: AuditLogService,
+    ) { }
 
     @Post('public')
     @Public()
@@ -95,7 +99,9 @@ export class EnrollmentsController {
         @Body() dto: ApproveEnrollmentDto,
         @Request() req: any,
     ) {
-        return this.enrollmentsService.approve(id, req.user.id, dto.notes);
+        const result = await this.enrollmentsService.approve(id, req.user.id, dto.notes);
+        this.auditLog.log({ userId: req.user.id, action: 'APPROVE_ENROLLMENT', tableName: 'enrollments', recordId: id });
+        return result;
     }
 
     @Patch(':id/reject')
@@ -110,7 +116,9 @@ export class EnrollmentsController {
         @Body() dto: RejectEnrollmentDto,
         @Request() req: any,
     ) {
-        return this.enrollmentsService.reject(id, req.user.id, dto.rejectionReason);
+        const result = await this.enrollmentsService.reject(id, req.user.id, dto.rejectionReason);
+        this.auditLog.log({ userId: req.user.id, action: 'REJECT_ENROLLMENT', tableName: 'enrollments', recordId: id, newData: { reason: dto.rejectionReason } });
+        return result;
     }
 
     @Patch(':id/request-correction')
@@ -148,6 +156,41 @@ export class EnrollmentsController {
     @ApiResponse({ status: 200, description: 'Lista de espera' })
     async getWaitlist(@Param('classId') classId: string) {
         return this.enrollmentsService.getWaitlist(classId);
+    }
+
+    /**
+     * Endpoint genérico de mudança de status — usado por admin/inscricoes/page.tsx
+     * PATCH /enrollments/:id/status { status: 'APPROVED' | 'REJECTED' | 'WAITLIST', rejectionReason? }
+     * Roteia internamente para os métodos específicos (approve/reject/waitlist).
+     */
+    @Patch(':id/status')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Atualizar status da inscrição (endpoint genérico)' })
+    @ApiResponse({ status: 200, description: 'Status atualizado' })
+    async updateStatus(
+        @Param('id') id: string,
+        @Body() dto: { status: string; rejectionReason?: string; notes?: string },
+        @Request() req: any,
+    ) {
+        let result: any;
+        switch (dto.status) {
+            case 'APPROVED':
+                result = await this.enrollmentsService.approve(id, req.user.id, dto.notes);
+                this.auditLog.log({ userId: req.user.id, action: 'APPROVE_ENROLLMENT', tableName: 'enrollments', recordId: id });
+                break;
+            case 'REJECTED':
+                result = await this.enrollmentsService.reject(id, req.user.id, dto.rejectionReason ?? '');
+                this.auditLog.log({ userId: req.user.id, action: 'REJECT_ENROLLMENT', tableName: 'enrollments', recordId: id, newData: { reason: dto.rejectionReason } });
+                break;
+            case 'WAITLIST':
+                result = await this.enrollmentsService.moveToWaitlist(id, req.user.id, dto.notes);
+                break;
+            default:
+                result = await this.enrollmentsService.requestCorrection(id, dto.notes || '');
+        }
+        return result;
     }
 
 }

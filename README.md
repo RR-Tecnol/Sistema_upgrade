@@ -2,20 +2,18 @@
 
 Sistema completo de gestão WEB para os programas **Qualifica Maranhão** e **Qualifica Piauí** — projetos de capacitação profissional itinerantes operados pela empresa Upgrade através de unidades móveis (carretas/caminhões).
 
+---
+
 ## 🎯 Visão Geral
 
-Sistema 100% **WEB RESPONSIVO** para gestão completa de:
+Sistema **multi-portal** com 4 perfis de acesso:
 
-- 📚 **Cursos e Turmas** — 8 tipos de cursos, multicurso, vagas reserva
-- 🚛 **Frota de Carretas** — controle de disponibilidade e manutenção
-- 📝 **Inscrições Online** — formulário completo com perfil socioeconômico
-- ✅ **Frequência Digital** — registro por aula, touch-friendly
-- 👨‍🎓 **Portal do Aluno** — turmas, frequência, certificados
-- 🎓 **Certificação Digital** — geração automática com QR Code verificável
-- 📊 **Relatórios Governamentais** — PDF de frequência e concludentes
-- 💰 **Módulo Financeiro** — contas a pagar, reembolsos, payroll CLT
-- 📅 **Feriados & Imprevistos** — recálculo automático de datas de aula
-- ⚙️ **Configurações** — perfil admin, notificações, segurança
+| Portal | Perfil | Descrição |
+|--------|--------|-----------|
+| `/admin/*` | ADMIN | Gestão completa do sistema |
+| `/teacher/*` | PROFESSOR | Frequência, reembolsos, certificados |
+| `/driver/*` | MOTORISTA | Viagens, manutenção, imprevistos |
+| `/student/*` | ALUNO | Turmas, frequência, certificados |
 
 ---
 
@@ -26,7 +24,6 @@ Sistema 100% **WEB RESPONSIVO** para gestão completa de:
 | **Backend** | NestJS (TypeScript) + Prisma ORM |
 | **Banco de Dados** | PostgreSQL 15 (via Docker) |
 | **Cache** | Redis 7 (via Docker) |
-| **Storage** | MinIO S3-compatible (comprovantes) |
 | **Auth** | JWT + Passport (access + refresh token) |
 | **Frontend** | Next.js 14 App Router + React 18 + TypeScript |
 | **Estilo** | Vanilla CSS + Orbitron + Inter |
@@ -34,7 +31,7 @@ Sistema 100% **WEB RESPONSIVO** para gestão completa de:
 
 ---
 
-## 🚀 Quick Start (Instalação Completa)
+## 🚀 Quick Start — Instalação Completa
 
 ### 1. Pré-requisitos
 
@@ -55,7 +52,7 @@ cd Sistema_upgrade
 docker-compose up -d
 ```
 
-Isso inicia: **PostgreSQL** (5432) · **Redis** (6379) · **MinIO** (9000/9001)
+Inicia: **PostgreSQL** (porta 5432) · **Redis** (porta 6379)
 
 ### 4. Configure o Backend
 
@@ -68,19 +65,22 @@ npm install
 # Gerar o Prisma Client
 npx prisma generate
 
-# Aplicar as migrations (cria as tabelas)
+# Aplicar migrations (cria todas as tabelas)
 npx prisma migrate deploy
 
-# Populate o banco com dados iniciais
+# Seed principal — cria admin, cursos, turmas, grupos, cidades
 npm run prisma:seed
 ```
 
-### 5. Dados de teste (opcional — reembolsos + aluno para certificado)
+### 5. Seed de Dados de Teste (OBRIGATÓRIO para ver dados no sistema)
 
 ```powershell
 # Ainda dentro de backend/
-npm run seed:test
+# Seed extra — viagens, manutenções, reembolsos, ausências, notificações
+npm run seed:extra
 ```
+
+> 📖 Veja [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) para entender os seeds e criar novos.
 
 ### 6. Inicie o Backend
 
@@ -96,10 +96,10 @@ Saída esperada:
 ```
 ✅ Database connected successfully
 🚀 Server running on http://localhost:3002
-📚 API Docs available at http://localhost:3002/api/docs
+📚 API Docs: http://localhost:3002/api/docs
 ```
 
-> ⚠️ O erro de MinIO (`S3Error: signature mismatch`) ao iniciar é **esperado** se MinIO não estiver configurado — ele **não afeta** o funcionamento do sistema.
+> ⚠️ Erro de MinIO é **esperado** e não afeta o funcionamento do sistema.
 
 ### 7. Inicie o Frontend
 
@@ -114,20 +114,21 @@ npm run dev
 | URL | Descrição |
 |-----|-----------|
 | [http://localhost:3000](http://localhost:3000) | **Sistema (Frontend)** |
-| [http://localhost:3002/api/docs](http://localhost:3002/api/docs) | Swagger / Documentação da API |
-| [http://localhost:5555](http://localhost:5555) | Prisma Studio (rode `npx prisma studio`) |
-| [http://localhost:9001](http://localhost:9001) | MinIO Console |
+| [http://localhost:3002/api/docs](http://localhost:3002/api/docs) | Swagger / API Docs |
+| [http://localhost:5555](http://localhost:5555) | Prisma Studio (`npx prisma studio`) |
 
 ---
 
-## 🔑 Credenciais Padrão
+## 🔑 Credenciais de Acesso (Criadas pelo Seed)
 
-| Perfil | Email | Senha |
-|--------|-------|-------|
-| **Administrador** | `admin@qualifica.com` | `admin123` |
-| **Aluno (teste)** | `aluno@qualifica.com` | `aluno123` |
+| Perfil | Email | Senha | Rota de entrada |
+|--------|-------|-------|-----------------|
+| **Administrador** | `admin@qualifica.com` | `RR@@Upgrade` | `/admin/dashboard` |
+| **Professor** | `maria.professora.visual@qualifica.com` | `RR@@Upgrade` | `/teacher/dashboard` |
+| **Motorista** | `joao.driver.test99@qualifica.com` | `RR@@Upgrade` | `/driver/dashboard` |
+| **Aluno** | `aluno@qualifica.com` | `RR@@Upgrade` | `/student/dashboard` |
 
-> Credenciais criadas automaticamente pelo `npm run prisma:seed` + `npm run seed:test`
+> 🔐 Todas as contas usam a **mesma senha**: `RR@@Upgrade`
 
 ---
 
@@ -135,51 +136,44 @@ npm run dev
 
 ```
 Sistema_upgrade/
-├── backend/                  # API NestJS
+├── backend/                    # API NestJS
 │   ├── prisma/
-│   │   ├── schema.prisma     # Schema do banco (30+ tabelas)
-│   │   ├── migrations/       # Histórico de migrations
-│   │   ├── seed.ts           # Dados iniciais (admin, grupos, cidades, cursos)
-│   │   └── seed-test.ts      # Dados de teste (aluno, reembolsos)
-│   ├── src/
-│   │   ├── auth/             # JWT Auth
-│   │   ├── students/         # Gestão de alunos
-│   │   ├── courses/          # Cursos
-│   │   ├── classes/          # Turmas
-│   │   ├── enrollments/      # Inscrições
-│   │   ├── holiday/          # Feriados & Imprevistos
-│   │   ├── reimbursement/    # Reembolsos
-│   │   ├── reports/          # Relatórios PDF
-│   │   ├── certificates/     # Certificados digitais
-│   │   ├── acoes/            # Períodos de Curso (Ações)
-│   │   ├── contas-pagar/     # Contas a Pagar
-│   │   ├── employees/        # Funcionários
-│   │   ├── trucks/           # Carretas
-│   │   ├── dashboard/        # KPIs e Analytics
-│   │   └── settings/         # Configurações do sistema
-│   └── package.json
-├── frontend/                 # Next.js 14 App Router
-│   ├── app/
-│   │   ├── admin/            # Área administrativa
-│   │   │   ├── alunos/       # Gestão de alunos
-│   │   │   ├── cursos/       # Gestão de cursos
-│   │   │   ├── turmas/       # Gestão de turmas
-│   │   │   ├── certificados/ # Emissão de certificados
-│   │   │   ├── reembolsos/   # Gestão de reembolsos
-│   │   │   ├── contas-a-pagar/ # Financeiro
-│   │   │   ├── feriados/     # Feriados & Imprevistos
-│   │   │   ├── relatorios/   # Relatórios governamentais
-│   │   │   ├── grupos/       # Grupos/Categorias
-│   │   │   ├── acoes/        # Períodos de Curso
-│   │   │   ├── funcionarios/ # Funcionários
-│   │   │   └── configuracoes/ # Configurações
-│   │   └── student/          # Portal do Aluno
-│   ├── components/
-│   │   ├── admin/            # Header, Sidebar
-│   │   └── student/          # Sidebar do aluno
-│   └── lib/api/              # Clientes API
-├── docs/                     # Documentação completa
-├── docker-compose.yml        # Infraestrutura Docker
+│   │   ├── schema.prisma       # Schema do banco (30+ tabelas)
+│   │   ├── migrations/         # Histórico de migrations
+│   │   ├── seed.ts             # Seed principal (admin, cursos, grupos)
+│   │   └── seed-extra.ts       # Seed de teste (viagens, manutenções, etc.)
+│   └── src/
+│       ├── auth/               # JWT Auth + 2FA
+│       ├── students/           # Gestão de alunos
+│       ├── courses/            # Cursos
+│       ├── classes/            # Turmas
+│       ├── enrollments/        # Inscrições
+│       ├── attendance/         # Frequência
+│       ├── certificates/       # Certificados digitais (QR Code)
+│       ├── reimbursement/      # Reembolsos
+│       ├── trips/              # Viagens do motorista
+│       ├── trucks/             # Carretas
+│       ├── truck-maintenance/  # Manutenção de veículos
+│       ├── employees/          # Funcionários
+│       ├── holiday/            # Feriados & Imprevistos
+│       ├── acoes/              # Períodos de Curso
+│       ├── contas-pagar/       # Contas a Pagar
+│       ├── notifications/      # Notificações em tempo real
+│       ├── audit-logs/         # Histórico de auditoria
+│       ├── reports/            # Relatórios PDF
+│       ├── dashboard/          # KPIs e Analytics
+│       └── settings/           # Configurações do sistema
+├── frontend/                   # Next.js 14 App Router
+│   └── app/
+│       ├── admin/              # Portal Administrador
+│       ├── teacher/            # Portal Professor
+│       ├── driver/             # Portal Motorista
+│       └── student/            # Portal Aluno
+├── docs/
+│   ├── SEEDS_GUIDE.md          # Como funcionam os seeds + modelo
+│   ├── ONBOARDING.md           # Guia para o chefe / novo dev
+│   └── arquitetura/            # Documentação técnica completa
+├── docker-compose.yml
 └── README.md
 ```
 
@@ -189,43 +183,30 @@ Sistema_upgrade/
 
 | Perfil | Acesso |
 |--------|--------|
-| **ADMIN** | Acesso total ao sistema |
-| **STUDENT** | Portal do aluno (turmas, frequência, certificados) |
+| **ADMIN** | Acesso total — alunos, turmas, cursos, financeiro, relatórios, configurações |
+| **TEACHER** | Frequência, reembolsos, histórico, certificados da turma |
+| **DRIVER** | Viagens, manutenção de veículos, reembolsos, imprevistos de rota |
+| **STUDENT** | Portal pessoal — turmas, frequência, inscrições, certificados |
 
 ---
 
 ## ✅ Módulos Implementados
 
-| Módulo | Status | Observações |
-|--------|--------|-------------|
-| Autenticação (JWT) | ✅ | Login admin + aluno, refresh token |
-| Alunos | ✅ | Cadastro completo, filtro 26 estados |
-| Cursos | ✅ | CRUD, multicurso, módulos |
-| Turmas | ✅ | Criação com carreta, vagas reserva |
-| Inscrições | ✅ | Aprovação/rejeição admin |
-| Frequência | ✅ | Por aula, percentual em tempo real |
-| Portal do Aluno | ✅ | Turmas com identif., certificados |
-| Certificados | ✅ | Geração automática, QR Code verificável |
-| Relatórios PDF | ✅ | Frequência + Concludentes (Puppeteer) |
-| Feriados | ✅ | Pré-carga 26 feriados nacionais 2025/2026 |
-| Reembolsos | ✅ | CRUD, aprovar/rejeitar, sem MinIO |
-| Contas a Pagar | ✅ | CRUD, filtros por status, exportar PDF |
-| Funcionários | ✅ | Cadastro, payroll CLT |
-| Carretas | ✅ | Disponibilidade, manutenção |
-| Grupos | ✅ | CRUD, edição e exclusão com modal padrão |
-| Dashboard | ✅ | KPIs, gráficos, atividade recente |
-| Configurações | ✅ | Perfil admin, nome atualiza header/sidebar |
-| Períodos de Curso | ✅ | Gestão completa de ações de campo |
-
----
-
-## ⚠️ Pendências Conhecidas
-
-| Item | Descrição | Solução |
-|------|-----------|---------|
-| **BUG-C1** | Encoding de cidades (acentos) | Recriar banco com `LC_COLLATE='pt_BR.UTF-8'` |
-| **MinIO** | Upload de comprovantes bloqueado | Configurar variáveis `MINIO_*` no `.env` do backend |
-| **Templates PDF** | Visual provisório | Aguardando modelo do Robert para `buildFrequencyHtml()` |
+| Portal | Módulo | Status |
+|--------|--------|--------|
+| Admin | Cursos, Turmas, Inscrições (Kanban) | ✅ |
+| Admin | Alunos, Frequência, Certificados | ✅ |
+| Admin | Funcionários, Carretas, Grupos | ✅ |
+| Admin | Períodos de Curso, Feriados & Imprevistos | ✅ |
+| Admin | Reembolsos, Contas a Pagar, Relatórios | ✅ |
+| Admin | Dashboard (KPIs), Histórico (Auditoria), Configurações | ✅ |
+| Teacher | Dashboard, Frequência, Histórico | ✅ |
+| Teacher | Reembolsos, Certificados | ✅ |
+| Driver | Dashboard, Viagens, Minha Rota | ✅ |
+| Driver | Manutenção (cards + modal detalhes), Reembolsos, Imprevistos | ✅ |
+| Student | Dashboard, Minhas Turmas, Frequência (calendário) | ✅ |
+| Student | Inscrições, Certificados, Meu Perfil | ✅ |
+| Sistema | Autenticação JWT + 2FA, Notificações em tempo real | ✅ |
 
 ---
 
@@ -233,11 +214,22 @@ Sistema_upgrade/
 
 | Arquivo | Conteúdo |
 |---------|---------|
-| [`docs/SETUP.md`](docs/SETUP.md) | Guia detalhado de instalação |
-| [`docs/03_DIARIO_DE_BORDO.md`](docs/03_DIARIO_DE_BORDO.md) | Log narrativo de decisões |
-| [`docs/04_ERROS_E_SOLUCOES.md`](docs/04_ERROS_E_SOLUCOES.md) | Troubleshooting |
-| [`docs/06_PLANEJAMENTO.md`](docs/06_PLANEJAMENTO.md) | Requisitos e planejamento |
-| [`docs/DOCUMENTACAO_COMPLETA.md`](docs/DOCUMENTACAO_COMPLETA.md) | Arquitetura completa |
+| [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | **Guia para novo membro da equipe** — setup rápido e tour do sistema |
+| [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) | **Como criar seeds** — modelo padrão para popular dados de teste |
+| [`docs/arquitetura/SETUP.md`](docs/arquitetura/SETUP.md) | Guia detalhado de instalação |
+| [`docs/arquitetura/DIARIO_DE_BORDO.md`](docs/arquitetura/DIARIO_DE_BORDO.md) | Log narrativo de decisões técnicas |
+| [`docs/arquitetura/LIVRO_DE_REGRAS.md`](docs/arquitetura/LIVRO_DE_REGRAS.md) | Regras de negócio do sistema |
+
+---
+
+## ⚠️ Pendências Conhecidas (Sprint Atual)
+
+| Item | Descrição |
+|------|-----------|
+| **KPI Cards** | Ícones quebrados — em correção |
+| **Dark Theme** | Resíduo em teacher/reembolsos e teacher/frequencia |
+| **Seed Massivo** | Criar seed-master.ts com dados realistas para todos os módulos |
+| **Upload Foto** | Falta endpoint backend para persistir foto de perfil |
 
 ---
 

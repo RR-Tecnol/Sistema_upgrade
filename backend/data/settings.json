@@ -19,6 +19,11 @@
   "modoDebug": false,
   "periodoRetencao": "365",
   "exportFormato": "xlsx",
-  "updatedAt": "2026-03-13T17:50:54.440Z",
+  "valorPassagemViagem": 270,
+  "valorDiariaPadrao": 120,
+  "kmLimitePassagemSemanal": 200,
+  "diasUteisReferenciaMes": 22,
+  "percentualAlertaCusto": 110,
+  "updatedAt": "2026-03-19T20:51:12.638Z",
   "updatedBy": "admin"
 }

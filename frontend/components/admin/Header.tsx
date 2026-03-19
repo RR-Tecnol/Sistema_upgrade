@@ -109,17 +109,19 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                             border: `1px solid ${unreadCount > 0 ? '#FECACA' : '#E5E7EB'}`,
                             cursor: 'pointer', display: 'flex', transition: 'all 0.2s',
                         }}>
-                        <BellIcon style={{ width: 16, height: 16, color: unreadCount > 0 ? '#EF4444' : '#6B7280' }} />
+                        <BellIcon style={{ width: 18, height: 18, color: unreadCount > 0 ? '#EF4444' : '#6B7280' }} />
+                        {unreadCount > 0 && (
                         <span style={{
-                            position: 'absolute', top: '0.2rem', right: '0.2rem',
+                            position: 'absolute', top: '-4px', right: '-4px',
                             minWidth: 16, height: 16, borderRadius: '50%',
-                            background: unreadCount > 0 ? '#EF4444' : '#FFD600',
+                            background: '#EF4444',
                             color: '#fff', fontSize: '0.55rem', fontWeight: 700,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 0 0 2px #fff',
+                            border: '2px solid #fff',
                         }}>
-                            {unreadCount > 0 ? unreadCount : ''}
+                            {unreadCount > 99 ? '99+' : unreadCount}
                         </span>
+                        )}
                     </button>
 
                     {showNotificationsPanel && (

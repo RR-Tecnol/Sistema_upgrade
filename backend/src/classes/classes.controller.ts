@@ -37,6 +37,7 @@ export class ClassesController {
     @ApiQuery({ name: 'groupId', required: false })
     @ApiQuery({ name: 'cityId', required: false })
     @ApiQuery({ name: 'truckId', required: false })
+    @ApiQuery({ name: 'teacherUserId', required: false, description: 'Filtrar turmas do professor pelo userId' })
     @ApiResponse({ status: 200, description: 'Classes retrieved successfully' })
     async findAll(
         @Query('status') status?: ClassStatus,
@@ -44,6 +45,7 @@ export class ClassesController {
         @Query('groupId') groupId?: string,
         @Query('cityId') cityId?: string,
         @Query('truckId') truckId?: string,
+        @Query('teacherUserId') teacherUserId?: string,
     ) {
         const filters: any = {};
         if (status) filters.status = status;
@@ -51,8 +53,19 @@ export class ClassesController {
         if (groupId) filters.groupId = groupId;
         if (cityId) filters.cityId = cityId;
         if (truckId) filters.truckId = truckId;
+        if (teacherUserId) filters.teacherUserId = teacherUserId;
 
         return this.classesService.findAll(filters);
+    }
+
+    // EXEC-06: Histórico do professor — DEVE ficar ANTES de /:id
+    @Get('teacher/history')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Histórico de frequência lançada pelo professor logado' })
+    @ApiResponse({ status: 200, description: 'Histórico de frequência' })
+    async teacherHistory(@Req() req: any) {
+        return this.classesService.getTeacherAttendanceHistory(req.user.id);
     }
 
     @Get(':id')

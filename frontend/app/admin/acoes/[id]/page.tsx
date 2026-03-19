@@ -260,9 +260,10 @@ function TabTurmas({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
         onUpdate();
     };
 
+    const [confirmDesvincular, setConfirmDesvincular] = useState<string | null>(null);
     const desvincular = async (turmaId: string) => {
-        if (!confirm('Desvincular esta turma da ação?')) return;
         await acoesApi.removeTurma(acao.id, turmaId);
+        setConfirmDesvincular(null);
         onUpdate();
     };
 
@@ -305,7 +306,15 @@ function TabTurmas({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                                         <td>{at.turma?.vacancies}</td>
                                         <td>{at.turma?._count?.enrollments ?? '—'}</td>
                                         <td style={{ fontSize: '0.8rem', color: '#6B7280' }}>{fmtDate(at.turma?.startDate)} → {fmtDate(at.turma?.endDate)}</td>
-                                        <td><button className="btn-danger" style={{ padding: '4px 10px', fontSize: '0.78rem' }} onClick={() => desvincular(at.turmaId)}>Remover</button></td>
+                                         <td>{confirmDesvincular === at.turmaId ? (
+                                             <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                                 <span style={{ fontSize: '0.72rem', color: '#DC2626', fontWeight: 600 }}>Confirmar?</span>
+                                                 <button className="btn-danger" style={{ padding: '3px 8px', fontSize: '0.72rem' }} onClick={() => desvincular(at.turmaId)}>Sim</button>
+                                                 <button className="btn-ghost" style={{ padding: '3px 8px', fontSize: '0.72rem' }} onClick={() => setConfirmDesvincular(null)}>Não</button>
+                                             </span>
+                                         ) : (
+                                             <button className="btn-danger" style={{ padding: '4px 10px', fontSize: '0.78rem' }} onClick={() => setConfirmDesvincular(at.turmaId)}>Remover</button>
+                                         )}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -343,9 +352,10 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
         onUpdate();
     };
 
+    const [confirmRemoverCusto, setConfirmRemoverCusto] = useState<string | null>(null);
     const remover = async (custoId: string) => {
-        if (!confirm('Remover este lançamento?')) return;
         await acoesApi.removeCusto(acao.id, custoId);
+        setConfirmRemoverCusto(null);
         onUpdate();
     };
 
@@ -448,7 +458,15 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                                                 )}
                                             </td>
                                             <td><strong style={{ color: '#059669' }}>{fmtCurrency(c.valor)}</strong></td>
-                                            <td><button className="btn-danger" style={{ padding: '4px 10px', fontSize: '0.78rem' }} onClick={() => remover(c.id)}>Remover</button></td>
+                                             <td>{confirmRemoverCusto === c.id ? (
+                                                 <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                                     <span style={{ fontSize: '0.72rem', color: '#DC2626', fontWeight: 600 }}>Confirmar?</span>
+                                                     <button className="btn-danger" style={{ padding: '3px 8px', fontSize: '0.72rem' }} onClick={() => remover(c.id)}>Sim</button>
+                                                     <button className="btn-ghost" style={{ padding: '3px 8px', fontSize: '0.72rem' }} onClick={() => setConfirmRemoverCusto(null)}>Não</button>
+                                                 </span>
+                                             ) : (
+                                                 <button className="btn-danger" style={{ padding: '4px 10px', fontSize: '0.78rem' }} onClick={() => setConfirmRemoverCusto(c.id)}>Remover</button>
+                                             )}</td>
                                         </tr>
                                     );
                                 })}

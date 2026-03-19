@@ -114,9 +114,9 @@ export class ReimbursementController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit = 20,
   ) {
-    // Admin vê todos, professor vê só os seus
+    // Admin/Coordinator vê todos; TEACHER, DRIVER e STUDENT vêem só os seus
     const onlyMine =
-      req.user.role === 'TEACHER' || req.user.role === 'STUDENT'
+      req.user.role === 'TEACHER' || req.user.role === 'STUDENT' || req.user.role === 'DRIVER'
         ? req.user.id
         : undefined;
 

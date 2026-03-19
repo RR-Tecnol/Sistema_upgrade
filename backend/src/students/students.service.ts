@@ -169,4 +169,19 @@ export class StudentsService {
             },
         });
     }
+
+    // EXEC-04: Resumo real de frequência do aluno
+    async getAttendanceSummary(userId: string) {
+        const student = await this.prisma.student.findFirst({
+            where: { userId },
+            select: { id: true },
+        });
+        if (!student) return { totalClasses: 0, presentCount: 0, absentCount: 0, rate: 0 };
+        const [total, present] = await Promise.all([
+            this.prisma.attendance.count({ where: { studentId: student.id } }),
+            this.prisma.attendance.count({ where: { studentId: student.id, present: true } }),
+        ]);
+        const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+        return { totalClasses: total, presentCount: present, absentCount: total - present, rate };
+    }
 }

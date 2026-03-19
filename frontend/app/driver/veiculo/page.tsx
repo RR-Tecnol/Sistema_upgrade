@@ -43,7 +43,7 @@ export default function DriverVeiculo() {
 
     if (!truck) return (
         <div style={{ maxWidth: 560, margin: '0 auto' }}>
-            <h1 style={{ fontFamily: 'Orbitron, sans-serif', color: '#0891B2', fontSize: '1.3rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '1.25rem' }}>VEÍCULO</h1>
+            <h1 className="gradient-text" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.8rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '1.25rem' }}>VEÍCULO</h1>
             <div style={{ ...cardStyle, textAlign: 'center', padding: '3rem 1rem' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>🚛</div>
                 <div style={{ color: '#64748B', fontSize: '0.85rem' }}>Nenhum veículo vinculado a suas viagens ainda</div>
@@ -60,8 +60,8 @@ export default function DriverVeiculo() {
     const st = STATUS_TRUCK[truck.status] || STATUS_TRUCK.AVAILABLE;
 
     return (
-        <div style={{ maxWidth: 560, margin: '0 auto' }}>
-            <h1 style={{ fontFamily: 'Orbitron, sans-serif', color: '#0891B2', fontSize: '1.3rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '1.25rem' }}>VEÍCULO</h1>
+        <div className="animate-fade-in" style={{ maxWidth: 560, margin: '0 auto' }}>
+            <h1 className="gradient-text" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.8rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '1.25rem' }}>VEÍCULO</h1>
 
             {/* Identificação */}
             <div style={{ ...cardStyle, borderColor: 'rgba(8,145,178,0.25)' }}>

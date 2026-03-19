@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { classesApi, Class } from '@/lib/api/classes';
 import api from '@/lib/api/client';
+import { toast } from '@/components/ui/Toast';
 
 interface Student {
     id: string;
@@ -46,7 +47,7 @@ export default function FrequenciaPage() {
             a.click();
             URL.revokeObjectURL(url);
         } catch (e) {
-            alert('Erro ao gerar PDF de frequência. Verifique se o backend está rodando.');
+            toast.error('Erro ao gerar PDF de frequência. Verifique se o backend está rodando.');
         } finally {
             setGeneratingPdf(false);
         }
@@ -71,13 +72,16 @@ export default function FrequenciaPage() {
         if (!classId) return;
         setLoadingStudents(true);
         try {
-            const res = await api.get(`/classes/${classId}/enrollments`);
-            const enrolled = res.data || [];
-            const studs: Student[] = enrolled.map((e: any) => ({
+            // BUG-FIX: /classes/{id}/enrollments não existe — usar GET /classes/{id} e extrair .enrollments
+            const res = await api.get(`/classes/${classId}`);
+            const classData = res.data || {};
+            const enrolled: any[] = classData.enrollments || [];
+            const enrolled_active = enrolled.filter((e: any) => e.status === 'ENROLLED' || e.status === 'PENDING' || e.status === 'DOCUMENTS_PENDING');
+            const studs: Student[] = enrolled_active.map((e: any) => ({
                 id: e.student?.id || e.studentId,
-                name: e.student?.user?.name || 'Aluno Desconhecido',
+                name: e.student?.user?.name || e.student?.user?.email || 'Aluno Desconhecido',
                 photoUrl: e.student?.photoUrl,
-            }));
+            })).filter((s: Student) => s.id);
             setStudents(studs);
             // init attendance as null (not marked)
             const init: Record<string, boolean | null> = {};
@@ -102,7 +106,7 @@ export default function FrequenciaPage() {
                 setAttendanceHistory({});
             }
         } catch (e) {
-            console.error(e);
+            console.error('[Frequência] Erro ao carregar alunos:', e);
             setStudents([]);
         } finally {
             setLoadingStudents(false);
@@ -137,17 +141,20 @@ export default function FrequenciaPage() {
                 .filter(s => attendance[s.id] !== null)
                 .map(s => ({ studentId: s.id, present: attendance[s.id] as boolean }));
 
-            await api.post(`/classes/${selectedClass}/attendance`, {
+            // BUG-FIX: rota correta é /attendance/bulk, não /attendance
+            await api.post(`/classes/${selectedClass}/attendance/bulk`, {
                 date: selectedDate,
                 records,
             });
             setSaved(true);
+            toast.success(`${records.length} presenças registradas com sucesso!`);
             setTimeout(() => setSaved(false), 3000);
         } catch (e: any) {
             // Graceful fallback — save to localStorage if backend not ready
             const key = `attendance_${selectedClass}_${selectedDate}`;
             localStorage.setItem(key, JSON.stringify({ date: selectedDate, records: students.map(s => ({ studentId: s.id, present: attendance[s.id] })) }));
             setSaved(true);
+            toast.success('Frequência salva localmente (sincronizará quando o servidor estiver disponível)');
             setTimeout(() => setSaved(false), 3000);
         } finally {
             setSaving(false);

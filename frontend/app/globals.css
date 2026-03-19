@@ -284,6 +284,11 @@
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* ── Driver portal animation aliases (sync com drv-* do dashboard) ── */
+@keyframes drv-slide-up  { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+@keyframes drv-pulse-dot { 0%,100%{box-shadow:0 0 0 0 rgba(5,150,105,.5)} 50%{box-shadow:0 0 0 8px rgba(5,150,105,0)} }
+@keyframes drv-shimmer   { 0%{background-position:-200% center} 100%{background-position:200% center} }
+
 .animate-slide-in {
   animation: fadeInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -242,14 +243,15 @@ Módulo 6: Empreendedorismo`,
 
     // Create Admin User
     console.log('Creating admin user...');
+    const adminPasswordHash = await bcrypt.hash('RR@@Upgrade', 10);
     const adminUser = await prisma.user.upsert({
         where: { email: 'admin@qualifica.com' },
         update: {
-            password: '$2b$10$g1xqAHP38C7X4Xejf/YYGO/TlcZITNEH8/WgoZ9/wCb4d3GJ6mSO6'
+            password: adminPasswordHash,
         },
         create: {
             email: 'admin@qualifica.com',
-            password: '$2b$10$g1xqAHP38C7X4Xejf/YYGO/TlcZITNEH8/WgoZ9/wCb4d3GJ6mSO6', // password: admin123
+            password: adminPasswordHash,
             name: 'Administrador',
             phone: '(98) 98888-8888',
             role: 'ADMIN',
@@ -259,7 +261,7 @@ Módulo 6: Empreendedorismo`,
 
     console.log('✅ Admin user created');
     console.log('   Email: admin@qualifica.com');
-    console.log('   Password: admin123');
+    console.log('   Password: RR@@Upgrade');
 
     console.log('\n🎉 Database seeding completed successfully!');
     console.log('\nSummary:');

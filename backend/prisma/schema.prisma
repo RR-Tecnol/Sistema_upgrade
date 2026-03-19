@@ -288,6 +288,7 @@ model User {
   classHolidaysRegistered ClassHoliday[] @relation("HolidayRegistrar") // REQ-08
   employee          Employee?
   tripsAsDriver     Trip[]    @relation("TripDriver") // EXEC-02
+  absences          Absence[]                          // Módulo de imprevistos
 
   @@index([email])
   @@index([role])
@@ -1263,3 +1264,47 @@ model Reimbursement {
   @@index([createdAt])
   @@map("reimbursements")
 }
+
+// ============================================
+// MÓDULO DE IMPREVISTOS / AUSÊNCIAS
+// ============================================
+
+enum AbsenceType {
+  ILLNESS        // Doença — requer atestado médico
+  PERSONAL       // Compromisso pessoal
+  EMERGENCY      // Emergência familiar
+  TRIP           // Viagem pessoal
+  ACCIDENT       // Acidente
+  OTHER          // Outro motivo
+}
+
+enum AbsenceStatus {
+  PENDING        // Aguardando análise do ADM
+  VALIDATED      // Documento validado — sem penalidade
+  REJECTED       // Documento rejeitado ou insuficiente
+  PENALIZED      // Rejeitado com retenção de valor/diária
+}
+
+model Absence {
+  id            String        @id @default(uuid())
+  userId        String
+  type          AbsenceType   @default(OTHER)
+  date          DateTime      // Data da ausência
+  description   String        // Descrição fornecida pelo usuário
+  documentUrl   String?       // URL do atestado/documento (MinIO)
+  status        AbsenceStatus @default(PENDING)
+  adminNote     String?       // Observação do ADM ao validar/rejeitar
+  penalty       Decimal?      @db.Decimal(10, 2) // Valor de retenção se penalizado
+  reviewedBy    String?       // userId do admin que revisou
+  reviewedAt    DateTime?     // Quando foi revisado
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([date])
+  @@map("absences")
+}
+

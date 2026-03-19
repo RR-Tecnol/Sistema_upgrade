@@ -174,7 +174,7 @@ export default function NovaCarretaPage() {
                 lastMaintenanceDate: form.lastMaintenanceDate || undefined,
                 nextMaintenanceDate: form.nextMaintenanceDate || undefined,
             };
-            console.log('[Nova Carreta] payload:', payload);
+
             await trucksApi.create(payload);
             setSuccess(true);
             setTimeout(() => router.push('/admin/carretas'), 1800);

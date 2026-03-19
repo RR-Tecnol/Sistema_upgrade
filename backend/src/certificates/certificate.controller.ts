@@ -2,15 +2,20 @@ import {
     Controller, Get, Post, Body, Param, UseGuards, Request,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import { IsString } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CertificateService } from './certificate.service';
 
 class IssueCertDto {
+    @IsString()
     studentId!: string;
+
+    @IsString()
     classId!: string;
 }
+
 
 @ApiTags('Certificados')
 @Controller('certificates')

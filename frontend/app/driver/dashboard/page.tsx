@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api/client';
 
@@ -23,10 +23,10 @@ interface Trip {
    ───────────────────────────────────────────── */
 const DASHBOARD_CSS = `
     @keyframes drv-slide-up  { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes drv-pulse-dot { 0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.5)} 50%{box-shadow:0 0 0 8px rgba(16,185,129,0)} }
+    @keyframes drv-pulse-dot { 0%,100%{box-shadow:0 0 0 0 rgba(5,150,105,.5)} 50%{box-shadow:0 0 0 8px rgba(5,150,105,0)} }
     @keyframes drv-spin      { to{transform:rotate(360deg)} }
+    @keyframes drv-shimmer   { 0%{background-position:-200% center} 100%{background-position:200% center} }
 
-    /* Container de página: ocupa TODA a largura do <main> sem maxWidth */
     .drv-page {
         width: 100%;
         display: flex;
@@ -35,32 +35,34 @@ const DASHBOARD_CSS = `
         animation: drv-slide-up .35s cubic-bezier(.22,1,.36,1);
     }
 
-    /* ── Hero ── */
+    /* ── Hero (light, com gradiente amarelo) ── */
     .drv-hero {
         position: relative;
-        border-radius: 14px;
+        border-radius: 16px;
         overflow: hidden;
-        background: linear-gradient(135deg, #0F172A 0%, #0C2233 60%, #0F172A 100%);
-        border: 1px solid rgba(8,145,178,.25);
-        padding: 1.25rem;
-        box-shadow: 0 0 40px rgba(8,145,178,.06);
+        background: linear-gradient(135deg, #FFFDE7 0%, #FFF9C4 50%, #FFFBEB 100%);
+        border: 1px solid rgba(255,214,0,0.4);
+        padding: 1.5rem;
+        box-shadow: 0 4px 24px rgba(255,214,0,.12), 0 1px 4px rgba(0,0,0,.04);
     }
 
-    /* ── KPIs: sempre 3 colunas iguais que crescem com o espaço disponível ── */
+    /* ── KPIs ── */
     .drv-kpis {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: .6rem;
-        margin-top: .9rem;
+        gap: .75rem;
+        margin-top: 1rem;
     }
     .drv-kpi {
-        padding: .75rem .9rem;
-        border-radius: 10px;
-        background: rgba(255,255,255,.04);
+        padding: .9rem 1rem;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.75);
+        backdrop-filter: blur(4px);
         display: flex;
         flex-direction: column;
         gap: .3rem;
-        min-height: 72px;
+        min-height: 76px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
     }
     .drv-kpi-label {
         font-size: .58rem;
@@ -70,6 +72,7 @@ const DASHBOARD_CSS = `
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        color: #6B7280;
     }
     .drv-kpi-value {
         font-family: Orbitron, sans-serif;
@@ -78,21 +81,24 @@ const DASHBOARD_CSS = `
         line-height: 1;
     }
 
-    /* ── Cards de conteúdo ── */
+    /* ── Cards de conteúdo (light) ── */
     .drv-card {
         width: 100%;
-        background: #1E293B;
-        border-radius: 14px;
-        padding: 1.1rem 1.25rem;
-        border: 1px solid rgba(255,255,255,.06);
+        background: #FFFFFF;
+        border-radius: 16px;
+        padding: 1.25rem;
+        border: 1px solid rgba(0,0,0,0.07);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        transition: box-shadow .2s, border-color .2s;
     }
+    .drv-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-color: rgba(255,214,0,0.3); }
     .drv-card-active {
-        background: linear-gradient(135deg, #1E293B, #0F2337);
-        border-color: rgba(16,185,129,.3);
-        box-shadow: 0 4px 24px rgba(16,185,129,.08);
+        background: linear-gradient(135deg, #F0FDF4, #DCFCE7);
+        border-color: rgba(5,150,105,.35);
+        box-shadow: 0 4px 24px rgba(5,150,105,.1);
     }
 
-    /* ── Botões de ação principais (touch-friendly: mínimo 52px) ── */
+    /* ── Botões de ação principais ── */
     .drv-btn {
         width: 100%;
         min-height: 52px;
@@ -105,17 +111,12 @@ const DASHBOARD_CSS = `
         align-items: center;
         justify-content: center;
         gap: .5rem;
-        transition: opacity .18s, transform .18s;
+        transition: opacity .18s, transform .18s, box-shadow .18s;
     }
+    .drv-btn:hover  { opacity: .9; }
     .drv-btn:active { transform: scale(.98); }
 
-    /*
-     * ── Grid de ações rápidas ──
-     * auto-fill garante que o browser decide quantas colunas cabem.
-     * minmax(130px, 1fr): mínimo 130px, máximo 1fr.
-     * Resultado: 2 colunas em <320px, 3 em ~450px, 4 em ~600px.
-     * Sem nenhum breakpoint manual.
-     */
+    /* ── Grid de ações rápidas ── */
     .drv-actions {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -129,24 +130,27 @@ const DASHBOARD_CSS = `
         flex-direction: column;
         align-items: center;
         gap: .4rem;
-        min-height: 76px;
-        transition: opacity .18s, transform .18s;
+        min-height: 80px;
+        transition: opacity .18s, transform .18s, box-shadow .18s;
         border: none;
-        background: transparent;
+        background: #FFFFFF;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
     }
+    .drv-action-btn:hover  { box-shadow: 0 4px 12px rgba(255,214,0,.2); transform: translateY(-2px); }
     .drv-action-btn:active { transform: scale(.97); }
     .drv-action-label {
         font-size: .68rem;
         font-weight: 700;
         text-align: center;
         line-height: 1.3;
+        color: #374151;
     }
 
-    /* ── Modais ── */
+    /* ── Modais (light) ── */
     .drv-modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0,0,0,.75);
+        background: rgba(0,0,0,.5);
         backdrop-filter: blur(8px);
         z-index: 100;
         display: flex;
@@ -155,86 +159,59 @@ const DASHBOARD_CSS = `
         padding: 1rem;
     }
     .drv-modal {
-        background: #1E293B;
+        background: #FFFFFF;
         border-radius: 18px;
-        padding: 1.5rem;
-        /* min(420px, ...) garante que no mobile ocupa quase toda a tela */
-        width: min(420px, calc(100% - 2rem));
-        border: 1px solid rgba(255,255,255,.1);
+        padding: 1.75rem;
+        width: min(440px, calc(100% - 2rem));
+        border: 1px solid rgba(0,0,0,0.08);
+        box-shadow: 0 8px 40px rgba(0,0,0,0.15);
     }
     .drv-modal-title {
         font-family: Orbitron, sans-serif;
         font-weight: 800;
-        color: #F1F5F9;
+        color: #111827;
         margin-bottom: .4rem;
         font-size: .95rem;
     }
-    .drv-modal-sub  { color: #64748B; font-size: .78rem; margin-bottom: 1rem; }
+    .drv-modal-sub  { color: #9CA3AF; font-size: .78rem; margin-bottom: 1rem; }
     .drv-modal-label {
-        font-size: .68rem; color: #94A3B8; font-weight: 700;
+        font-size: .68rem; color: #6B7280; font-weight: 700;
         letter-spacing: .08em; text-transform: uppercase;
         display: block; margin-bottom: .4rem;
     }
     .drv-modal-input {
         width: 100%; padding: .85rem; border-radius: 10px;
-        border: 1px solid rgba(8,145,178,.3); background: #0F172A;
-        color: #F1F5F9; font-size: 1.1rem; font-family: JetBrains Mono, monospace;
+        border: 1.5px solid rgba(0,0,0,.12); background: #F9FAFB;
+        color: #111827; font-size: 1.1rem; font-family: JetBrains Mono, monospace;
         box-sizing: border-box; margin-bottom: 1rem; outline: none;
+        transition: border-color .18s;
     }
+    .drv-modal-input:focus { border-color: #FFD600; box-shadow: 0 0 0 3px rgba(255,214,0,.15); }
     .drv-modal-textarea {
         width: 100%; padding: .85rem; border-radius: 10px;
-        border: 1px solid rgba(255,255,255,.12); background: #0F172A;
-        color: #F1F5F9; font-size: .9rem; resize: vertical;
+        border: 1.5px solid rgba(0,0,0,.12); background: #F9FAFB;
+        color: #111827; font-size: .9rem; resize: vertical;
         box-sizing: border-box; margin-bottom: 1rem; outline: none;
+        transition: border-color .18s;
     }
+    .drv-modal-textarea:focus { border-color: #FFD600; box-shadow: 0 0 0 3px rgba(255,214,0,.15); }
     .drv-modal-row { display: flex; gap: .75rem; }
     .drv-modal-cancel {
         flex: 1; padding: .75rem; border-radius: 10px;
-        border: 1px solid rgba(255,255,255,.1); background: transparent;
-        color: #64748B; cursor: pointer; font-weight: 600; font-size: .85rem;
+        border: 1px solid rgba(0,0,0,0.1); background: #F9FAFB;
+        color: #6B7280; cursor: pointer; font-weight: 600; font-size: .85rem;
+        transition: background .15s;
     }
+    .drv-modal-cancel:hover { background: #F3F4F6; }
     .drv-modal-ok {
         flex: 2; padding: .75rem; border-radius: 10px; border: none;
         color: #fff; cursor: pointer; font-weight: 800; font-size: .85rem;
         transition: opacity .18s;
     }
-    .drv-modal-ok:disabled { opacity: .5; cursor: not-allowed; }
+    .drv-modal-ok:disabled { opacity: .45; cursor: not-allowed; }
 `;
 
-/* ─── Partículas decorativas no hero ─── */
-function Particles() {
-    const ref = useRef<HTMLCanvasElement>(null);
-    useEffect(() => {
-        const c = ref.current; if (!c) return;
-        const ctx = c.getContext('2d'); if (!ctx) return;
-        c.width = c.offsetWidth; c.height = c.offsetHeight;
-        const pts = Array.from({ length: 18 }, () => ({
-            x: Math.random() * c.width, y: Math.random() * c.height,
-            vx: (Math.random() - .5) * .3, vy: (Math.random() - .5) * .3,
-            r: Math.random() * 1.5 + .4, a: Math.random(),
-        }));
-        let raf: number;
-        const draw = () => {
-            ctx.clearRect(0, 0, c.width, c.height);
-            pts.forEach(p => {
-                p.x += p.vx; p.y += p.vy; p.a += .007;
-                if (p.x < 0) p.x = c.width; if (p.x > c.width) p.x = 0;
-                if (p.y < 0) p.y = c.height; if (p.y > c.height) p.y = 0;
-                ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(8,145,178,${(Math.sin(p.a) * .25 + .3).toFixed(2)})`;
-                ctx.fill();
-            });
-            raf = requestAnimationFrame(draw);
-        };
-        draw(); return () => cancelAnimationFrame(raf);
-    }, []);
-    return (
-        <canvas
-            ref={ref}
-            style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none' }}
-        />
-    );
-}
+
 
 /* ─── Contador animado com tamanho fixo em rem ─── */
 function Counter({ value, color, suffix = '' }: { value: number; color: string; suffix?: string }) {
@@ -283,7 +260,7 @@ export default function DriverDashboard() {
                 api.get('/driver/trips?status=IN_TRANSIT'),
                 api.get('/driver/trips?status=PLANNED'),
                 api.get('/driver/trips?status=COMPLETED'),
-                api.get('/reimbursements/my').catch(() => ({ data: [] })),
+                api.get('/reimbursements').catch(() => ({ data: [] })),
             ]);
             const active = (Array.isArray(transit.data)  ? transit.data  : [])[0] || null;
             const next   = (Array.isArray(planned.data)  ? planned.data  : [])[0] || null;
@@ -342,11 +319,11 @@ export default function DriverDashboard() {
             <style>{`@keyframes drv-spin{to{transform:rotate(360deg)}}`}</style>
             <div style={{ textAlign:'center' }}>
                 <div style={{
-                    width:36, height:36, border:'3px solid #0891B2',
+                    width:36, height:36, border:'3px solid #FFD600',
                     borderTopColor:'transparent', borderRadius:'50%',
                     animation:'drv-spin .75s linear infinite', margin:'0 auto 1rem',
                 }} />
-                <p style={{ color:'#64748B', fontSize:'.8rem', fontFamily:'Orbitron,sans-serif',
+                <p style={{ color:'#9CA3AF', fontSize:'.8rem', fontFamily:'Orbitron,sans-serif',
                             letterSpacing:'.1em', margin:0 }}>CARREGANDO...</p>
             </div>
         </div>
@@ -361,39 +338,34 @@ export default function DriverDashboard() {
 
             {/* ══ HERO PAINEL ══ */}
             <div className="drv-hero">
-                <Particles />
-                <div style={{
-                    position: 'absolute', inset: 0,
-                    backgroundImage: 'linear-gradient(rgba(8,145,178,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(8,145,178,.025) 1px,transparent 1px)',
-                    backgroundSize: '32px 32px', pointerEvents: 'none',
-                }} />
                 <div style={{ position:'relative' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:'.6rem', marginBottom:'.25rem' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'.75rem', marginBottom:'.5rem' }}>
                         <div style={{
-                            width:34, height:34, borderRadius:9,
-                            background:'linear-gradient(135deg,#0891B2,#0369A1)',
+                            width:38, height:38, borderRadius:10,
+                            background:'linear-gradient(135deg,#FFD600,#F59E0B)',
                             display:'flex', alignItems:'center', justifyContent:'center',
-                            fontSize:'1rem', boxShadow:'0 0 14px rgba(8,145,178,.5)', flexShrink:0,
+                            fontSize:'1.1rem', boxShadow:'0 4px 12px rgba(255,214,0,.4)', flexShrink:0,
                         }}>🚛</div>
-                        <h1 style={{
-                            fontFamily:'Orbitron,sans-serif', fontWeight:900, fontSize:'1.3rem',
-                            color:'#fff', letterSpacing:'.1em', margin:0,
-                            textShadow:'0 0 20px rgba(8,145,178,.6)',
-                        }}>PAINEL</h1>
+                        <div>
+                            <h1 style={{
+                                fontFamily:'Orbitron,sans-serif', fontWeight:900, fontSize:'1.25rem',
+                                color:'#92400E', letterSpacing:'.08em', margin:0,
+                            }}>PAINEL DO MOTORISTA</h1>
+                            <p style={{ color:'#B45309', fontSize:'.62rem', letterSpacing:'.1em', margin:0, marginTop:2 }}>
+                                OPERAÇÕES DE CAMPO — SISTEMA UPGRADE
+                            </p>
+                        </div>
                     </div>
-                    <p style={{ color:'rgba(255,255,255,.4)', fontSize:'.62rem', letterSpacing:'.1em', margin:0 }}>
-                        OPERAÇÕES DE CAMPO — SISTEMA UPGRADE
-                    </p>
 
-                    {/* KPIs — 3 colunas fixas que crescem igualmente com o espaço */}
+                    {/* KPIs */}
                     <div className="drv-kpis">
                         {[
-                            { label:'VIAGENS/MÊS', value:stats.tripsMonth, color:'#0891B2' },
-                            { label:'KM RODADOS',  value:stats.kmMonth,    color:'#10B981', suffix:'km' },
-                            { label:'REEMBOLSOS',  value:stats.pending,    color:'#FBBF24' },
+                            { label:'VIAGENS/MÊS', value:stats.tripsMonth, color:'#92400E' },
+                            { label:'KM RODADOS',  value:stats.kmMonth,    color:'#059669', suffix:'km' },
+                            { label:'A RECEBER',   value:stats.pending,    color:'#EA580C' },
                         ].map((k, i) => (
-                            <div key={i} className="drv-kpi" style={{ border:`1px solid ${k.color}25` }}>
-                                <div className="drv-kpi-label" style={{ color:k.color }}>{k.label}</div>
+                            <div key={i} className="drv-kpi" style={{ borderLeft:`3px solid ${k.color}` }}>
+                                <div className="drv-kpi-label">{k.label}</div>
                                 <Counter value={k.value} color={k.color} suffix={k.suffix} />
                             </div>
                         ))}
@@ -405,37 +377,37 @@ export default function DriverDashboard() {
             {activeTrip && (
                 <div className="drv-card drv-card-active">
                     <div style={{ display:'flex', justifyContent:'space-between',
-                                  alignItems:'center', marginBottom:'.65rem' }}>
+                                  alignItems:'center', marginBottom:'.75rem' }}>
                         <span style={{
                             display:'inline-flex', alignItems:'center', gap:'.4rem',
-                            fontSize:'.62rem', fontWeight:800, color:'#10B981',
+                            fontSize:'.62rem', fontWeight:800, color:'#059669',
                             letterSpacing:'.12em', textTransform:'uppercase',
                         }}>
                             <span style={{
-                                width:8, height:8, borderRadius:'50%', background:'#10B981',
+                                width:8, height:8, borderRadius:'50%', background:'#059669',
                                 display:'inline-block', animation:'drv-pulse-dot 2s ease-in-out infinite',
                             }} />
                             EM TRÂNSITO
                         </span>
                         <span style={{
-                            fontSize:'.68rem', color:'#64748B',
+                            fontSize:'.68rem', color:'#6B7280',
                             fontFamily:'JetBrains Mono,monospace',
-                            background:'rgba(255,255,255,.05)', padding:'.15rem .5rem', borderRadius:5,
+                            background:'rgba(0,0,0,.05)', padding:'.15rem .5rem', borderRadius:5,
                         }}>{activeTrip.truck.licensePlate}</span>
                     </div>
 
                     <div style={{
-                        fontSize:'1.05rem', fontWeight:800, color:'#F1F5F9',
+                        fontSize:'1.05rem', fontWeight:800, color:'#111827',
                         marginBottom:'.3rem', display:'flex', alignItems:'center',
                         gap:'.4rem', flexWrap:'wrap',
                     }}>
                         {activeTrip.originCity.name}
-                        <span style={{ color:'#0891B2' }}>→</span>
+                        <span style={{ color:'#FFD600', fontSize:'1.2rem' }}>→</span>
                         {activeTrip.destinationCity.name}
                     </div>
 
                     <div style={{ display:'flex', gap:'.75rem', fontSize:'.72rem',
-                                  color:'#64748B', marginBottom:'.85rem', flexWrap:'wrap' }}>
+                                  color:'#6B7280', marginBottom:'.85rem', flexWrap:'wrap' }}>
                         <span>📅 Chegada: {fmt(activeTrip.expectedArrivalDate)}</span>
                         <span>🔢 Km início: {activeTrip.kmStart?.toLocaleString('pt-BR') ?? '—'}</span>
                     </div>
@@ -443,9 +415,9 @@ export default function DriverDashboard() {
                     <button
                         className="drv-btn"
                         style={{
-                            background:'linear-gradient(135deg,#10B981,#059669)',
+                            background:'linear-gradient(135deg,#059669,#047857)',
                             color:'#fff', marginBottom:'.5rem',
-                            boxShadow:'0 4px 20px rgba(16,185,129,.35)',
+                            boxShadow:'0 4px 20px rgba(5,150,105,.3)',
                         }}
                         onClick={() => { setKmModal('end'); setKmInput(''); }}
                     >
@@ -455,8 +427,8 @@ export default function DriverDashboard() {
                     <button
                         className="drv-btn"
                         style={{
-                            background:'rgba(255,255,255,.04)',
-                            color:'#94A3B8', border:'1px solid rgba(255,255,255,.1)', minHeight:44,
+                            background:'rgba(0,0,0,.04)',
+                            color:'#6B7280', border:'1px solid rgba(0,0,0,.08)', minHeight:44,
                         }}
                         onClick={() => setNoteModal(true)}
                     >
@@ -467,27 +439,27 @@ export default function DriverDashboard() {
 
             {/* ══ PRÓXIMA VIAGEM ══ */}
             {nextTrip && !activeTrip && (
-                <div className="drv-card" style={{ borderColor:'rgba(251,191,36,.25)' }}>
-                    <div style={{ fontSize:'.62rem', fontWeight:800, color:'#FBBF24',
+                <div className="drv-card" style={{ borderColor:'rgba(255,214,0,.4)', background:'#FFFDE7' }}>
+                    <div style={{ fontSize:'.62rem', fontWeight:800, color:'#92400E',
                                   letterSpacing:'.12em', textTransform:'uppercase',
-                                  marginBottom:'.65rem', display:'flex', alignItems:'center', gap:'.35rem' }}>
+                                  marginBottom:'.75rem', display:'flex', alignItems:'center', gap:'.35rem' }}>
                         📋 PRÓXIMA VIAGEM
                     </div>
-                    <div style={{ fontSize:'1.05rem', fontWeight:800, color:'#F1F5F9',
+                    <div style={{ fontSize:'1.05rem', fontWeight:800, color:'#111827',
                                   marginBottom:'.3rem', display:'flex', alignItems:'center',
                                   gap:'.4rem', flexWrap:'wrap' }}>
                         {nextTrip.originCity.name}
-                        <span style={{ color:'#0891B2' }}>→</span>
+                        <span style={{ color:'#FFD600', fontSize:'1.2rem' }}>→</span>
                         {nextTrip.destinationCity.name}
                     </div>
-                    <div style={{ fontSize:'.72rem', color:'#64748B', marginBottom:'.85rem' }}>
+                    <div style={{ fontSize:'.72rem', color:'#6B7280', marginBottom:'.85rem' }}>
                         🗓️ Partida: {fmt(nextTrip.departureDate)} · {nextTrip.truck.licensePlate}
                     </div>
                     <button
                         className="drv-btn"
                         style={{
-                            background:'linear-gradient(135deg,#0891B2,#0369A1)',
-                            color:'#fff', boxShadow:'0 4px 20px rgba(8,145,178,.35)',
+                            background:'linear-gradient(135deg,#FFD600,#F59E0B)',
+                            color:'#0F172A', boxShadow:'0 4px 20px rgba(255,214,0,.3)', fontWeight: 900,
                         }}
                         onClick={() => { setKmModal('start'); setKmInput(''); }}
                     >
@@ -501,31 +473,31 @@ export default function DriverDashboard() {
                 <div className="drv-card" style={{ textAlign:'center', padding:'2.5rem 1rem' }}>
                     <div style={{ fontSize:'2.5rem', marginBottom:'.75rem' }}>🛣️</div>
                     <div style={{ fontFamily:'Orbitron,sans-serif', fontSize:'.7rem',
-                                  color:'#64748B', letterSpacing:'.1em' }}>
+                                  color:'#9CA3AF', letterSpacing:'.1em' }}>
                         NENHUMA VIAGEM ATRIBUÍDA
                     </div>
-                    <p style={{ color:'#475569', fontSize:'.78rem', marginTop:'.5rem', margin:'.5rem 0 0' }}>
+                    <p style={{ color:'#6B7280', fontSize:'.78rem', marginTop:'.5rem', margin:'.5rem 0 0' }}>
                         Entre em contato com o coordenador.
                     </p>
                 </div>
             )}
 
-            {/* ══ AÇÕES RÁPIDAS (grid auto-fill, sem breakpoint manual) ══ */}
+            {/* ══ AÇÕES RÁPIDAS ══ */}
             <div className="drv-actions">
                 {[
-                    { icon:'💰', label:'Novo Reembolso', color:'#FFD600', bg:'rgba(255,214,0,.08)',   border:'rgba(255,214,0,.2)',   href:'/driver/reembolsos' },
-                    { icon:'🗺️', label:'Ver Viagens',    color:'#8B5CF6', bg:'rgba(139,92,246,.08)', border:'rgba(139,92,246,.2)', href:'/driver/viagens' },
-                    { icon:'🚛', label:'Meu Veículo',    color:'#10B981', bg:'rgba(16,185,129,.08)',  border:'rgba(16,185,129,.2)',  href:'/driver/veiculo' },
-                    { icon:'📍', label:'Minha Rota',     color:'#0891B2', bg:'rgba(8,145,178,.08)',   border:'rgba(8,145,178,.2)',   href:'/driver/viagens' },
+                    { icon:'💰', label:'Novo Reembolso', color:'#92400E', bg:'rgba(255,214,0,.12)',  border:'rgba(255,214,0,.3)',    href:'/driver/reembolsos' },
+                    { icon:'🗺️', label:'Ver Viagens',    color:'#7C3AED', bg:'rgba(124,58,237,.08)', border:'rgba(124,58,237,.2)',   href:'/driver/viagens' },
+                    { icon:'🚛', label:'Meu Veículo',    color:'#059669', bg:'rgba(5,150,105,.08)',   border:'rgba(5,150,105,.2)',    href:'/driver/veiculo' },
+                    { icon:'📍', label:'Minha Rota',     color:'#0891B2', bg:'rgba(8,145,178,.08)',   border:'rgba(8,145,178,.2)',    href:'/driver/viagens' },
                 ].map((a, i) => (
                     <button
                         key={i}
                         className="drv-action-btn"
-                        style={{ background:a.bg, border:`1px solid ${a.border}` }}
+                        style={{ background: a.bg, border:`1px solid ${a.border}` }}
                         onClick={() => router.push(a.href)}
                     >
                         <span style={{ fontSize:'1.45rem' }}>{a.icon}</span>
-                        <span className="drv-action-label" style={{ color:a.color }}>{a.label}</span>
+                        <span className="drv-action-label" style={{ color: a.color }}>{a.label}</span>
                     </button>
                 ))}
             </div>
@@ -562,7 +534,7 @@ export default function DriverDashboard() {
                         </button>
                         <button
                             className="drv-modal-ok"
-                            style={{ background: kmModal === 'start' ? '#0891B2' : '#10B981' }}
+                            style={{ background: kmModal === 'start' ? 'linear-gradient(135deg,#FFD600,#F59E0B)' : '#059669', color: kmModal === 'start' ? '#0F172A' : '#fff' }}
                             onClick={kmModal === 'start' ? handleStart : handleComplete}
                             disabled={saving || !kmInput}
                         >

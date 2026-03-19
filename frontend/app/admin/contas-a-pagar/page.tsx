@@ -7,6 +7,7 @@ import {
     marcarComoPaga, deleteContaPagar, ContaPagar, ContasPagarResponse,
 } from '@/lib/api/contasPagar';
 import api from '@/lib/api/client';
+import { toast } from '@/components/ui/Toast';
 
 // ── Report Utilities ──────────────────────────────────────────────────────────
 const fmtCurReport = (v: number | string) =>
@@ -499,11 +500,11 @@ export default function ContasPagarPage() {
 
     const handleDelete = async () => {
         if (!deleteContaId) return;
-        try { await deleteContaPagar(deleteContaId); setDeleteContaId(null); load(); } catch { alert('Erro ao excluir conta.'); setDeleteContaId(null); }
+        try { await deleteContaPagar(deleteContaId); setDeleteContaId(null); load(); toast.success('Conta excluída com sucesso!'); } catch { toast.error('Erro ao excluir conta.'); setDeleteContaId(null); }
     };
 
     const handlePagar = async (id: string) => {
-        try { await marcarComoPaga(id); load(); } catch { alert('Erro ao marcar como paga.'); }
+        try { await marcarComoPaga(id); load(); toast.success('Conta marcada como paga!'); } catch { toast.error('Erro ao marcar como paga.'); }
     };
 
     const openEdit = (c: ContaPagar) => { setEditingConta(c); setShowModal(true); };

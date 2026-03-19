@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api from '@/lib/api/client';
+import { toast } from '@/components/ui/Toast';
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
@@ -402,7 +403,12 @@ export default function ManutencaoPage() {
     }, [truckId]);
 
     useEffect(() => { load(); }, [load]);
-    const del = async (id: string) => { if (!confirm('Excluir?')) return; await api.delete(`/truck-maintenance/${id}`); load(); };
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const del = async (id: string) => {
+        try { await api.delete(`/truck-maintenance/${id}`); toast.success('Manutenção excluída!'); load(); }
+        catch { toast.error('Erro ao excluir manutenção'); }
+        finally { setConfirmDeleteId(null); }
+    };
     const saved = () => { setModal(false); setEditing(null); load(); };
 
     const filtered = list.filter(m =>

@@ -146,7 +146,7 @@ export default function TeacherReembolsos() {
             )}
 
             <div style={{ marginBottom: '1.5rem' }}>
-                <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#F1F5F9', fontFamily: 'Orbitron, sans-serif' }}>REEMBOLSOS</h1>
+                <h1 className="gradient-text" style={{ fontSize: '1.8rem', fontWeight: 900, fontFamily: 'Orbitron, sans-serif', letterSpacing: '0.08em', margin: 0 }}>REEMBOLSOS</h1>
                 <p style={{ color: '#64748B', fontSize: '0.85rem', marginTop: 4 }}>Solicite reembolso por despesas do campo</p>
             </div>
 

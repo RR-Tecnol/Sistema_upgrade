@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import api from '@/lib/api/client';
+import { toast } from '@/components/ui/Toast';
 
 // Lazy-load Recharts to avoid SSR issues
 const BarChart = dynamic(() => import('recharts').then(m => m.BarChart), { ssr: false });
@@ -19,28 +20,7 @@ const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip), { ssr: fa
 const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false });
 const Legend = dynamic(() => import('recharts').then(m => m.Legend), { ssr: false });
 
-/* ─── Mock Data (replace with real API calls) ─── */
-const enrollmentsByMonth = [
-    { month: 'Set', total: 12 }, { month: 'Out', total: 28 }, { month: 'Nov', total: 19 },
-    { month: 'Dez', total: 35 }, { month: 'Jan', total: 42 }, { month: 'Fev', total: 31 },
-    { month: 'Mar', total: 48 },
-];
-const studentsByCourse = [
-    { curso: 'Informática', alunos: 54 }, { curso: 'Costura', alunos: 38 },
-    { curso: 'Cozinha', alunos: 47 }, { curso: 'Beleza', alunos: 29 },
-    { curso: 'Elétrica', alunos: 33 },
-];
-const maVsPI = [
-    { name: 'Maranhão', value: 68, color: '#FFD600' },
-    { name: 'Piauí', value: 32, color: '#0891B2' },
-];
-const attendanceData = [
-    { month: 'Set', frequencia: 88 }, { month: 'Out', frequencia: 82 },
-    { month: 'Nov', frequencia: 91 }, { month: 'Dez', frequencia: 76 },
-    { month: 'Jan', frequencia: 84 }, { month: 'Fev', frequencia: 87 },
-    { month: 'Mar', frequencia: 90 },
-];
-/* ──────────────────────────────────────────────── */
+
 
 const TOOLTIP_STYLE = {
     backgroundColor: '#FFFFFF',
@@ -54,24 +34,40 @@ const TOOLTIP_STYLE = {
 
 export default function RelatoriosPage() {
     const [stats, setStats] = useState({ alunos: 0, turmas: 0, cursos: 0, inscricoes: 0, aprovados: 0, concluidos: 0 });
+    const [analytics, setAnalytics] = useState<{
+        inscricoesPorMes: any[];
+        alunosPorCurso: any[];
+        distribuicaoEstado: any[];
+        statusInscricoes: any[];
+    }>({
+        inscricoesPorMes: [],
+        alunosPorCurso: [],
+        distribuicaoEstado: [],
+        statusInscricoes: [],
+    });
     const [loading, setLoading] = useState(true);
     const [classes, setClasses] = useState<any[]>([]);
     const [selectedClass, setSelectedClass] = useState('');
     const [pdfLoading, setPdfLoading] = useState<'frequency' | 'concludents' | null>(null);
 
     const downloadPdf = async (type: 'frequency' | 'concludents') => {
-        if (!selectedClass) { alert('Selecione uma turma primeiro'); return; }
+        if (!selectedClass) { toast.warning('Selecione uma turma primeiro'); return; }
         setPdfLoading(type);
         try {
-            const res = await api.get(`/reports/${type}/${selectedClass}`, { responseType: 'blob' });
+            const endpoint = selectedClass === 'all'
+                ? `/reports/${type}/all`
+                : `/reports/${type}/${selectedClass}`;
+            const res = await api.get(endpoint, { responseType: 'blob' });
             const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
             const a = document.createElement('a');
             a.href = url;
             a.download = `${type}-${selectedClass}-${new Date().toISOString().slice(0, 10)}.pdf`;
             a.click();
             URL.revokeObjectURL(url);
-        } catch {
-            alert('Erro ao gerar PDF. Verifique se o backend está rodando.');
+        } catch (err: any) {
+            toast.error(err?.response?.status === 500
+                ? 'Erro ao gerar PDF. Execute no backend: npx puppeteer browsers install chrome'
+                : 'Erro ao gerar PDF. Verifique se o backend está rodando.');
         } finally {
             setPdfLoading(null);
         }
@@ -83,22 +79,24 @@ export default function RelatoriosPage() {
 
     const fetchStats = async () => {
         try {
-            const [statsRes, classesRes] = await Promise.all([
+            const [statsRes, classesRes, analyticsRes] = await Promise.all([
                 api.get('/dashboard/stats'),
                 api.get('/classes'),
+                api.get('/dashboard/analytics'),
             ]);
             const d = statsRes.data;
             setStats({
-                alunos: d.totalStudents || 186,
-                turmas: d.activeClasses || 24,
-                cursos: d.totalCourses || 8,
-                inscricoes: d.totalEnrollments || 215,
-                aprovados: d.approvedEnrollments || 148,
-                concluidos: d.completedClasses || 18,
+                alunos: d.students?.total ?? 0,
+                turmas: d.classes?.active ?? 0,
+                cursos: d.courses?.active ?? 0,
+                inscricoes: d.enrollments?.total ?? 0,
+                aprovados: 0,
+                concluidos: 0,
             });
             setClasses(Array.isArray(classesRes.data) ? classesRes.data : classesRes.data?.data ?? []);
+            setAnalytics(analyticsRes.data);
         } catch {
-            setStats({ alunos: 186, turmas: 24, cursos: 8, inscricoes: 215, aprovados: 148, concluidos: 18 });
+            // silently fail — components show empty state
         } finally {
             setLoading(false);
         }
@@ -150,36 +148,40 @@ export default function RelatoriosPage() {
                     </div>
                     <div style={{ height: 220 }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={enrollmentsByMonth} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                            <BarChart data={analytics.inscricoesPorMes} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
                                 <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,214,0,0.06)' }} />
                                 <Bar dataKey="total" name="Inscrições" fill="#FFD600" radius={[6, 6, 0, 0]} />
+                                <Bar dataKey="aprovados" name="Aprovados" fill="#059669" radius={[6, 6, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
 
-                {/* Line — Frequência média mensal */}
+                {/* Line — Status de Inscrições */}
                 <div className="glass-card">
                     <div className="card-header">
-                        <div className="card-title">📊 Frequência Média Mensal (%)</div>
+                        <div className="card-title">📊 Status das Inscrições</div>
                     </div>
-                    <div style={{ height: 220 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={attendanceData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-                                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-                                <YAxis domain={[60, 100]} tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-                                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [`${v}%`, 'Frequência']} />
-                                <Line
-                                    type="monotone" dataKey="frequencia"
-                                    stroke="#059669" strokeWidth={3}
-                                    dot={{ fill: '#059669', r: 4, strokeWidth: 2, stroke: '#fff' }}
-                                    activeDot={{ r: 6, fill: '#059669' }}
-                                />
-                            </LineChart>
+                    <div style={{ height: 220, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                        <ResponsiveContainer width="100%" height={160}>
+                            <PieChart>
+                                <Pie
+                                    data={analytics.statusInscricoes}
+                                    cx="50%" cy="50%"
+                                    innerRadius={45} outerRadius={70}
+                                    paddingAngle={4}
+                                    dataKey="value"
+                                >
+                                    {analytics.statusInscricoes.map((entry: any, index: number) => (
+                                        <Cell key={index} fill={entry.color} />
+                                    ))}
+                                </Pie>
+                                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                                <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                            </PieChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
@@ -195,13 +197,13 @@ export default function RelatoriosPage() {
                     </div>
                     <div style={{ height: 240 }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={studentsByCourse} layout="vertical" margin={{ top: 5, right: 20, left: 50, bottom: 5 }}>
+                            <BarChart data={analytics.alunosPorCurso} layout="vertical" margin={{ top: 5, right: 20, left: 50, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" horizontal={false} />
                                 <XAxis type="number" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
                                 <YAxis dataKey="curso" type="category" tick={{ fontSize: 11, fill: '#374151', fontWeight: 600 }} axisLine={false} tickLine={false} width={50} />
                                 <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,214,0,0.06)' }} />
                                 <Bar dataKey="alunos" name="Alunos" radius={[0, 6, 6, 0]}>
-                                    {studentsByCourse.map((_, i) => (
+                                    {analytics.alunosPorCurso.map((_: any, i: number) => (
                                         <Cell key={i} fill={
                                             i === 0 ? '#FFD600' : i === 1 ? '#0891B2' : i === 2 ? '#059669' : i === 3 ? '#7C3AED' : '#EA580C'
                                         } />
@@ -221,26 +223,26 @@ export default function RelatoriosPage() {
                         <ResponsiveContainer width="100%" height={160}>
                             <PieChart>
                                 <Pie
-                                    data={maVsPI}
+                                    data={analytics.distribuicaoEstado}
                                     cx="50%" cy="50%"
                                     innerRadius={45} outerRadius={70}
                                     paddingAngle={4}
                                     dataKey="value"
                                     startAngle={90} endAngle={-270}
                                 >
-                                    {maVsPI.map((entry, index) => (
+                                    {analytics.distribuicaoEstado.map((entry: any, index: number) => (
                                         <Cell key={index} fill={entry.color} />
                                     ))}
                                 </Pie>
-                                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [`${v}%`]} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [v, 'Alunos']} />
                             </PieChart>
                         </ResponsiveContainer>
                         <div style={{ display: 'flex', gap: '1.25rem' }}>
-                            {maVsPI.map(item => (
+                            {analytics.distribuicaoEstado.map((item: any) => (
                                 <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                     <div style={{ width: 10, height: 10, borderRadius: 2, background: item.color }} />
                                     <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151' }}>{item.name}</span>
-                                    <span style={{ fontFamily: 'Orbitron', fontSize: '0.8rem', fontWeight: 900, color: item.color }}>{item.value}%</span>
+                                    <span style={{ fontFamily: 'Orbitron', fontSize: '0.8rem', fontWeight: 900, color: item.color }}>{item.value}</span>
                                 </div>
                             ))}
                         </div>
@@ -264,7 +266,7 @@ export default function RelatoriosPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {studentsByCourse.map((c, i) => (
+                        {analytics.alunosPorCurso.map((c: any, i: number) => (
                             <tr key={i}>
                                 <td style={{ fontWeight: 700, color: '#111827' }}>{c.curso}</td>
                                 <td>{Math.round(c.alunos / 12)}</td>

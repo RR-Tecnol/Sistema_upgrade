@@ -16,24 +16,34 @@ interface StudentProfile {
     rg: string;
     birthDate: string;
     gender: string;
-    user: {
-        name: string;
-        email: string;
-        phone: string;
+    user: { name: string; email: string; phone: string };
+    contact: { email: string; phone: string; phoneAlt?: string };
+    address: { street: string; number: string; neighborhood: string; city: string; state: string; cep: string };
+}
+
+// Toast inline para o portal do aluno (sem precisar do provider do admin)
+function useLocalToast() {
+    const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+    const show = (msg: string, type: 'success' | 'error') => {
+        setToast({ msg, type });
+        setTimeout(() => setToast(null), 4000);
     };
-    contact: {
-        email: string;
-        phone: string;
-        phoneAlt?: string;
-    };
-    address: {
-        street: string;
-        number: string;
-        neighborhood: string;
-        city: string;
-        state: string;
-        cep: string;
-    };
+    const ToastEl = toast ? (
+        <div style={{
+            position: 'fixed', top: 20, right: 20, zIndex: 9999,
+            background: toast.type === 'success'
+                ? 'linear-gradient(135deg,#059669,#047857)'
+                : 'linear-gradient(135deg,#DC2626,#B91C1C)',
+            color: '#fff', padding: '0.75rem 1.1rem', borderRadius: 12,
+            fontWeight: 600, fontSize: '0.85rem', boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            display: 'flex', alignItems: 'center', gap: '0.6rem',
+            animation: 'toastIn 0.25s ease',
+        }}>
+            <span>{toast.type === 'success' ? '✓' : '✕'}</span>
+            {toast.msg}
+        </div>
+    ) : null;
+    return { show, ToastEl };
 }
 
 export default function StudentProfile() {
@@ -45,10 +55,9 @@ export default function StudentProfile() {
         newPassword: '',
         confirmPassword: '',
     });
+    const { show: showToast, ToastEl } = useLocalToast();
 
-    useEffect(() => {
-        fetchProfile();
-    }, []);
+    useEffect(() => { fetchProfile(); }, []);
 
     const fetchProfile = async () => {
         try {
@@ -65,7 +74,7 @@ export default function StudentProfile() {
         e.preventDefault();
 
         if (passwordData.newPassword !== passwordData.confirmPassword) {
-            alert('As senhas não coincidem');
+            showToast('As senhas não coincidem', 'error');
             return;
         }
 
@@ -75,203 +84,156 @@ export default function StudentProfile() {
                 newPassword: passwordData.newPassword,
             });
 
-            alert('Senha alterada com sucesso!');
+            showToast('Senha alterada com sucesso!', 'success');
             setShowPasswordForm(false);
             setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
         } catch (error) {
             console.error('Error changing password:', error);
-            alert('Erro ao alterar senha. Verifique a senha atual.');
+            showToast('Erro ao alterar senha. Verifique a senha atual.', 'error');
         }
     };
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-full">
-                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid #FFD600', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.75s linear infinite', margin: '0 auto 1rem' }} />
+                    <p style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>Carregando perfil...</p>
+                </div>
             </div>
         );
     }
 
     if (!profile) {
-        return <div className="p-6">Perfil não encontrado</div>;
+        return <div style={{ padding: '2rem', color: '#9CA3AF' }}>Perfil não encontrado</div>;
     }
 
-    return (
-        <div className="p-6">
-            <div className="mb-6">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Meu Perfil</h1>
-                <p className="text-gray-600">Visualize e gerencie suas informações pessoais</p>
-            </div>
+    const fields = [
+        { label: 'Nome Completo', value: profile.user.name, icon: <UserIcon style={{ width: 16 }} /> },
+        { label: 'CPF', value: profile.cpf, mono: true },
+        { label: 'RG', value: profile.rg, mono: true },
+        { label: 'Data de Nascimento', value: new Date(profile.birthDate).toLocaleDateString('pt-BR') },
+        { label: 'Gênero', value: profile.gender },
+    ];
 
-            {/* Personal Data */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <UserIcon className="w-6 h-6" />
-                    Dados Pessoais
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="text-sm text-gray-600">Nome Completo</label>
-                        <p className="font-medium text-gray-900">{profile.user.name}</p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">CPF</label>
-                        <p className="font-medium text-gray-900">{profile.cpf}</p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">RG</label>
-                        <p className="font-medium text-gray-900">{profile.rg}</p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">Data de Nascimento</label>
-                        <p className="font-medium text-gray-900">
-                            {new Date(profile.birthDate).toLocaleDateString('pt-BR')}
-                        </p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">Gênero</label>
-                        <p className="font-medium text-gray-900">{profile.gender}</p>
-                    </div>
-                </div>
-            </div>
+    const contactFields = [
+        { label: 'E-mail', value: profile.contact?.email || profile.user.email },
+        { label: 'Telefone', value: profile.contact?.phone || profile.user.phone, mono: true },
+        ...(profile.contact?.phoneAlt ? [{ label: 'Tel. Alternativo', value: profile.contact.phoneAlt, mono: true }] : []),
+    ];
 
-            {/* Contact */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <EnvelopeIcon className="w-6 h-6" />
-                    Contato
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="text-sm text-gray-600">E-mail</label>
-                        <p className="font-medium text-gray-900">{profile.contact.email}</p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">Telefone</label>
-                        <p className="font-medium text-gray-900">{profile.contact.phone}</p>
-                    </div>
-                    {profile.contact.phoneAlt && (
-                        <div>
-                            <label className="text-sm text-gray-600">Telefone Alternativo</label>
-                            <p className="font-medium text-gray-900">{profile.contact.phoneAlt}</p>
-                        </div>
-                    )}
-                </div>
-            </div>
+    const addressFields = [
+        { label: 'Rua', value: `${profile.address?.street}, ${profile.address?.number}`, span: true },
+        { label: 'Bairro', value: profile.address?.neighborhood },
+        { label: 'CEP', value: profile.address?.cep, mono: true },
+        { label: 'Cidade', value: profile.address?.city },
+        { label: 'Estado', value: profile.address?.state },
+    ];
 
-            {/* Address */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <MapPinIcon className="w-6 h-6" />
-                    Endereço
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                        <label className="text-sm text-gray-600">Rua</label>
-                        <p className="font-medium text-gray-900">
-                            {profile.address.street}, {profile.address.number}
-                        </p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">Bairro</label>
-                        <p className="font-medium text-gray-900">{profile.address.neighborhood}</p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">CEP</label>
-                        <p className="font-medium text-gray-900">{profile.address.cep}</p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">Cidade</label>
-                        <p className="font-medium text-gray-900">{profile.address.city}</p>
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-600">Estado</label>
-                        <p className="font-medium text-gray-900">{profile.address.state}</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Password Change */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <KeyIcon className="w-6 h-6" />
-                    Segurança
-                </h2>
-
-                {!showPasswordForm ? (
-                    <button
-                        onClick={() => setShowPasswordForm(true)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                        Alterar Senha
-                    </button>
-                ) : (
-                    <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Senha Atual
-                            </label>
-                            <input
-                                type="password"
-                                value={passwordData.currentPassword}
-                                onChange={(e) =>
-                                    setPasswordData({ ...passwordData, currentPassword: e.target.value })
-                                }
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Nova Senha
-                            </label>
-                            <input
-                                type="password"
-                                value={passwordData.newPassword}
-                                onChange={(e) =>
-                                    setPasswordData({ ...passwordData, newPassword: e.target.value })
-                                }
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                required
-                                minLength={6}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Confirmar Nova Senha
-                            </label>
-                            <input
-                                type="password"
-                                value={passwordData.confirmPassword}
-                                onChange={(e) =>
-                                    setPasswordData({ ...passwordData, confirmPassword: e.target.value })
-                                }
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                required
-                                minLength={6}
-                            />
-                        </div>
-                        <div className="flex gap-2">
-                            <button
-                                type="submit"
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                                Salvar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setShowPasswordForm(false);
-                                    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                                }}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                        </div>
-                    </form>
-                )}
-            </div>
+    const Section = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
+        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', padding: '1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+            <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.8rem', fontWeight: 900, letterSpacing: '0.1em', color: '#111827', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {icon} {title}
+            </h2>
+            {children}
         </div>
+    );
+
+    return (
+        <>
+            {ToastEl}
+            <style>{`@keyframes toastIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }`}</style>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+                <div>
+                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.8rem', fontWeight: 900, letterSpacing: '0.08em', margin: 0 }}>
+                        MEU PERFIL
+                    </h1>
+                    <p style={{ color: '#9CA3AF', fontSize: '0.82rem', marginTop: '0.25rem' }}>
+                        Visualize suas informações cadastradas no sistema
+                    </p>
+                </div>
+
+                {/* Pessoal */}
+                <Section title="DADOS PESSOAIS" icon="👤">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                        {fields.map((f, i) => (
+                            <div key={i}>
+                                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.3rem' }}>{f.label}</div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#111827', fontFamily: f.mono ? 'JetBrains Mono, monospace' : 'inherit' }}>{f.value}</div>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+
+                {/* Contato */}
+                <Section title="CONTATO" icon="📧">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                        {contactFields.map((f, i) => (
+                            <div key={i}>
+                                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.3rem' }}>{f.label}</div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#111827', fontFamily: f.mono ? 'JetBrains Mono, monospace' : 'inherit' }}>{f.value}</div>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+
+                {/* Endereço */}
+                <Section title="ENDEREÇO" icon="📍">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                        {addressFields.map((f, i) => (
+                            <div key={i} style={{ gridColumn: f.span ? '1 / -1' : undefined }}>
+                                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.3rem' }}>{f.label}</div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#111827', fontFamily: f.mono ? 'JetBrains Mono, monospace' : 'inherit' }}>{f.value}</div>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+
+                {/* Segurança */}
+                <Section title="SEGURANÇA" icon="🔑">
+                    {!showPasswordForm ? (
+                        <button
+                            onClick={() => setShowPasswordForm(true)}
+                            className="btn-primary"
+                            style={{ width: 'auto' }}
+                        >
+                            🔒 Alterar Senha
+                        </button>
+                    ) : (
+                        <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 400 }}>
+                            {[
+                                { label: 'Senha Atual', key: 'currentPassword' },
+                                { label: 'Nova Senha', key: 'newPassword' },
+                                { label: 'Confirmar Nova Senha', key: 'confirmPassword' },
+                            ].map(({ label, key }) => (
+                                <div key={key}>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                                        {label}
+                                    </label>
+                                    <input
+                                        type="password"
+                                        value={passwordData[key as keyof typeof passwordData]}
+                                        onChange={e => setPasswordData(p => ({ ...p, [key]: e.target.value }))}
+                                        className="form-input"
+                                        required
+                                        minLength={6}
+                                    />
+                                </div>
+                            ))}
+                            <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                <button type="button" onClick={() => { setShowPasswordForm(false); setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' }); }}
+                                    style={{ flex: 1, padding: '0.7rem', borderRadius: 10, border: '1.5px solid #E5E7EB', background: 'transparent', color: '#6B7280', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+                                    Cancelar
+                                </button>
+                                <button type="submit" className="btn-primary" style={{ flex: 1.5, justifyContent: 'center' }}>
+                                    Salvar Senha
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </Section>
+            </div>
+        </>
     );
 }

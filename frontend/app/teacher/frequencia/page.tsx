@@ -17,24 +17,14 @@ export default function TeacherFrequencia() {
 
     async function loadClasses() {
         try {
-            const res = await api.get('/classes');
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            const res = await api.get('/classes', { params: { teacherUserId: user.id } });
             const list = Array.isArray(res.data) ? res.data : [];
             setClasses(list);
 
             // Verificar quais turmas já têm frequência registrada hoje
-            const today = new Date().toISOString().split('T')[0];
             const checks: Record<string, boolean> = {};
-            await Promise.all(
-                list.map(async (cls: any) => {
-                    try {
-                        const attRes = await api.get(`/classes/${cls.id}/statistics`);
-                        // Se foi registrada hoje, marcar como done
-                        checks[cls.id] = false; // simplificado — sem endpoint específico por data
-                    } catch {
-                        checks[cls.id] = false;
-                    }
-                })
-            );
+            list.forEach((cls: any) => { checks[cls.id] = false; });
             setAttendanceToday(checks);
         } catch {
             setClasses([]);
@@ -46,7 +36,7 @@ export default function TeacherFrequencia() {
     return (
         <div>
             <div style={{ marginBottom: '1.5rem' }}>
-                <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#F1F5F9', fontFamily: 'Orbitron, sans-serif' }}>
+                <h1 className="gradient-text" style={{ fontSize: '1.8rem', fontWeight: 900, fontFamily: 'Orbitron, sans-serif', letterSpacing: '0.08em', margin: 0 }}>
                     FREQUÊNCIA
                 </h1>
                 <p style={{ color: '#64748B', fontSize: '0.85rem', marginTop: 4 }}>

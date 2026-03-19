@@ -1,11 +1,12 @@
-import { Controller, Get, Patch, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { TripsService } from './trips.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TripStatus } from '@prisma/client';
 
+// ─── Rotas do MOTORISTA ────────────────────────────────────────────────────────
 @ApiTags('driver/trips')
 @Controller('driver/trips')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -60,5 +61,50 @@ export class TripsController {
         @Body('note') note: string,
     ) {
         return this.tripsService.addNote(id, req.user.id, note);
+    }
+}
+
+// ─── Rotas do ADMIN ──────────────────────────────────────────────────────────
+@ApiTags('admin/trips')
+@Controller('admin/trips')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'COORDINATOR')
+@ApiBearerAuth()
+export class AdminTripsController {
+    constructor(private readonly tripsService: TripsService) {}
+
+    @Get()
+    @ApiOperation({ summary: '[Admin] Lista todas as viagens com filtros' })
+    @ApiQuery({ name: 'status', required: false, enum: TripStatus })
+    @ApiQuery({ name: 'driverUserId', required: false })
+    async findAll(
+        @Query('status') status?: TripStatus,
+        @Query('driverUserId') driverUserId?: string,
+    ) {
+        return this.tripsService.findAllAdmin(status, driverUserId);
+    }
+
+    /**
+     * [Admin] Geração automática de viagens baseada nos dias de aula de uma turma.
+     * Chame este endpoint após cadastrar uma turma com Schedule e Truck.
+     * O motorista receberá notificação automática com todas as datas geradas.
+     */
+    @Post('generate-for-class')
+    @ApiOperation({ summary: '[Admin] Gera viagens automaticamente a partir dos dias de aula de uma turma' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                classId:     { type: 'string', description: 'ID da turma' },
+                driverUserId:{ type: 'string', description: 'User ID do motorista responsável' },
+            },
+            required: ['classId', 'driverUserId'],
+        },
+    })
+    async generateTripsForClass(
+        @Body('classId') classId: string,
+        @Body('driverUserId') driverUserId: string,
+    ) {
+        return this.tripsService.generateTripsForClass(classId, driverUserId);
     }
 }

@@ -1,9 +1,15 @@
 'use client';
 
-import { BellIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
+import NotificationBell from '@/components/ui/NotificationBell';
 
-export default function StudentHeader() {
+interface HeaderProps {
+    onToggleSidebar?: () => void;
+    sidebarOpen?: boolean;
+}
+
+export default function StudentHeader({ onToggleSidebar, sidebarOpen = false }: HeaderProps) {
     const [user, setUser] = useState<any>(null);
 
     useEffect(() => {
@@ -17,6 +23,24 @@ export default function StudentHeader() {
 
     return (
         <header className="admin-topbar">
+            {/* Hamburger button */}
+            <button
+                onClick={onToggleSidebar}
+                style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 36, height: 36, borderRadius: 9, marginRight: '0.75rem',
+                    border: `1px solid ${sidebarOpen ? 'rgba(255,214,0,0.5)' : 'rgba(0,0,0,0.1)'}`,
+                    background: sidebarOpen ? 'rgba(255,214,0,0.1)' : 'transparent',
+                    cursor: 'pointer', flexShrink: 0, transition: 'all 0.18s',
+                }}
+                aria-label={sidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+            >
+                {sidebarOpen
+                    ? <XMarkIcon style={{ width: 16, height: 16, color: '#FFD600' }} />
+                    : <Bars3Icon style={{ width: 16, height: 16, color: '#6B7280' }} />
+                }
+            </button>
+
             {/* Title */}
             <div style={{ fontFamily: 'Orbitron', fontSize: '0.75rem', fontWeight: 800, color: '#B89B00', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                 Portal do Aluno
@@ -24,13 +48,7 @@ export default function StudentHeader() {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginLeft: 'auto' }}>
                 {/* Notifications */}
-                <button style={{
-                    position: 'relative', padding: '0.45rem', borderRadius: 8,
-                    background: '#F9FAFB', border: '1px solid #E5E7EB',
-                    cursor: 'pointer', display: 'flex', transition: 'all 0.2s',
-                }}>
-                    <BellIcon style={{ width: 16, height: 16, color: '#6B7280' }} />
-                </button>
+                <NotificationBell />
 
                 <div style={{ width: 1, height: 24, background: '#E5E7EB' }} />
 

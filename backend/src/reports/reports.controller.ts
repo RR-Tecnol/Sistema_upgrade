@@ -11,20 +11,48 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @ApiTags('Relatórios PDF')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'SUPER_ADMIN', 'TEACHER')
+@Roles('ADMIN', 'COORDINATOR', 'TEACHER')
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly pdfService: PdfService) {}
 
   /**
+   * EXEC-05: Endpoint /all — usa a turma mais recente como amostra
+   * Posicionado ANTES de /:classId para NestJS não confundir 'all' com um classId
+   */
+  @Get('frequency/all')
+  @ApiOperation({ summary: 'Gerar PDF de frequência da turma mais recente' })
+  async frequencyAll(@Res() res: Response) {
+    const classes = await this.pdfService.getAllClassIds();
+    if (!classes.length) return res.status(404).json({ message: 'Nenhuma turma encontrada' });
+    const { html, summary } = await this.pdfService.generateFrequencyReport(classes[0]);
+    const pdf = await this.pdfService.htmlToPdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="frequencia-geral-${new Date().toISOString().slice(0,10)}.pdf"`);
+    res.setHeader('X-Summary', JSON.stringify(summary));
+    return res.send(pdf);
+  }
+
+  @Get('concludents/all')
+  @ApiOperation({ summary: 'Gerar PDF de concludentes da turma mais recente' })
+  async concludentsAll(@Res() res: Response) {
+    const classes = await this.pdfService.getAllClassIds();
+    if (!classes.length) return res.status(404).json({ message: 'Nenhuma turma encontrada' });
+    const { html, summary } = await this.pdfService.generateConcludentsList(classes[0]);
+    const pdf = await this.pdfService.htmlToPdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="concludentes-geral-${new Date().toISOString().slice(0,10)}.pdf"`);
+    res.setHeader('X-Summary', JSON.stringify(summary));
+    return res.send(pdf);
+  }
+
+  /**
    * REQ-11: Lista de frequência — PDF real via Puppeteer
-   * Template PROVISÓRIO — substituir buildFrequencyHtml() quando Robert enviar o modelo oficial.
-   * A lógica de dados e este controller NÃO precisam mudar.
    */
   @Get('frequency/:classId')
   @ApiOperation({
     summary: 'Gerar PDF de lista de frequência (REQ-11)',
-    description: 'Retorna application/pdf gerado via Puppeteer. Template provisório.',
+    description: 'Retorna application/pdf gerado via Puppeteer. Template com modelo governamental.',
   })
   @ApiParam({ name: 'classId', description: 'ID da turma' })
   async frequencyReport(@Param('classId') classId: string, @Res() res: Response) {

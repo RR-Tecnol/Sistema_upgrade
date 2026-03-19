@@ -470,10 +470,14 @@ export class PdfService {
   async htmlToPdf(html: string): Promise<Buffer> {
     const browser = await puppeteer.launch({
       headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
       ],
     });
 
@@ -491,5 +495,15 @@ export class PdfService {
     } finally {
       await browser.close();
     }
+  }
+
+  // EXEC-05: Retorna IDs das turmas mais recentes para endpoints /all
+  async getAllClassIds(): Promise<string[]> {
+    const classes = await this.prisma.class.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { id: true },
+    });
+    return classes.map(c => c.id);
   }
 }

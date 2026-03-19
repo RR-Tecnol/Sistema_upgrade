@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { coursesApi, Course } from '@/lib/api/courses';
+import { toast } from '@/components/ui/Toast';
 import {
     PlusIcon,
     MagnifyingGlassIcon,
@@ -86,7 +87,7 @@ export default function CursosPage() {
     };
 
     const handleDelete = async (course: Course) => {
-        try { await coursesApi.delete(course.id); setDeletingCourse(null); loadCourses(); } catch { alert('Erro ao excluir curso. Verifique se há turmas vinculadas.'); setDeletingCourse(null); }
+        try { await coursesApi.delete(course.id); setDeletingCourse(null); loadCourses(); toast.success('Curso excluído com sucesso!'); } catch { toast.error('Erro ao excluir curso. Verifique se há turmas vinculadas.'); setDeletingCourse(null); }
     };
 
     const filtered = courses.filter(c =>

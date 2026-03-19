@@ -21,6 +21,8 @@ import {
     BriefcaseIcon,
     CalendarDaysIcon,
     BanknotesIcon,
+    ClockIcon,
+    ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 
 const navSections = [
@@ -54,6 +56,7 @@ const navSections = [
             { name: 'Períodos de Curso', href: '/admin/acoes', icon: BoltIcon },
             { name: 'Funcionários', href: '/admin/funcionarios', icon: BriefcaseIcon },
             { name: 'Feriados & Imprevistos', href: '/admin/feriados', icon: CalendarDaysIcon },
+            { name: 'Imprevistos', href: '/admin/imprevistos', icon: ExclamationTriangleIcon },
             { name: 'Reembolsos', href: '/admin/reembolsos', icon: BanknotesIcon },
             { name: 'Contas a Pagar', href: '/admin/contas-a-pagar', icon: CurrencyDollarIcon },
         ]
@@ -62,6 +65,7 @@ const navSections = [
         label: 'Sistema',
         items: [
             { name: 'Relatórios', href: '/admin/relatorios', icon: ChartBarIcon },
+            { name: 'Histórico', href: '/admin/historico', icon: ClockIcon },
             { name: 'Configurações', href: '/admin/configuracoes', icon: Cog6ToothIcon },
         ]
     },
@@ -112,21 +116,9 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
             <div className={`sidebar ${open ? 'open' : ''}`}>
                 {/* Header — yellow background */}
                 <div className="sidebar-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                        <div
-                            style={{
-                                width: 36, height: 36, borderRadius: 10,
-                                background: '#000',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexShrink: 0,
-                            }}
-                        >
-                            <span style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.7rem', color: '#FFD600' }}>UG</span>
-                        </div>
-                        <div>
-                            <div className="sidebar-logo">UPGRADE</div>
-                            <div className="sidebar-subtitle">Sistema de Gestão</div>
-                        </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.75rem' }}>
+                        <img src="/logo-upgrade.png" alt="Upgrade Tecnologia Educacional" style={{ height: 44, width: 'auto', objectFit: 'contain', display: 'block' }} />
+                        <div className="sidebar-subtitle">Sistema de Gestão</div>
                     </div>
 
                     {/* Clock */}

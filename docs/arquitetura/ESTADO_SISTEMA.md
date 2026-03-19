@@ -1,6 +1,6 @@
-# 📊 ESTADO DO SISTEMA — Sistema Upgrade
+## Estado do Sistema — Sistema Upgrade
 ## Snapshot do Estado Real | Atualizado após cada ciclo de execução
-## Última atualização: 18/03/2026 — Sessão tarde (responsividade portal motorista)
+## Última atualização: 19/03/2026 — Sessão Conclusão Fase 2 (EXEC-03/04/05/06 + P-01 + A-02)
 
 > **O que é este documento?**
 > Snapshot preciso do que funciona, o que está quebrado e o que está pendente.
@@ -110,38 +110,44 @@ o shell do portal — não alterar sem consultar as regras.
 
 ---
 
-## 🔴 EXEC-03 — Professor filtra suas turmas (PRÓXIMO)
+## ✅ EXEC-03 — Professor filtra suas turmas (19/03/2026)
 
-`GET /classes` não filtra por `teacherId`. Professor vê turmas de todos.
-Arquivos: `teacher/dashboard/page.tsx`, `teacher/frequencia/page.tsx`, `classes.service.ts`
-
----
-
-## 🔴 EXEC-04 — Frequência real do aluno (PENDENTE)
-
-`setAttendance({totalClasses:32, rate:87})` hardcoded em `student/dashboard/page.tsx`.
-Novo endpoint a criar: `GET /students/me/attendance-summary`
+`GET /classes?teacherUserId=:id` implementado.
+`classes.service.ts`: filtro `where.teachers.some.teacher.userId`.
+`teacher/dashboard/page.tsx` e `teacher/frequencia/page.tsx`: passam `user.id` como param.
 
 ---
 
-## 🔴 EXEC-05 — PDFs governamentais (PENDENTE, após EXEC-04)
+## ✅ EXEC-04 — Frequência real do aluno (19/03/2026)
 
-Ver specs em `docs/research/05_reports/SPECS_PDF_GOVERNAMENTAL.md`.
+`students.service.ts`: método `getAttendanceSummary()` — 2 queries count() em paralelo.
+`students.controller.ts`: endpoint `GET /students/me/attendance-summary` adicionado.
+`student/dashboard/page.tsx`: chamada real substituindo mock 87% hardcoded.
 
 ---
 
-## 🔴 EXEC-06 — Histórico do professor (PENDENTE, após EXEC-03)
+## ✅ EXEC-05 — PDFs governamentais (19/03/2026)
 
-`frontend/app/teacher/historico/page.tsx` é placeholder vazio.
+`pdf.service.ts`: `htmlToPdf()` com args Windows + `getAllClassIds()` adicionado.
+`reports.controller.ts`: endpoints `GET /reports/frequency/all` e `GET /reports/concludents/all`.
+`relatorios/page.tsx`: `downloadPdf()` com roteamento all vs classId.
+Chromium deve ser instalado com: `npx puppeteer browsers install chrome`
+
+---
+
+## ✅ EXEC-06 — Histórico do professor (19/03/2026)
+
+`classes.service.ts`: método `getTeacherAttendanceHistory(teacherUserId)`.
+`classes.controller.ts`: endpoint `GET /classes/teacher/history` (antes de /:id).
+`teacher/historico/page.tsx`: reescrito com dados reais, timeline por dia, design dark.
 
 ---
 
 ## 📋 PENDÊNCIAS IMEDIATAS
 
-| # | Pendência | Impacto | Arquivo |
+| # | Pendência | Impacto | Status |
 |---|-----------|---------|---------|
-| P-01 | `GET /reimbursements/my` retorna 404 para DRIVER | KPIs de reembolso no dashboard mostram 0 sem dados reais | `backend/src/reimbursement/reimbursement.controller.ts` |
-| P-02 | git commit de toda a Fase 2 | Código não está no GitHub | — |
+| — | Instalar Chromium para PDFs | Necessário para gerar PDFs localmente | `cd backend && npx puppeteer browsers install chrome` |
 
 ---
 
@@ -150,9 +156,8 @@ Ver specs em `docs/research/05_reports/SPECS_PDF_GOVERNAMENTAL.md`.
 | # | Alerta | Arquivo | Ação |
 |---|--------|---------|------|
 | A-01 | Credenciais admin visíveis em tela | `login/page.tsx` | Remover antes do deploy |
-| A-02 | SUPER_ADMIN no RolesGuard | `certificate.controller.ts` | Não existe no enum — limpar em refatoração |
 | A-03 | `@Get(':id')` orphan em JSDoc | `enrollments.controller.ts` linha 66 | Limpar em refatoração |
-| A-04 | "Frequência Média" 91% hardcoded | `admin/dashboard/page.tsx` | Depende do EXEC-04 |
+| A-04 | "Frequência Média" 91% hardcoded | `admin/dashboard/page.tsx` | Depende de endpoint de attendance global |
 
 ---
 

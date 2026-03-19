@@ -85,6 +85,7 @@ export class ClassesService {
         groupId?: string;
         cityId?: string;
         truckId?: string;
+        teacherUserId?: string;
     }) {
         const where: any = {};
 
@@ -102,6 +103,13 @@ export class ClassesService {
         }
         if (filters?.truckId) {
             where.truckId = filters.truckId;
+        }
+        if (filters?.teacherUserId) {
+            where.teachers = {
+                some: {
+                    teacher: { userId: filters.teacherUserId },
+                },
+            };
         }
 
         return this.prisma.class.findMany({
@@ -538,6 +546,33 @@ export class ClassesService {
         } catch { /* WS opcional */ }
 
         return { message: `${records.length} registros salvos`, date };
+    }
+
+    // EXEC-06: Histórico de frequência lançada pelo professor
+    async getTeacherAttendanceHistory(teacherUserId: string) {
+        return this.prisma.attendance.findMany({
+            where: { registeredBy: teacherUserId },
+            select: {
+                id: true,
+                date: true,
+                present: true,
+                class: {
+                    select: {
+                        id: true,
+                        classIdentifier: true,
+                        course: { select: { name: true } },
+                        city: { select: { name: true, state: true } },
+                    },
+                },
+                student: {
+                    select: {
+                        user: { select: { name: true } },
+                    },
+                },
+            },
+            orderBy: { date: 'desc' },
+            take: 200,
+        });
     }
 }
 

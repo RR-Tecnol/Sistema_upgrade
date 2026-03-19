@@ -73,4 +73,12 @@ export class StudentsController {
     async getCertificates(@Request() req: any) {
         return this.studentsService.getCertificates(req.user.id);
     }
+
+    // EXEC-04: Frequência real do aluno
+    @Get('me/attendance-summary')
+    @ApiOperation({ summary: 'Resumo de frequência do aluno logado' })
+    @ApiResponse({ status: 200, description: 'Resumo com totalClasses, presentCount, absentCount, rate' })
+    async getAttendanceSummary(@Request() req: any) {
+        return this.studentsService.getAttendanceSummary(req.user.id);
+    }
 }

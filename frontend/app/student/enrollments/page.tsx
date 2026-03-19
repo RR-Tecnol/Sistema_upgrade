@@ -11,14 +11,23 @@ interface Enrollment {
     createdAt: string;
     class: {
         name: string;
-        course: {
-            name: string;
-        };
-        city: {
-            name: string;
-        };
+        course: { name: string };
+        city: { name: string };
     };
 }
+
+const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+    PENDING:  { label: 'Pendente',        color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+    APPROVED: { label: 'Aprovado',        color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },
+    ENROLLED: { label: 'Matriculado',     color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
+    REJECTED: { label: 'Rejeitado',       color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+    WAITLIST: { label: 'Lista de Espera', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+};
+
+const FILTERS = ['ALL', 'PENDING', 'APPROVED', 'ENROLLED', 'REJECTED', 'WAITLIST'];
+const FILTER_LABELS: Record<string, string> = {
+    ALL: 'Todas', PENDING: 'Pendentes', APPROVED: 'Aprovadas', ENROLLED: 'Matriculado', REJECTED: 'Rejeitadas', WAITLIST: 'Espera',
+};
 
 export default function StudentEnrollments() {
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -26,125 +35,96 @@ export default function StudentEnrollments() {
     const [filter, setFilter] = useState('ALL');
 
     useEffect(() => {
-        fetchEnrollments();
+        api.get('/students/me/enrollments')
+            .then(r => setEnrollments(Array.isArray(r.data) ? r.data : []))
+            .catch(() => setEnrollments([]))
+            .finally(() => setLoading(false));
     }, []);
 
-    const fetchEnrollments = async () => {
-        try {
-            const response = await api.get('/students/me/enrollments');
-            setEnrollments(response.data);
-        } catch (error) {
-            console.error('Error fetching enrollments:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const getStatusBadge = (status: string) => {
-        const styles = {
-            PENDING: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-            APPROVED: 'bg-green-100 text-green-800 border-green-300',
-            REJECTED: 'bg-red-100 text-red-800 border-red-300',
-            ENROLLED: 'bg-blue-100 text-blue-800 border-blue-300',
-            WAITLIST: 'bg-purple-100 text-purple-800 border-purple-300',
-        };
-
-        const labels = {
-            PENDING: 'Pendente',
-            APPROVED: 'Aprovado',
-            REJECTED: 'Rejeitado',
-            ENROLLED: 'Matriculado',
-            WAITLIST: 'Lista de Espera',
-        };
-
-        return (
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800'}`}>
-                {labels[status as keyof typeof labels] || status}
-            </span>
-        );
-    };
-
-    const filteredEnrollments = enrollments.filter((enrollment) => {
-        if (filter === 'ALL') return true;
-        return enrollment.status === filter;
-    });
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-        );
-    }
+    const filtered = enrollments.filter(e => filter === 'ALL' || e.status === filter);
 
     return (
-        <div className="p-6">
-            <div className="mb-6">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Minhas Inscrições</h1>
-                <p className="text-gray-600">Acompanhe o status de todas as suas inscrições</p>
-            </div>
-
-            {/* Filters */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-                <div className="flex gap-2 flex-wrap">
-                    {['ALL', 'PENDING', 'APPROVED', 'ENROLLED', 'REJECTED', 'WAITLIST'].map((status) => (
-                        <button
-                            key={status}
-                            onClick={() => setFilter(status)}
-                            className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === status
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                }`}
-                        >
-                            {status === 'ALL' ? 'Todos' : status}
-                        </button>
-                    ))}
+        <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                    <h1 className="gradient-text" style={{ fontSize: '1.8rem', fontWeight: 900, fontFamily: 'Orbitron, sans-serif', letterSpacing: '0.08em', margin: 0 }}>INSCRIÇÕES</h1>
+                    <p style={{ color: '#6B7280', fontSize: '0.85rem', margin: 0 }}>
+                        {enrollments.length} inscrição{enrollments.length !== 1 ? 'ões' : ''} encontrada{enrollments.length !== 1 ? 's' : ''}
+                    </p>
                 </div>
             </div>
 
-            {/* Enrollments List */}
-            <div className="space-y-4">
-                {filteredEnrollments.length === 0 ? (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-                        <DocumentTextIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                        <p className="text-gray-600">Nenhuma inscrição encontrada</p>
-                    </div>
-                ) : (
-                    filteredEnrollments.map((enrollment) => (
-                        <div
-                            key={enrollment.id}
-                            className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-                        >
-                            <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <h3 className="text-lg font-bold text-gray-900">
-                                            {enrollment.class.course.name}
-                                        </h3>
-                                        {getStatusBadge(enrollment.status)}
-                                    </div>
-                                    <p className="text-sm text-gray-600 mb-1">
-                                        <strong>Turma:</strong> {enrollment.class.name}
-                                    </p>
-                                    <p className="text-sm text-gray-600 mb-1">
-                                        <strong>Local:</strong> {enrollment.class.city.name}
-                                    </p>
-                                    <p className="text-sm text-gray-600 mb-1">
-                                        <strong>Protocolo:</strong> {enrollment.protocol}
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                        <strong>Data:</strong>{' '}
-                                        {new Date(enrollment.createdAt).toLocaleDateString('pt-BR')}
-                                    </p>
-                                </div>
-                                <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                                    <EyeIcon className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </div>
-                    ))
-                )}
+            {/* Filtros */}
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {FILTERS.map(f => {
+                    const isActive = filter === f;
+                    const cfg = f !== 'ALL' ? STATUS_CFG[f] : null;
+                    const count = f === 'ALL' ? enrollments.length : enrollments.filter(e => e.status === f).length;
+                    return (
+                        <button key={f} onClick={() => setFilter(f)} style={{
+                            padding: '0.4rem 0.85rem', borderRadius: 100, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
+                            border: `1.5px solid ${isActive ? (cfg?.border || '#FFD600') : '#E5E7EB'}`,
+                            background: isActive ? (cfg?.bg || '#FFF9C4') : 'transparent',
+                            color: isActive ? (cfg?.color || '#92400E') : '#6B7280',
+                            transition: 'all 0.15s',
+                        }}>
+                            {FILTER_LABELS[f]} {count > 0 && <span style={{ marginLeft: '0.25rem', background: 'rgba(0,0,0,0.08)', borderRadius: 10, padding: '0 0.35rem', fontSize: '0.65rem' }}>{count}</span>}
+                        </button>
+                    );
+                })}
             </div>
+
+            {/* Lista */}
+            {loading ? (
+                <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', padding: '3rem', textAlign: 'center' }}>
+                    <div className="spinner" style={{ margin: '0 auto 1rem', width: 36, height: 36 }} />
+                    <div style={{ color: '#9CA3AF', fontSize: '0.82rem' }}>Carregando suas inscrições...</div>
+                </div>
+            ) : filtered.length === 0 ? (
+                <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', padding: '4rem', textAlign: 'center' }}>
+                    <DocumentTextIcon style={{ width: 48, height: 48, color: '#D1D5DB', margin: '0 auto 1rem' }} />
+                    <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.72rem', letterSpacing: '0.12em', color: '#9CA3AF' }}>NENHUMA INSCRIÇÃO ENCONTRADA</div>
+                    <p style={{ color: '#9CA3AF', fontSize: '0.78rem', marginTop: '0.5rem' }}>
+                        {filter !== 'ALL' ? 'Tente outro filtro.' : 'Suas inscrições aparecerão aqui após se inscrever em um curso.'}
+                    </p>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {filtered.map((enrollment, i) => {
+                        const cfg = STATUS_CFG[enrollment.status] || { label: enrollment.status, color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB' };
+                        return (
+                            <div key={enrollment.id} className="animate-scale-in" style={{ animationDelay: `${i * 50}ms`, background: '#FFFFFF', borderRadius: 14, border: `1.5px solid ${cfg.border}`, padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', transition: 'box-shadow 0.2s', cursor: 'default' }}
+                                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)')}
+                                onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)')}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
+                                            <h3 style={{ fontWeight: 800, fontSize: '0.95rem', color: '#111827', margin: 0 }}>{enrollment.class.course.name}</h3>
+                                            <span style={{ padding: '0.18rem 0.6rem', borderRadius: 100, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                                                {cfg.label.toUpperCase()}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.75rem', color: '#6B7280' }}>
+                                            <span>📋 Turma: <strong style={{ color: '#374151' }}>{enrollment.class.name}</strong></span>
+                                            <span>📍 {enrollment.class.city.name}</span>
+                                            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem' }}>🔑 {enrollment.protocol}</span>
+                                            <span>📅 {new Date(enrollment.createdAt).toLocaleDateString('pt-BR')}</span>
+                                        </div>
+                                    </div>
+                                    <button style={{ padding: '0.5rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', cursor: 'pointer', color: '#6B7280', transition: 'all 0.15s', display: 'flex' }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#FFFDE7'; e.currentTarget.style.borderColor = '#FFD600'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = '#F9FAFB'; e.currentTarget.style.borderColor = '#E5E7EB'; }}
+                                    >
+                                        <EyeIcon style={{ width: '1.1rem', height: '1.1rem' }} />
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }

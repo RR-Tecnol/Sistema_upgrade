@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { trucksApi, Truck } from '@/lib/api/trucks';
 import Link from 'next/link';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { toast } from '@/components/ui/Toast';
 
 // ── Keyframes CSS ─────────────────────────────────────────────────────────────
 
@@ -303,6 +305,8 @@ export default function CarretasPage() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'MA' | 'PI'>('all');
     const [search, setSearch] = useState('');
+    const [deleteTruckId, setDeleteTruckId] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const loadTrucks = useCallback(async () => {
         try {
@@ -315,8 +319,22 @@ export default function CarretasPage() {
     useEffect(() => { loadTrucks(); }, [loadTrucks]);
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Excluir esta carreta?')) return;
-        try { await trucksApi.delete(id); loadTrucks(); } catch { alert('Erro ao excluir carreta'); }
+        setDeleteTruckId(id);
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteTruckId) return;
+        setDeleting(true);
+        try {
+            await trucksApi.delete(deleteTruckId);
+            setDeleteTruckId(null);
+            loadTrucks();
+            toast.success('Carreta excluída com sucesso!');
+        } catch {
+            toast.error('Erro ao excluir carreta. Verifique se não está vinculada a turmas.');
+        } finally {
+            setDeleting(false);
+        }
     };
 
     const total = trucks.length;
@@ -434,6 +452,17 @@ export default function CarretasPage() {
                     </div>
                 )}
             </div>
+
+            <ConfirmModal
+                isOpen={!!deleteTruckId}
+                title="EXCLUIR CARRETA"
+                message="Tem certeza que deseja excluir esta carreta? Esta ação não pode ser desfeita."
+                confirmLabel="Excluir"
+                danger
+                loading={deleting}
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteTruckId(null)}
+            />
         </>
     );
 }

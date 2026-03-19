@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import api from '@/lib/api/client';
+import { toast } from '@/components/ui/Toast';
 import {
     CalendarDaysIcon,
     PlusIcon,
@@ -226,21 +227,20 @@ export default function FeriadosPage() {
 
     useEffect(() => { load(); }, []);
 
+    const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
     const handleRemove = async (id: string) => {
-        if (!confirm('Remover esta ocorrência revertendo o recálculo de data?')) return;
         setDeleting(id);
-        try { await api.delete(`/holiday/${id}`); await load(); }
-        catch { alert('Erro ao remover'); }
-        finally { setDeleting(null); }
+        try { await api.delete(`/holiday/${id}`); toast.success('Ocorrência removida!'); await load(); }
+        catch { toast.error('Erro ao remover ocorrência'); }
+        finally { setDeleting(null); setConfirmRemoveId(null); }
     };
 
     /* FEAT-FERIADO: Pré-carregar feriados nacionais 2025/2026 para todas as turmas ativas */
     const handlePreloadNacional = async () => {
         if (!classes.length) {
-            alert('Nenhuma turma ativa (IN_PROGRESS) encontrada. Verifique se há turmas em andamento.');
+            toast.warning('Nenhuma turma ativa (IN_PROGRESS) encontrada.');
             return;
         }
-        if (!confirm(`Registrar ${FERIADOS_NACIONAIS.length} feriados nacionais 2025/2026 para ${classes.length} turma(s) ativa(s)?\n\nCada feriado recalcula automaticamente a data final da turma.`)) return;
         setPreloading(true);
         let ok = 0; let skip = 0;
         for (const cls of classes) {

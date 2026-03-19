@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { groupsApi, Group } from '@/lib/api/groups';
 import { PencilIcon, TrashIcon, PlusIcon, BuildingOfficeIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { toast } from '@/components/ui/Toast';
 
 const STATE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; accent: string }> = {
     MA: { label: 'Maranhão', color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD', accent: '#0E7490' },
@@ -106,6 +107,9 @@ export default function GruposPage() {
     const [loading, setLoading] = useState(true);
     const [editGroup, setEditGroup] = useState<Group | null>(null);
     const [deleteGroup, setDeleteGroup] = useState<Group | null>(null);
+    const [showNewGroup, setShowNewGroup] = useState(false);
+    const [newGroupForm, setNewGroupForm] = useState({ name: '', state: 'MA' });
+    const [newGroupSaving, setNewGroupSaving] = useState(false);
 
     useEffect(() => { loadGroups(); }, []);
 
@@ -127,9 +131,27 @@ export default function GruposPage() {
             await groupsApi.delete(deleteGroup.id);
             setDeleteGroup(null);
             await loadGroups();
+            toast.success('Grupo excluído com sucesso!');
         } catch {
-            alert('Erro ao excluir grupo. Verifique se não há carretas ou turmas vinculadas.');
+            toast.error('Erro ao excluir grupo. Verifique se não há carretas ou turmas vinculadas.');
             setDeleteGroup(null);
+        }
+    };
+
+    const handleCreateGroup = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newGroupForm.name.trim()) return;
+        setNewGroupSaving(true);
+        try {
+            await groupsApi.create({ name: newGroupForm.name.trim(), state: newGroupForm.state });
+            setShowNewGroup(false);
+            setNewGroupForm({ name: '', state: 'MA' });
+            await loadGroups();
+            toast.success('Grupo criado com sucesso!');
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Erro ao criar grupo.');
+        } finally {
+            setNewGroupSaving(false);
         }
     };
 
@@ -150,7 +172,7 @@ export default function GruposPage() {
                     </p>
                 </div>
                 <button
-                    onClick={() => alert('Criação de grupo — em breve')}
+                    onClick={() => setShowNewGroup(true)}
                     className="btn-primary"
                 >
                     <PlusIcon style={{ width: 16, height: 16 }} />
@@ -333,6 +355,66 @@ export default function GruposPage() {
                     onConfirm={handleDelete}
                     onCancel={() => setDeleteGroup(null)}
                 />
+            )}
+
+            {/* Modal: Novo Grupo */}
+            {showNewGroup && (
+                <div className="modal-overlay" onClick={() => setShowNewGroup(false)}>
+                    <div className="modal-content animate-scale-in" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setShowNewGroup(false)}
+                            style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#9CA3AF' }}>✕</button>
+
+                        <h3 style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1rem', color: '#111827', marginBottom: '0.4rem' }}>
+                            ➕ NOVO GRUPO
+                        </h3>
+                        <p style={{ fontSize: '0.8rem', color: '#6B7280', marginBottom: '1.25rem' }}>
+                            Criação de uma nova divisão operacional
+                        </p>
+
+                        <form onSubmit={handleCreateGroup} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                                <label className="form-label">Nome do Grupo *</label>
+                                <input
+                                    className="form-input"
+                                    value={newGroupForm.name}
+                                    onChange={e => setNewGroupForm(f => ({ ...f, name: e.target.value }))}
+                                    placeholder="Ex: Grupo 1 MA, Grupo Norte PI..."
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <label className="form-label">Estado *</label>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    {[{ value: 'MA', label: '🟡 Maranhão', color: '#0891B2' }, { value: 'PI', label: '🟢 Piauí', color: '#059669' }].map(opt => (
+                                        <button key={opt.value} type="button"
+                                            onClick={() => setNewGroupForm(f => ({ ...f, state: opt.value }))}
+                                            style={{
+                                                flex: 1, padding: '0.65rem', borderRadius: 10, cursor: 'pointer',
+                                                border: `1.5px solid ${newGroupForm.state === opt.value ? opt.color : '#E5E7EB'}`,
+                                                background: newGroupForm.state === opt.value ? opt.color + '15' : 'transparent',
+                                                color: newGroupForm.state === opt.value ? opt.color : '#6B7280',
+                                                fontWeight: 700, fontSize: '0.82rem', transition: 'all 0.15s',
+                                            }}>
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem' }}>
+                                <button type="button" onClick={() => setShowNewGroup(false)}
+                                    style={{ flex: 1, padding: '0.7rem', borderRadius: 10, border: '1.5px solid #E5E7EB', background: 'transparent', color: '#6B7280', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+                                    Cancelar
+                                </button>
+                                <button type="submit" disabled={newGroupSaving || !newGroupForm.name.trim()}
+                                    className="btn-primary" style={{ flex: 1.5, justifyContent: 'center', opacity: !newGroupForm.name.trim() ? 0.5 : 1 }}>
+                                    {newGroupSaving
+                                        ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />Criando...</>
+                                        : '✓ Criar Grupo'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
         </div>
     );

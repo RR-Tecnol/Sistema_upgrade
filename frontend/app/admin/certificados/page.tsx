@@ -74,7 +74,6 @@ export default function CertificadosPage() {
             await api.post('/certificates', {
                 studentId: student.id,
                 classId: student.classId,
-                enrollmentId: student.enrollmentId,
             });
             await fetchData();
         } catch (err: any) {

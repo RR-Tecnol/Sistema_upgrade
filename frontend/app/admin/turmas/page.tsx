@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { classesApi, Class } from '@/lib/api/classes';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { toast } from '@/components/ui/Toast';
 import {
     PlusIcon,
     PencilIcon,
@@ -33,6 +35,8 @@ export default function TurmasPage() {
     const [statusFilter, setStatusFilter] = useState('all');
     const [stateFilter, setStateFilter] = useState<'all' | 'MA' | 'PI'>('all');
     const [search, setSearch] = useState('');
+    const [deleteClassId, setDeleteClassId] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => { loadClasses(); }, [statusFilter]);
 
@@ -50,12 +54,16 @@ export default function TurmasPage() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Confirmar exclusão desta turma?')) return;
+        setDeleting(true);
         try {
             await classesApi.delete(id);
+            setDeleteClassId(null);
             await loadClasses();
-        } catch (error) {
-            alert('Erro ao excluir turma');
+            toast.success('Turma excluída com sucesso!');
+        } catch {
+            toast.error('Erro ao excluir turma. Verifique se não há alunos matriculados.');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -76,6 +84,7 @@ export default function TurmasPage() {
     };
 
     return (
+        <>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }} className="animate-fade-in">
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
@@ -268,5 +277,17 @@ export default function TurmasPage() {
                 )}
             </div>
         </div>
+
+        <ConfirmModal
+            isOpen={!!deleteClassId}
+            title="EXCLUIR TURMA"
+            message="Tem certeza que deseja excluir esta turma? Alunos matriculados e registros de frequência serão removidos."
+            confirmLabel="Excluir"
+            danger
+            loading={deleting}
+            onConfirm={() => deleteClassId && handleDelete(deleteClassId)}
+            onCancel={() => setDeleteClassId(null)}
+        />
+        </>
     );
 }

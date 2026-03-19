@@ -25,8 +25,9 @@ export default function TeacherDashboard() {
 
     async function loadData() {
         try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
             const [classRes, reimRes] = await Promise.all([
-                api.get('/classes', { params: { status: 'IN_PROGRESS' } }).catch(() => ({ data: [] })),
+                api.get('/classes', { params: { status: 'IN_PROGRESS', teacherUserId: user.id } }).catch(() => ({ data: [] })),
                 api.get('/reimbursements', { params: { status: 'PENDING' } }).catch(() => ({ data: [] })),
             ]);
             setClasses(Array.isArray(classRes.data) ? classRes.data : []);
@@ -40,13 +41,13 @@ export default function TeacherDashboard() {
     const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
 
     return (
-        <div>
+        <div className="animate-fade-in">
             {/* Header saudação */}
             <div style={{ marginBottom: '2rem' }}>
-                <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#F1F5F9', fontFamily: 'Orbitron, sans-serif' }}>
+                <h1 style={{ fontSize: '1.75rem', fontWeight: 900, fontFamily: 'Orbitron, sans-serif' }} className="gradient-text">
                     {greeting}, {teacherName}! 👋
                 </h1>
-                <p style={{ color: '#64748B', fontSize: '0.87rem', marginTop: 4 }}>
+                <p style={{ color: '#9CA3AF', fontSize: '0.87rem', marginTop: 4 }}>
                     {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
                 </p>
             </div>
@@ -62,7 +63,17 @@ export default function TeacherDashboard() {
                 <KpiCard
                     icon={<ClipboardDocumentCheckIcon style={{ width: 24, height: 24 }} />}
                     label="Próxima Aula"
-                    value="Hoje"
+                    value={loading ? '...' : classes.length === 0 ? '—' : (() => {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const upcoming = classes
+                            .map((c: any) => c.startDate ? new Date(c.startDate) : null)
+                            .filter((d: Date | null): d is Date => d !== null && d >= today)
+                            .sort((a: Date, b: Date) => a.getTime() - b.getTime());
+                        if (upcoming.length === 0) return 'Em andamento';
+                        const diff = Math.ceil((upcoming[0].getTime() - today.getTime()) / 86400000);
+                        return diff === 0 ? 'Hoje' : diff === 1 ? 'Amanhã' : upcoming[0].toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+                    })()}
                     color="#FFD600"
                 />
                 <KpiCard
@@ -72,6 +83,7 @@ export default function TeacherDashboard() {
                     color="#F59E0B"
                 />
             </div>
+
 
             {/* Botão destaque Frequência */}
             <Link href="/teacher/frequencia" style={{ textDecoration: 'none', display: 'block', marginBottom: '2rem' }}>
@@ -95,39 +107,39 @@ export default function TeacherDashboard() {
             </Link>
 
             {/* Lista de turmas */}
-            <div style={{ background: '#1E293B', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ fontWeight: 600, color: '#F1F5F9', fontSize: '0.95rem' }}>Minhas Turmas</h2>
+            <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2 style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', fontFamily: 'Orbitron, sans-serif', letterSpacing: '0.06em' }}>MINHAS TURMAS</h2>
                 </div>
 
                 {loading ? (
-                    <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>Carregando...</div>
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>Carregando...</div>
                 ) : classes.length === 0 ? (
-                    <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
                         Nenhuma turma ativa encontrada.
                     </div>
                 ) : (
                     classes.map((cls) => (
                         <Link key={cls.id} href={`/teacher/frequencia/${cls.id}`} style={{ textDecoration: 'none' }}>
                             <div style={{
-                                padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-subtle)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                 transition: 'background 0.15s', cursor: 'pointer',
-                            }}>
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#FFFBEB')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                            >
                                 <div>
-                                    <div style={{ fontWeight: 600, color: '#F1F5F9', fontSize: '0.9rem' }}>
+                                    <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.9rem' }}>
                                         {cls.course?.name || 'Curso'}
                                     </div>
-                                    <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 2 }}>
+                                    <div style={{ fontSize: '0.78rem', color: '#9CA3AF', marginTop: 2 }}>
                                         {cls.city?.name} — {cls.city?.state} · {cls.classIdentifier}
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{
-                                        fontSize: '0.7rem', fontWeight: 600, padding: '2px 10px', borderRadius: 20,
-                                        background: 'rgba(16,185,129,0.12)', color: '#10B981',
-                                    }}>EM ANDAMENTO</span>
-                                    <ChevronRightIcon style={{ width: 16, height: 16, color: '#64748B' }} />
+                                    <span className="badge badge-green">EM ANDAMENTO</span>
+                                    <ChevronRightIcon style={{ width: 16, height: 16, color: '#9CA3AF' }} />
                                 </div>
                             </div>
                         </Link>
@@ -140,18 +152,15 @@ export default function TeacherDashboard() {
 
 function KpiCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
     return (
-        <div style={{
-            background: '#1E293B', borderRadius: 12, padding: '1.25rem',
-            border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '1rem',
-        }}>
+        <div className="stat-card animate-scale-in" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <div style={{ width: 44, height: 44, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', color, flexShrink: 0 }}>
                 {icon}
             </div>
             <div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#F1F5F9', fontFamily: 'Orbitron, sans-serif', lineHeight: 1 }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#111827', fontFamily: 'Orbitron, sans-serif', lineHeight: 1 }}>
                     {value}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <div className="stat-label" style={{ marginTop: 4 }}>
                     {label}
                 </div>
             </div>

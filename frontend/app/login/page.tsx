@@ -201,20 +201,7 @@ export default function LoginPage() {
                         </button>
                     </form>
 
-                    <div className="neon-divider" style={{ margin: '1.75rem 0' }} />
 
-                    <div style={{
-                        padding: '0.85rem 1rem', borderRadius: 10,
-                        background: '#FFFDE7', border: '1px solid #FEF08A',
-                        fontSize: '0.75rem', color: '#78716C',
-                        fontFamily: 'JetBrains Mono, monospace', lineHeight: 1.8,
-                    }}>
-                        <div style={{ color: '#92730A', fontWeight: 700, marginBottom: '0.25rem', fontFamily: 'Inter', textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.62rem' }}>
-                            Acesso Admin
-                        </div>
-                        <div>email: admin@qualifica.com</div>
-                        <div>senha: admin123</div>
-                    </div>
                 </div>
             </div>
         </div>

@@ -28,6 +28,10 @@ import { CertificateModule } from './certificates/certificate.module';
 import { SettingsModule } from './settings/settings.module';
 // SF-01: WebSocket real-time (notificações ao vivo)
 import { NotificationsModule } from './notifications/notifications.module';
+// SF-02: Auditoria — registra ações críticas em audit_logs (@Global)
+import { AuditLogModule } from './audit-log/audit-log.module';
+// EXEC-IMPREVISTOS: Módulo de ausências/imprevistos multi-perfil
+import { AbsencesModule } from './absences/absences.module';
 
 
 @Module({
@@ -57,6 +61,8 @@ import { NotificationsModule } from './notifications/notifications.module';
         CertificateModule,   // REQ-06: Portal do Aluno
         SettingsModule,      // REQ-14: Configurações de segurança (@Global)
         NotificationsModule, // SF-01: WebSocket real-time (@Global)
+        AuditLogModule,      // SF-02: Auditoria de ações (@Global)
+        AbsencesModule,      // EXEC-IMPREVISTOS: Ausências/Imprevistos multi-perfil
     ],
 })
 export class AppModule {}

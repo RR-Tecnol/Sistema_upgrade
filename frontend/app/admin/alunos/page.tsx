@@ -5,6 +5,7 @@ import { studentsApi, Student, StudentFilters, StudentStats } from '@/lib/api/st
 import { PlusIcon, MagnifyingGlassIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, TrashIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import api from '@/lib/api/client';
+import { toast } from '@/components/ui/Toast';
 
 /* ── Animated count-up ── */
 function useCountUp(target: number, duration = 900) {
@@ -84,7 +85,7 @@ export default function AlunosPage() {
     const [deleteStudentName, setDeleteStudentName] = useState('');
     const handleDelete = async () => {
         if (!deleteStudentId) return;
-        try { await studentsApi.delete(deleteStudentId); setDeleteStudentId(null); loadStudents(); loadStats(); } catch { alert('Erro ao excluir aluno'); setDeleteStudentId(null); }
+        try { await studentsApi.delete(deleteStudentId); setDeleteStudentId(null); loadStudents(); loadStats(); toast.success('Aluno excluído com sucesso!'); } catch { toast.error('Erro ao excluir aluno'); setDeleteStudentId(null); }
     };
 
     const stateActive = filters.state;

@@ -220,9 +220,8 @@ export default function ConfiguracoesPage() {
                     diasUteisReferenciaMes: String(data.diasUteisReferenciaMes ?? c.diasUteisReferenciaMes),
                     percentualAlertaCusto: String(data.percentualAlertaCusto ?? c.percentualAlertaCusto),
                 }));
-                setSettingsLoaded(true);
             })
-            .catch(() => setSettingsLoaded(true)); // usa defaults se offline
+            .finally(() => setSettingsLoaded(true)); // sempre libera o botão, mesmo se erro
     }, []);
 
     const set = (k: string, v: any) => setCfg(c => ({ ...c, [k]: v }));
@@ -620,27 +619,9 @@ export default function ConfiguracoesPage() {
                         </SettingRow>
                     </div>
 
-                    {/* System info */}
-                    <div style={{ background: '#FFFDE7', borderRadius: 14, border: '1px solid #FEF08A', padding: '1rem 1.25rem' }}>
-                        <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B89B00', marginBottom: '0.75rem' }}>Informações do Sistema</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem' }}>
-                            {[
-                                ['Versão da API', cfg.versaoApi],
-                                ['Framework', 'Next.js 14'],
-                                ['Backend', 'NestJS + Prisma'],
-                                ['Banco de Dados', 'PostgreSQL 15'],
-                                ['Ambiente', 'Produção'],
-                                ['Último Deploy', new Date().toLocaleDateString('pt-BR')],
-                            ].map(([k, v]) => (
-                                <div key={k} style={{ padding: '0.5rem 0.75rem', borderRadius: 8, background: 'rgba(255,255,255,0.7)', border: '1px solid #FEF08A' }}>
-                                    <div style={{ fontSize: '0.6rem', fontWeight: 700, color: '#B89B00', opacity: 0.7, marginBottom: '0.15rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{k}</div>
-                                    <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.78rem', fontWeight: 700, color: '#374151' }}>{v}</div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
                 </div>
             )}
+
 
             {/* ── TAB: FINANCEIRO ── */}
             {tab === 'financeiro' && (

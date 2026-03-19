@@ -52,21 +52,21 @@ export default function DriverViagens() {
     };
 
     const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR');
-    const cardStyle: React.CSSProperties = { background: '#1E293B', borderRadius: 14, padding: '1.1rem', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '0.75rem' };
+    const cardStyle: React.CSSProperties = { background: '#FFFFFF', borderRadius: 14, padding: '1.1rem', border: '1px solid #E5E7EB', marginBottom: '0.75rem', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' };
     const btnStyle: React.CSSProperties = { padding: '0.6rem 1rem', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', minHeight: 40 };
 
     return (
-        <div style={{ maxWidth: 560, margin: '0 auto' }}>
-            <h1 style={{ fontFamily: 'Orbitron, sans-serif', color: '#0891B2', fontSize: '1.3rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '1.25rem' }}>VIAGENS</h1>
+        <div className="animate-fade-in" style={{ maxWidth: 560, margin: '0 auto' }}>
+            <h1 className="gradient-text" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.8rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '1.25rem' }}>VIAGENS</h1>
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.25rem', background: '#1E293B', padding: '0.35rem', borderRadius: 10 }}>
+            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.25rem', background: '#F3F4F6', padding: '0.35rem', borderRadius: 10, border: '1px solid #E5E7EB' }}>
                 {(['IN_TRANSIT', 'PLANNED', 'COMPLETED'] as const).map(s => (
                     <button key={s} onClick={() => setTab(s)} style={{
                         flex: 1, padding: '0.5rem', borderRadius: 7, border: 'none', cursor: 'pointer',
                         fontWeight: tab === s ? 700 : 400, fontSize: '0.75rem',
                         background: tab === s ? STATUS_LABELS[s].bg : 'transparent',
-                        color: tab === s ? STATUS_LABELS[s].color : '#64748B',
+                        color: tab === s ? STATUS_LABELS[s].color : '#6B7280',
                         transition: 'all 0.18s',
                     }}>
                         {s === 'IN_TRANSIT' ? 'Andamento' : s === 'PLANNED' ? 'Planejadas' : 'Concluídas'}
@@ -78,11 +78,11 @@ export default function DriverViagens() {
             </div>
 
             {loading ? (
-                <div style={{ textAlign: 'center', padding: '3rem', color: '#64748B' }}>Carregando...</div>
+                <div style={{ textAlign: 'center', padding: '3rem', color: '#6B7280' }}>Carregando...</div>
             ) : filtered.length === 0 ? (
                 <div style={{ ...cardStyle, textAlign: 'center', padding: '3rem 1rem' }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🛣️</div>
-                    <div style={{ color: '#64748B', fontSize: '0.85rem' }}>Nenhuma viagem {STATUS_LABELS[tab].label.toLowerCase()}</div>
+                    <div style={{ color: '#6B7280', fontSize: '0.85rem' }}>Nenhuma viagem {STATUS_LABELS[tab].label.toLowerCase()}</div>
                 </div>
             ) : filtered.map(trip => {
                 const st = STATUS_LABELS[trip.status];
@@ -96,10 +96,10 @@ export default function DriverViagens() {
                             <span style={{ fontSize: '0.7rem', color: '#64748B', fontFamily: 'monospace' }}>{trip.truck.licensePlate}</span>
                         </div>
 
-                        <div style={{ fontSize: '1rem', fontWeight: 700, color: '#F1F5F9', marginBottom: '0.4rem' }}>
+                        <div style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', marginBottom: '0.4rem' }}>
                             {trip.originCity.name} <span style={{ color: '#0891B2' }}>→</span> {trip.destinationCity.name}
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: '#64748B', marginBottom: '0.75rem' }}>
+                        <div style={{ fontSize: '0.78rem', color: '#6B7280', marginBottom: '0.75rem' }}>
                             {trip.status === 'COMPLETED'
                                 ? `Chegada: ${fmtDate(trip.actualArrivalDate || trip.expectedArrivalDate)} · ${kmPercorrida ? `${kmPercorrida} km` : ''}`
                                 : `Partida: ${fmtDate(trip.departureDate)} · Chegada prevista: ${fmtDate(trip.expectedArrivalDate)}`
@@ -107,7 +107,7 @@ export default function DriverViagens() {
                         </div>
 
                         {trip.notes && (
-                            <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '0.6rem 0.75rem', marginBottom: '0.75rem', fontSize: '0.75rem', color: '#94A3B8', fontStyle: 'italic', maxHeight: 60, overflow: 'hidden' }}>
+                            <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '0.6rem 0.75rem', marginBottom: '0.75rem', fontSize: '0.75rem', color: '#6B7280', fontStyle: 'italic', maxHeight: 60, overflow: 'hidden', border: '1px solid #E5E7EB' }}>
                                 📝 {trip.notes.split('\n').pop()}
                             </div>
                         )}
@@ -125,7 +125,7 @@ export default function DriverViagens() {
                             </button>
                         )}
                         {trip.status === 'COMPLETED' && kmPercorrida && (
-                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#10B981', fontFamily: 'monospace' }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#059669', fontFamily: 'monospace' }}>
                                 🏁 {kmPercorrida.toLocaleString('pt-BR')} km percorridos
                             </div>
                         )}
