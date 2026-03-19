@@ -1,5 +1,5 @@
 # 📚 INDEX — Sistema Upgrade | Qualifica MA/PI/AC
-## Versão 3.0 | Reestruturado em 18/03/2026 | Método RR Technology
+## Versão 4.0 | Atualizado em 19/03/2026 | Método RR Technology
 
 > **Protocolo de Re-sincronização** — Leia nesta ordem no início de cada sessão:
 > 1. [arquitetura/ESTADO_SISTEMA.md](./arquitetura/ESTADO_SISTEMA.md) → o que funciona HOJE e o que está pendente
@@ -11,25 +11,44 @@
 
 ---
 
-## 🗺️ MAPA DO PROJETO
+## 🗺️ MAPA COMPLETO DOS DOCUMENTOS
 
-| Documento | Conteúdo | Prioridade |
+### 📐 Arquitetura e Planejamento
+
+| Documento | Conteúdo | Quando ler |
 |-----------|---------|------------|
-| [arquitetura/ESTADO_SISTEMA.md](./arquitetura/ESTADO_SISTEMA.md) | Snapshot do que funciona hoje, o que está quebrado, próximos EXECs | **Leia primeiro** |
-| [arquitetura/ROADMAP_EPICOS.md](./arquitetura/ROADMAP_EPICOS.md) | Trilha completa Fase 1 ✅ + Fase 2 com status de cada EXEC | **2ª leitura** |
-| [arquitetura/PLANO_IMPLEMENTACAO_FASES.md](./arquitetura/PLANO_IMPLEMENTACAO_FASES.md) | Histórico de sessões + decisões técnicas tomadas | **3ª leitura** |
-| [arquitetura/DIARIO_DE_BORDO.md](./arquitetura/DIARIO_DE_BORDO.md) | Log narrativo de cada sessão — o que aconteceu e por quê | Contexto histórico |
-| [arquitetura/PROMPTS_EXECUCAO_FASE2.md](./arquitetura/PROMPTS_EXECUCAO_FASE2.md) | 8 prompts EXEC-01→08 prontos para o Antygravity executar | **Para execução** |
-| [arquitetura/LIVRO_DE_REGRAS.md](./arquitetura/LIVRO_DE_REGRAS.md) | Regras imutáveis de código, UI, banco e segurança | Referência obrigatória |
-| [arquitetura/BASE_CONHECIMENTO_ESTRATEGICO.md](./arquitetura/BASE_CONHECIMENTO_ESTRATEGICO.md) | 12 decisões arquiteturais com fonte e impacto se reverter | Referência técnica |
+| [arquitetura/ESTADO_SISTEMA.md](./arquitetura/ESTADO_SISTEMA.md) | Snapshot do que funciona hoje, pendências, alertas ativos | **Sempre — 1ª leitura** |
+| [arquitetura/ROADMAP_EPICOS.md](./arquitetura/ROADMAP_EPICOS.md) | Fase 1 ✅ completa + Fase 2 com status de cada EXEC | **Sempre — 2ª leitura** |
+| [arquitetura/DIARIO_DE_BORDO.md](./arquitetura/DIARIO_DE_BORDO.md) | Log narrativo de cada sessão — o que aconteceu e por quê | **Sempre — 3ª leitura** |
+| [arquitetura/PROMPTS_EXECUCAO_FASE2.md](./arquitetura/PROMPTS_EXECUCAO_FASE2.md) | Prompts EXEC-01→08 prontos para execução | **Antes de cada EXEC** |
+| [arquitetura/LIVRO_DE_REGRAS.md](./arquitetura/LIVRO_DE_REGRAS.md) | Regras imutáveis de código, UI, banco e segurança | **Antes de qualquer implementação** |
+| [arquitetura/REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md](./arquitetura/REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md) | 8 regras arquiteturais do portal /driver/* | **Antes de alterar o portal do motorista** |
+| [arquitetura/BASE_CONHECIMENTO_ESTRATEGICO.md](./arquitetura/BASE_CONHECIMENTO_ESTRATEGICO.md) | 12 decisões arquiteturais com fonte e impacto | Referência técnica |
 | [arquitetura/SETUP.md](./arquitetura/SETUP.md) | Instalação, comandos, credenciais, troubleshooting | Setup inicial |
-| [arquitetura/GRAVITY_2_BRAIN.md](./arquitetura/GRAVITY_2_BRAIN.md) | Consciência completa do agente Gravity 2.0 (Partes 1-13) | Identidade do agente |
-| [arquitetura/ANALISE_REUNIAO_GRAVITY2.md](./arquitetura/ANALISE_REUNIAO_GRAVITY2.md) | ⚠️ HISTÓRICO — análise da reunião B2G com timestamps (gaps já implementados) | Referência histórica |
-| [arquitetura/METODOLOGIA_TRABALHO.md](./arquitetura/METODOLOGIA_TRABALHO.md) | Bypass Protocol da equipe + papéis de cada agente | Protocolo da equipe |
+| [arquitetura/GRAVITY_2_BRAIN.md](./arquitetura/GRAVITY_2_BRAIN.md) | Consciência completa do Gravity 2.0 (Partes 1-13) | Identidade do agente |
+
+### ⚙️ Processo e Método
+
+| Documento | Conteúdo | Quando ler |
+|-----------|---------|------------|
+| [arquitetura/METODOLOGIA_TRABALHO.md](./arquitetura/METODOLOGIA_TRABALHO.md) | Fluxo de trabalho, papéis, bypass protocol, como validar e documentar | **Início de cada sessão** |
+| [arquitetura/PLANO_IMPLEMENTACAO_FASES.md](./arquitetura/PLANO_IMPLEMENTACAO_FASES.md) | Histórico de sessões + decisões técnicas | Referência histórica |
+| [arquitetura/ANALISE_REUNIAO_GRAVITY2.md](./arquitetura/ANALISE_REUNIAO_GRAVITY2.md) | ⚠️ HISTÓRICO — análise da reunião B2G (gaps já implementados) | Referência histórica |
+
+### 🛡️ Segurança
+
+| Documento | Conteúdo | Quando ler |
+|-----------|---------|------------|
+| [seguranca/MR_ROBOT_MENTALIDADE.md](./seguranca/MR_ROBOT_MENTALIDADE.md) | Mentalidade de hacker ético + 4 camadas de escaneamento + checklist | **Antes da 1ª sessão e antes de cada EXEC** |
+| [seguranca/ERROS_E_SOLUCOES.md](./seguranca/ERROS_E_SOLUCOES.md) | 18+ bugs catalogados com causa raiz, solução e prevenção | **Antes de debugar qualquer erro** |
 | [seguranca/README.md](./seguranca/README.md) | VULs corrigidas + postura de segurança + checklist produção | Referência de segurança |
-| [seguranca/ERROS_E_SOLUCOES.md](./seguranca/ERROS_E_SOLUCOES.md) | 18+ bugs catalogados com causa raiz, solução e prevenção | Antes de debugar |
+
+### 🔬 Pesquisa e Specs
+
+| Documento | Conteúdo | Quando ler |
+|-----------|---------|------------|
 | [research/05_reports/PESQUISAS_PENDENTES.md](./research/05_reports/PESQUISAS_PENDENTES.md) | F1 concluídas + F2 pendentes com prompts para Deep Research | Antes de nova feature |
-| [research/05_reports/SPECS_PDF_GOVERNAMENTAL.md](./research/05_reports/SPECS_PDF_GOVERNAMENTAL.md) | Specs visuais reais dos PDFs aprovadas por Robert S. Pimentel | **Obrigatório antes de EXEC-05** |
+| [research/05_reports/SPECS_PDF_GOVERNAMENTAL.md](./research/05_reports/SPECS_PDF_GOVERNAMENTAL.md) | Specs visuais reais dos PDFs aprovados por Robert | **Obrigatório antes do EXEC-05** |
 
 ---
 
@@ -44,8 +63,10 @@
 | **PostgreSQL** | localhost:5432 | cursos_user / cursos_password / cursos_db |
 | **Redis** | localhost:6379 | — |
 
-**Credenciais de teste:**
+**Usuários de teste:**
 - Admin: `admin@qualifica.com` / `admin123`
+- Motorista: `joao.driver.test99@qualifica.com` / `senha123` (role DRIVER)
+- Professora: `maria.professora.visual@qualifica.com` / `prof123` (role TEACHER)
 - Aluno: `aluno@qualifica.com` / `aluno123`
 
 > ⚠️ **REMOVER credenciais visíveis da tela de login antes do deploy em produção.**
@@ -58,17 +79,19 @@
 # 1. Infraestrutura Docker (postgres + redis + minio)
 docker-compose up -d
 
-# 2. Backend NestJS (porta 3001 — valor em backend/.env PORT=3001)
+# 2. Backend NestJS — SEMPRE assim, nunca com $env:PORT inline
 cd backend
+Remove-Item Env:PORT -ErrorAction SilentlyContinue
 npm run start:dev
 
-# 3. Frontend Next.js (porta 3000)  
+# 3. Frontend Next.js
 cd frontend
 npm run dev
 
-# 4. Seed do banco (só na primeira vez ou após reset)
+# 4. Migrations e seed (primeira vez ou após reset)
 cd backend
 npx prisma migrate deploy
+npx prisma generate
 npm run prisma:seed
 ```
 
@@ -78,23 +101,37 @@ npm run prisma:seed
 
 | Papel | Quem | Função |
 |-------|------|--------|
-| **Comandante / Tech Lead** | Ronaldo Ribeiro (RR Tecnol) | Define visão, autoriza decisões arquiteturais, aprova |
-| **Estrategista** | Deep Research (Gemini/Perplexity) | Pesquisa antes de qualquer código |
-| **Monitor/Auditor** | Gravity 2.0 (Claude) | Lê arquivos, audita, planeja, valida checklist em tempo real |
-| **Motor de Execução** | Antygravity (Claude Sonnet/Windsurf) | Escreve código, roda builds, executa migrations, faz commits |
-| **Stakeholder** | Robert S. Pimentel (Upgrade) | Define regras de negócio, fornece modelos de PDF, valida no browser |
+| **Comandante / Tech Lead** | Davi (RR Tecnol) | Autoridade final — aprova, valida, decide |
+| **Monitor / Auditor** | Gravity 2.0 (Claude) | Analisa, planeja, valida, documenta, segurança |
+| **Motor de Execução** | Antygravity (Windsurf/Sonnet) | Implementa código mediante prompt aprovado |
+| **Estrategista** | Deep Research (Gemini/Perplexity) | Pesquisa antes de features complexas |
+| **Stakeholder** | Robert S. Pimentel (Upgrade) | Define negócio, valida entregáveis |
 
-**Regra de Ouro (Método RR Technology):** Nenhum papel age sem o anterior ter se manifestado.
-`Demanda → Pesquisa → Planejamento (Gravity) → Aprovação (Ronaldo) → Execução (Antygravity) → Validação`
+**Fluxo obrigatório:**
+`Demanda → Pesquisa → Planejamento → Aprovação → Execução → Validação → Docs → Commit`
+
+---
+
+## 📊 ESTADO ATUAL (19/03/2026)
+
+| Portal | Estado |
+|--------|--------|
+| **Admin** `/admin/*` | ✅ Completo — analytics reais (EXEC-07 ✅) |
+| **Professor** `/teacher/*` | ⚠️ Funciona, turmas sem filtro por professor (EXEC-03 pendente) |
+| **Motorista** `/driver/*` | ✅ Portal completo + responsividade 5 resoluções (EXEC-02 ✅) |
+| **Aluno** `/student/*` | ⚠️ Frequência hardcoded 87% (EXEC-04 pendente) |
+| **Público** | ✅ Funcional |
+
+**Próximo EXEC:** EXEC-03 — Professor filtra suas turmas
+**Pendência imediata:** `GET /reimbursements/my` retorna 404 para role DRIVER
 
 ---
 
 ## 📦 REPOSITÓRIO
 
 - **GitHub:** https://github.com/RR-Tecnol/Sistema_upgrade.git
-- **Diretório local:** `C:\Users\Desktop\Downloads\Sistema_upgrade-main_atual`
-- **Último commit:** `b4fc6f0` — Sprint BUG + SEC-A (8/8 fixes) | 16/03/2026
 - **Branch ativa:** `master`
+- **Último commit Fase 2:** `feat: fase 2 completa — EXEC-01/02/07/08 + portal motorista responsivo`
 
 ---
 
@@ -105,28 +142,12 @@ npm run prisma:seed
 | Frontend | Next.js App Router + Tailwind CSS | 14.x |
 | Backend | NestJS + Prisma ORM | 10.x |
 | Banco | PostgreSQL | 15 (Docker) |
-| Cache/Filas | Redis + BullMQ | 7.x |
+| Cache | Redis | 7.x |
 | Storage | MinIO (S3-compatible) | latest |
 | Auth | JWT duplo (access 15min + refresh 7d) + 2FA TOTP | — |
 | WebSocket | Socket.io | /notifications namespace |
 | CI/CD | GitHub Actions | `.github/workflows/ci.yml` |
-| Infra | Docker Compose | — |
 
 ---
 
-## 📊 ESTADO ATUAL DO SISTEMA (18/03/2026 — pós EXEC-01)
-
-| Portal | Telas | Estado |
-|--------|-------|--------|
-| **Admin** `/admin/*` | 16 telas completas | ✅ Funcional — analytics reais (EXEC-07 ✅) |
-| **Professor** `/teacher/*` | 4 telas mobile-first | ⚠️ Login funciona (EXEC-01 ✅), turmas sem filtro por professor (EXEC-03 pendente) |
-| **Aluno** `/student/*` | 6 áreas | ⚠️ Frequência hardcoded 87% (EXEC-04 pendente), inscrições corrigidas (EXEC-08 ✅) |
-| **Motorista** `/driver/*` | — | 🔴 EXEC-01 ✅ cria User com role DRIVER — portal ainda não existe (EXEC-02 pendente) |
-| **Público** | `/cursos`, `/inscricao/[id]`, `/certificado/[codigo]` | ✅ Funcional |
-
-**Banco:** DRIVER no UserRole ✅ | Employee↔User vinculados ✅ | **Commit base Fase 1:** `b4fc6f0`
-**Próximo EXEC:** EXEC-02 — Portal do Motorista | Ver [ESTADO_SISTEMA.md](./arquitetura/ESTADO_SISTEMA.md)
-
----
-
-*Método RR Technology | Sistema Upgrade | RR TECNOL | 18/03/2026*
+*Método RR Technology | Sistema Upgrade | RR Tecnol | 19/03/2026*
