@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { classesApi, Class } from '@/lib/api/classes';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { toast } from '@/components/ui/Toast';
@@ -188,6 +188,14 @@ export default function TurmasPage() {
 
             {/* Table */}
             <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <style>{`
+                    .turmas-drag { cursor: grab; overflow-x: auto; }
+                    .turmas-drag:active { cursor: grabbing; }
+                    .turmas-drag::-webkit-scrollbar { height: 5px; }
+                    .turmas-drag::-webkit-scrollbar-track { background: rgba(255,214,0,0.05); }
+                    .turmas-drag::-webkit-scrollbar-thumb { background: #FFD600; border-radius: 3px; }
+                    @keyframes tSlide { from { left: 0; } to { left: 55%; } }
+                `}</style>
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: '3rem' }}>
                         <div className="spinner" style={{ margin: '0 auto 1rem' }} />
@@ -199,7 +207,25 @@ export default function TurmasPage() {
                         <p style={{ fontFamily: 'Orbitron', fontSize: '0.75rem', letterSpacing: '0.12em' }}>NENHUMA TURMA ENCONTRADA</p>
                     </div>
                 ) : (
-                    <div style={{ overflowX: 'auto' }}>
+                    <div>
+                    <div style={{ padding: '0.3rem 1rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <div style={{ height: 3, flex: 1, borderRadius: 2, background: 'rgba(255,214,0,0.12)', position: 'relative', overflow: 'hidden' }}>
+                            <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: '35%', borderRadius: 2, background: '#FFD600', animation: 'tSlide 2s ease-in-out infinite alternate' }} />
+                        </div>
+                        <span style={{ fontSize: '0.58rem', color: '#B89B00', fontWeight: 700, whiteSpace: 'nowrap' }}>← arraste →</span>
+                        <div style={{ height: 3, flex: 1, borderRadius: 2, background: 'rgba(255,214,0,0.12)' }} />
+                    </div>
+                    <div
+                        className="turmas-drag"
+                        ref={(el) => {
+                            if (!el) return;
+                            let isDragging = false, startX = 0, scrollLeft = 0;
+                            el.onmousedown = (e) => { isDragging = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; };
+                            el.onmouseleave = () => { isDragging = false; };
+                            el.onmouseup = () => { isDragging = false; };
+                            el.onmousemove = (e) => { if (!isDragging) return; e.preventDefault(); el.scrollLeft = scrollLeft - (e.pageX - el.offsetLeft - startX); };
+                        }}
+                    >
                         <table className="data-table">
                             <thead>
                                 <tr>
@@ -273,6 +299,7 @@ export default function TurmasPage() {
                                 })}
                             </tbody>
                         </table>
+                    </div>
                     </div>
                 )}
             </div>

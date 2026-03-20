@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { coursesApi, Course } from '@/lib/api/courses';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -44,32 +44,26 @@ function ModalExclusao({ nome, onConfirm, onCancel }: { nome: string; onConfirm:
     );
 }
 
-/* ── Animated count-up ── */
-function useCountUp(target: number, duration = 900) {
-    const [count, setCount] = useState(0);
-    const raf = useRef(0);
-    useEffect(() => {
-        if (target === 0) { setCount(0); return; }
-        const start = Date.now();
-        const tick = () => {
-            const p = Math.min((Date.now() - start) / duration, 1);
-            setCount(Math.round((1 - Math.pow(1 - p, 3)) * target));
-            if (p < 1) raf.current = requestAnimationFrame(tick);
-        };
-        raf.current = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf.current);
-    }, [target, duration]);
-    return count;
-}
-
-/* ── Course accent colors (no purple) ── */
+/* ── Course accent colors ── */
 const ACCENTS = [
-    { color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },  // yellow
-    { color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },  // cyan
-    { color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },  // green
-    { color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },  // orange
-    { color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },  // blue
+    { color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
+    { color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
+    { color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },
+    { color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
+    { color: '#0369A1', bg: '#EFF6FF', border: '#BFDBFE' },
 ];
+
+/* ── Drag-to-scroll hook for table containers ── */
+function useDragScroll() {
+    return (el: HTMLDivElement | null) => {
+        if (!el) return;
+        let isDragging = false, startX = 0, scrollLeft = 0;
+        el.onmousedown = (e) => { isDragging = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; el.style.cursor = 'grabbing'; };
+        el.onmouseleave = () => { isDragging = false; el.style.cursor = 'grab'; };
+        el.onmouseup = () => { isDragging = false; el.style.cursor = 'grab'; };
+        el.onmousemove = (e) => { if (!isDragging) return; e.preventDefault(); el.scrollLeft = scrollLeft - (e.pageX - el.offsetLeft - startX); };
+    };
+}
 
 export default function CursosPage() {
     const [courses, setCourses] = useState<Course[]>([]);
@@ -78,6 +72,7 @@ export default function CursosPage() {
     const [hovered, setHovered] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
     const [deletingCourse, setDeletingCourse] = useState<Course | null>(null);
+    const dragScrollRef = useDragScroll();
 
     useEffect(() => { loadCourses(); }, []);
 
@@ -87,7 +82,8 @@ export default function CursosPage() {
     };
 
     const handleDelete = async (course: Course) => {
-        try { await coursesApi.delete(course.id); setDeletingCourse(null); loadCourses(); toast.success('Curso excluído com sucesso!'); } catch { toast.error('Erro ao excluir curso. Verifique se há turmas vinculadas.'); setDeletingCourse(null); }
+        try { await coursesApi.delete(course.id); setDeletingCourse(null); loadCourses(); toast.success('Curso excluído com sucesso!'); }
+        catch { toast.error('Erro ao excluir curso. Verifique se há turmas vinculadas.'); setDeletingCourse(null); }
     };
 
     const filtered = courses.filter(c =>
@@ -98,12 +94,16 @@ export default function CursosPage() {
     const totalHours = courses.reduce((s, c) => s + (c.workloadHours || c.workload || 0), 0);
     const activeCount = courses.filter(c => c.active).length;
 
-    const nTotal = useCountUp(courses.length);
-    const nActive = useCountUp(activeCount);
-    const nHours = useCountUp(totalHours);
-
     return (
         <>
+        <style>{`
+            .drag-scroll { cursor: grab; overflow-x: auto; user-select: none; }
+            .drag-scroll::-webkit-scrollbar { height: 5px; }
+            .drag-scroll::-webkit-scrollbar-track { background: #FFFDE7; }
+            .drag-scroll::-webkit-scrollbar-thumb { background: #FFD600; border-radius: 3px; }
+            @keyframes scrollHint { from { left: 0; } to { left: 55%; } }
+            @keyframes scrollHintR { from { right: 0; } to { right: 55%; } }
+        `}</style>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} className="animate-fade-in">
 
             {/* ── HEADER ── */}
@@ -121,9 +121,9 @@ export default function CursosPage() {
             {/* ── KPI STRIP ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
                 {[
-                    { label: 'Total de Cursos', value: nTotal, suffix: '', color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
-                    { label: 'Cursos Ativos', value: nActive, suffix: '', color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },
-                    { label: 'Carga Horária Total', value: nHours, suffix: 'h', color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
+                    { label: 'Total de Cursos', value: courses.length, suffix: '', color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
+                    { label: 'Cursos Ativos', value: activeCount, suffix: '', color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },
+                    { label: 'Carga Horária Total', value: totalHours, suffix: 'h', color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
                 ].map((s, i) => (
                     <div key={i} className="animate-scale-in" style={{
                         animationDelay: `${i * 60}ms`,
@@ -142,7 +142,7 @@ export default function CursosPage() {
                 ))}
             </div>
 
-            {/* ── FILTER BAR (search + view toggle) ── */}
+            {/* ── FILTER BAR ── */}
             <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E5E7EB', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
                 <div style={{ flex: 1, position: 'relative' }}>
                     <MagnifyingGlassIcon style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: '#9CA3AF' }} />
@@ -165,9 +165,8 @@ export default function CursosPage() {
                     {filtered.length} curso{filtered.length !== 1 ? 's' : ''}
                 </div>
                 <div style={{ width: 1, height: 24, background: '#E5E7EB' }} />
-                {/* View toggle */}
-                {['table', 'grid'].map(m => (
-                    <button key={m} onClick={() => setViewMode(m as any)}
+                {(['table', 'grid'] as const).map(m => (
+                    <button key={m} onClick={() => setViewMode(m)}
                         title={m === 'table' ? 'Tabela' : 'Cards'}
                         style={{
                             padding: '0.45rem 0.65rem', borderRadius: 8, border: 'none', cursor: 'pointer', transition: 'all 0.18s',
@@ -200,97 +199,103 @@ export default function CursosPage() {
                 </div>
             )}
 
-            {/* ── TABLE VIEW ── */}
+            {/* ── TABLE VIEW (com drag-to-scroll) ── */}
             {!loading && filtered.length > 0 && viewMode === 'table' && (
                 <div style={{ background: '#FFFFFF', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ background: '#FFFDE7', borderBottom: '2px solid #FEF08A' }}>
-                                {['Curso', 'Carga Horária', 'Turmas', 'Multicurso', 'Status', 'Ações'].map(h => (
-                                    <th key={h} style={{ padding: '0.7rem 1rem', textAlign: 'left', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#B89B00', whiteSpace: 'nowrap' }}>{h}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filtered.map((course, idx) => {
-                                const acc = ACCENTS[idx % ACCENTS.length];
-                                const isHov = hovered === course.id;
-                                const initials = course.name.split(' ').filter((w: string) => w.length > 2).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
-                                return (
-                                    <tr key={course.id}
-                                        className="animate-fade-in"
-                                        style={{ animationDelay: `${idx * 25}ms`, borderBottom: '1px solid #F3F4F6', background: isHov ? '#FFFDE7' : '#FFFFFF', transition: 'background 0.15s', cursor: 'default' }}
-                                        onMouseEnter={() => setHovered(course.id)}
-                                        onMouseLeave={() => setHovered(null)}
-                                    >
-                                        {/* Curso */}
-                                        <td style={{ padding: '0.7rem 1rem' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                                <div style={{ width: 34, height: 34, borderRadius: 9, background: acc.bg, border: `1.5px solid ${acc.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.6rem', color: acc.color, flexShrink: 0 }}>
-                                                    {initials}
+                    {/* Barra de scroll amarela */}
+                    <div style={{ padding: '0.35rem 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ height: 3, flex: 1, borderRadius: 2, background: '#FEF08A', position: 'relative', overflow: 'hidden' }}>
+                            <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: '35%', borderRadius: 2, background: '#FFD600', animation: 'scrollHint 2s ease-in-out infinite alternate' }} />
+                        </div>
+                        <span style={{ fontSize: '0.58rem', color: '#B89B00', fontWeight: 700, whiteSpace: 'nowrap' }}>← arraste →</span>
+                        <div style={{ height: 3, flex: 1, borderRadius: 2, background: '#FEF08A', position: 'relative', overflow: 'hidden' }}>
+                            <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', width: '35%', borderRadius: 2, background: '#FFD600', animation: 'scrollHintR 2s ease-in-out infinite alternate' }} />
+                        </div>
+                    </div>
+                    <div className="drag-scroll" ref={dragScrollRef}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+                            <thead>
+                                <tr style={{ background: '#FFFDE7', borderBottom: '2px solid #FEF08A' }}>
+                                    {['Curso', 'Carga Horária', 'Turmas', 'Multicurso', 'Status', 'Ações'].map(h => (
+                                        <th key={h} style={{ padding: '0.7rem 1rem', textAlign: 'left', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#B89B00', whiteSpace: 'nowrap' }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map((course, idx) => {
+                                    const acc = ACCENTS[idx % ACCENTS.length];
+                                    const isHov = hovered === course.id;
+                                    const initials = course.name.split(' ').filter((w: string) => w.length > 2).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+                                    return (
+                                        <tr key={course.id}
+                                            className="animate-fade-in"
+                                            style={{ animationDelay: `${idx * 25}ms`, borderBottom: '1px solid #F3F4F6', background: isHov ? '#FFFDE7' : '#FFFFFF', transition: 'background 0.15s' }}
+                                            onMouseEnter={() => setHovered(course.id)}
+                                            onMouseLeave={() => setHovered(null)}
+                                        >
+                                            <td style={{ padding: '0.7rem 1rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                    <div style={{ width: 34, height: 34, borderRadius: 9, background: acc.bg, border: `1.5px solid ${acc.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.6rem', color: acc.color, flexShrink: 0 }}>
+                                                        {initials}
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>{course.name}</div>
+                                                        <div style={{ fontSize: '0.72rem', color: '#9CA3AF', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{course.description}</div>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.85rem' }}>{course.name}</div>
-                                                    <div style={{ fontSize: '0.72rem', color: '#9CA3AF', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{course.description}</div>
+                                            </td>
+                                            <td style={{ padding: '0.7rem 1rem', whiteSpace: 'nowrap' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                    <ClockIcon style={{ width: 13, height: 13, color: acc.color, flexShrink: 0 }} />
+                                                    <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.82rem', color: acc.color }}>{course.workloadHours || course.workload}h</span>
                                                 </div>
-                                            </div>
-                                        </td>
-                                        {/* Carga */}
-                                        <td style={{ padding: '0.7rem 1rem' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                                <ClockIcon style={{ width: 13, height: 13, color: acc.color, flexShrink: 0 }} />
-                                                <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.82rem', color: acc.color }}>{course.workloadHours || course.workload}h</span>
-                                            </div>
-                                        </td>
-                                        {/* Turmas */}
-                                        <td style={{ padding: '0.7rem 1rem' }}>
-                                            <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.85rem', color: '#374151' }}>{course._count?.classes || 0}</span>
-                                        </td>
-                                        {/* Multicurso */}
-                                        <td style={{ padding: '0.7rem 1rem' }}>
-                                            {course.isMulticourse
-                                                ? <span style={{ padding: '0.2rem 0.55rem', borderRadius: 100, fontSize: '0.65rem', fontWeight: 700, background: '#FFF7ED', color: '#EA580C', border: '1px solid #FED7AA' }}>SIM</span>
-                                                : <span style={{ fontSize: '0.72rem', color: '#D1D5DB' }}>—</span>
-                                            }
-                                        </td>
-                                        {/* Status */}
-                                        <td style={{ padding: '0.7rem 1rem' }}>
-                                            <span style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                                                padding: '0.2rem 0.65rem', borderRadius: 100, fontSize: '0.68rem', fontWeight: 700,
-                                                background: course.active ? '#DCFCE7' : '#F3F4F6',
-                                                color: course.active ? '#15803D' : '#9CA3AF',
-                                                border: `1px solid ${course.active ? '#BBF7D0' : '#E5E7EB'}`,
-                                            }}>
-                                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: course.active ? '#15803D' : '#D1D5DB', display: 'inline-block' }} />
-                                                {course.active ? 'Ativo' : 'Inativo'}
-                                            </span>
-                                        </td>
-                                        {/* Ações */}
-                                        <td style={{ padding: '0.7rem 1rem' }}>
-                                            <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                                <Link href={`/admin/cursos/${course.id}`}
-                                                    style={{ padding: '0.4rem 0.75rem', borderRadius: 8, background: '#FFFDE7', border: '1px solid #FEF08A', color: '#92730A', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem', transition: 'background 0.15s' }}
-                                                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FEF08A'}
-                                                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#FFFDE7'}
-                                                >
-                                                    <EyeIcon style={{ width: 13, height: 13 }} />
-                                                    Ver
-                                                </Link>
-                                                <button onClick={() => setDeletingCourse(course)}
-                                                    style={{ padding: '0.4rem 0.75rem', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', transition: 'background 0.15s' }}
-                                                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FEE2E2'}
-                                                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#FEF2F2'}
-                                                >
-                                                    <TrashIcon style={{ width: 13, height: 13 }} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                            </td>
+                                            <td style={{ padding: '0.7rem 1rem' }}>
+                                                <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.85rem', color: '#374151' }}>{course._count?.classes || 0}</span>
+                                            </td>
+                                            <td style={{ padding: '0.7rem 1rem' }}>
+                                                {course.isMulticourse
+                                                    ? <span style={{ padding: '0.2rem 0.55rem', borderRadius: 100, fontSize: '0.65rem', fontWeight: 700, background: '#FFF7ED', color: '#EA580C', border: '1px solid #FED7AA' }}>SIM</span>
+                                                    : <span style={{ fontSize: '0.72rem', color: '#D1D5DB' }}>—</span>
+                                                }
+                                            </td>
+                                            <td style={{ padding: '0.7rem 1rem', whiteSpace: 'nowrap' }}>
+                                                <span style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                                                    padding: '0.2rem 0.65rem', borderRadius: 100, fontSize: '0.68rem', fontWeight: 700,
+                                                    background: course.active ? '#DCFCE7' : '#F3F4F6',
+                                                    color: course.active ? '#15803D' : '#9CA3AF',
+                                                    border: `1px solid ${course.active ? '#BBF7D0' : '#E5E7EB'}`,
+                                                }}>
+                                                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: course.active ? '#15803D' : '#D1D5DB', display: 'inline-block' }} />
+                                                    {course.active ? 'Ativo' : 'Inativo'}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '0.7rem 1rem', whiteSpace: 'nowrap' }}>
+                                                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                                    <Link href={`/admin/cursos/${course.id}`}
+                                                        style={{ padding: '0.4rem 0.75rem', borderRadius: 8, background: '#FFFDE7', border: '1px solid #FEF08A', color: '#92730A', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem', transition: 'background 0.15s' }}
+                                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FEF08A'}
+                                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#FFFDE7'}
+                                                    >
+                                                        <EyeIcon style={{ width: 13, height: 13 }} />
+                                                        Ver
+                                                    </Link>
+                                                    <button onClick={() => setDeletingCourse(course)}
+                                                        style={{ padding: '0.4rem 0.75rem', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', transition: 'background 0.15s' }}
+                                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FEE2E2'}
+                                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#FEF2F2'}
+                                                    >
+                                                        <TrashIcon style={{ width: 13, height: 13 }} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
 
@@ -314,15 +319,14 @@ export default function CursosPage() {
                                     transition: 'all 0.2s',
                                 }}
                                 onMouseEnter={e => {
-                                    (e.currentTarget as HTMLElement).style.transform = 'translateY(-3px)';
-                                    (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px ${acc.color}22`;
+                                    (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)';
+                                    (e.currentTarget as HTMLElement).style.boxShadow = `0 10px 28px ${acc.color}30`;
                                 }}
                                 onMouseLeave={e => {
                                     (e.currentTarget as HTMLElement).style.transform = '';
                                     (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 4px rgba(0,0,0,0.05)';
                                 }}
                             >
-                                {/* Card header */}
                                 <div style={{ padding: '1rem', background: acc.bg }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
                                         <div style={{ width: 38, height: 38, borderRadius: 10, background: acc.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.72rem' }}>
@@ -342,8 +346,6 @@ export default function CursosPage() {
                                     <div style={{ fontWeight: 800, color: '#111827', fontSize: '0.9rem', lineHeight: 1.3, marginBottom: '0.3rem' }}>{course.name}</div>
                                     <div style={{ fontSize: '0.72rem', color: '#9CA3AF', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.5 }}>{course.description}</div>
                                 </div>
-
-                                {/* Card footer */}
                                 <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${acc.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                     <div style={{ display: 'flex', gap: '1rem' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -370,7 +372,8 @@ export default function CursosPage() {
                 </div>
             )}
         </div>
-        {/* FEAT-CUR3: Modal de confirmação de exclusão */}
+
+        {/* Modal de confirmação de exclusão */}
         {deletingCourse && (
             <ModalExclusao
                 nome={deletingCourse.name}

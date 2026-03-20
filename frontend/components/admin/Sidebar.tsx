@@ -55,7 +55,7 @@ const navSections = [
         items: [
             { name: 'Períodos de Curso', href: '/admin/acoes', icon: BoltIcon },
             { name: 'Funcionários', href: '/admin/funcionarios', icon: BriefcaseIcon },
-            { name: 'Feriados & Imprevistos', href: '/admin/feriados', icon: CalendarDaysIcon },
+            { name: 'Feriados', href: '/admin/feriados', icon: CalendarDaysIcon },
             { name: 'Imprevistos', href: '/admin/imprevistos', icon: ExclamationTriangleIcon },
             { name: 'Reembolsos', href: '/admin/reembolsos', icon: BanknotesIcon },
             { name: 'Contas a Pagar', href: '/admin/contas-a-pagar', icon: CurrencyDollarIcon },

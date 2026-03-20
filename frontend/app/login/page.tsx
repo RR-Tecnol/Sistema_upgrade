@@ -85,8 +85,8 @@ export default function LoginPage() {
                     <div className="animate-fade-in" style={{ position: 'relative' }}>
                         {/* Logo */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '2.5rem' }}>
-                            <div style={{ width: 50, height: 50, borderRadius: 14, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.85rem', color: '#FFD600' }}>UG</span>
+                            <div style={{ width: 56, height: 56, borderRadius: 14, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: 6 }}>
+                                <img src="/logo-upgrade.png" alt="Upgrade" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                             </div>
                             <div>
                                 <h1 style={{ fontFamily: 'Orbitron', color: '#000', fontSize: '1.75rem', fontWeight: 900, letterSpacing: '0.12em', lineHeight: 1 }}>UPGRADE</h1>
