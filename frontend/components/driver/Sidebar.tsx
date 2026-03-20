@@ -11,6 +11,7 @@ import {
     ArrowRightOnRectangleIcon,
     XMarkIcon,
     ExclamationTriangleIcon,
+    Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,6 +23,7 @@ const navItems = [
     { name: 'Manutenção', href: '/driver/manutencao', icon: WrenchScrewdriverIcon },
     { name: 'Minha Rota', href: '/driver/rota', icon: MapPinIcon },
     { name: 'Imprevistos', href: '/driver/imprevistos', icon: ExclamationTriangleIcon },
+    { name: 'Configurações', href: '/driver/configuracoes', icon: Cog6ToothIcon },
 ];
 
 interface Props {

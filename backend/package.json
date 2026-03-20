@@ -21,8 +21,9 @@
         "prisma:migrate": "prisma migrate dev",
         "prisma:studio": "prisma studio",
         "prisma:seed": "ts-node prisma/seed.ts",
-        "seed:test": "ts-node prisma/seed-test.ts",
-        "seed:demo": "ts-node prisma/seed-demo.ts"
+        "seed:full":  "npx tsx prisma/seed-full.ts",
+        "seed:test":  "ts-node prisma/seed-test.ts",
+        "seed:demo":  "ts-node prisma/seed-demo.ts"
     },
     "keywords": [
         "nestjs",
@@ -110,6 +111,6 @@
         "testEnvironment": "node"
     },
     "prisma": {
-        "seed": "ts-node prisma/seed.ts"
+        "seed": "npx tsx prisma/seed-full.ts"
     }
 }

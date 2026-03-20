@@ -83,11 +83,9 @@ export default function LoginPage() {
                     <div style={{ position: 'absolute', bottom: -40, left: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(0,0,0,0.04)' }} />
 
                     <div className="animate-fade-in" style={{ position: 'relative' }}>
-                        {/* Logo */}
+                        {/* Logo sem fundo preto */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '2.5rem' }}>
-                            <div style={{ width: 56, height: 56, borderRadius: 14, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: 6 }}>
-                                <img src="/logo-upgrade.png" alt="Upgrade" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                            </div>
+                            <img src="/logo-upgrade.png" alt="Upgrade" style={{ height: 52, width: 'auto', objectFit: 'contain', display: 'block' }} />
                             <div>
                                 <h1 style={{ fontFamily: 'Orbitron', color: '#000', fontSize: '1.75rem', fontWeight: 900, letterSpacing: '0.12em', lineHeight: 1 }}>UPGRADE</h1>
                                 <p style={{ fontSize: '0.62rem', letterSpacing: '0.2em', color: 'rgba(0,0,0,0.55)', textTransform: 'uppercase', marginTop: '0.2rem', fontWeight: 600 }}>Sistema de Gestão</p>

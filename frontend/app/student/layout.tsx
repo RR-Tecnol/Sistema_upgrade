@@ -10,7 +10,7 @@ export default function StudentLayout({ children }: { children: ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
     const [ready, setReady] = useState(false);
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
 
     useEffect(() => {
         const token = localStorage.getItem('token') || localStorage.getItem('access_token');

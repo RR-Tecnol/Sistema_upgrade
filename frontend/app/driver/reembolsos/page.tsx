@@ -71,7 +71,7 @@ export default function DriverReembolsos() {
     const [loading, setLoading]       = useState(true);
     const [showForm, setShowForm]     = useState(false);
     const [saving, setSaving]         = useState(false);
-    const [form, setForm]             = useState({ type: 'FOOD', amount: '', description: '', tripId: '' });
+    const [form, setForm]             = useState({ type: 'FOOD', amount: '', description: '' });
 
     const load = async () => {
         setLoading(true);
@@ -95,10 +95,10 @@ export default function DriverReembolsos() {
                 type: form.type,
                 amount: parseFloat(form.amount.replace(',', '.')),
                 description: form.description,
-                ...(form.tripId ? { tripId: form.tripId } : {}),
+                // tripId não existe no schema Reimbursement
             });
             setShowForm(false);
-            setForm({ type: 'FOOD', amount: '', description: '', tripId: '' });
+            setForm({ type: 'FOOD', amount: '', description: '' });
             load();
         } catch { } finally { setSaving(false); }
     };
@@ -169,7 +169,7 @@ export default function DriverReembolsos() {
                         Nenhum reembolso solicitado
                     </div>
                     <p style={{ color: '#D1D5DB', fontSize: '0.75rem', marginTop: '0.4rem' }}>
-                        Clique em "+ Novo" para solicitar seu primeiro reembolso
+                        Clique em &quot;+ Novo&quot; para solicitar seu primeiro reembolso
                     </p>
                 </div>
             ) : reembolsos.map((r: any) => {
@@ -255,8 +255,7 @@ export default function DriverReembolsos() {
                         {trips.length > 0 && (
                             <>
                                 <label className="rmb-label">Vincular à viagem (opcional)</label>
-                                <select value={form.tripId} onChange={e => setForm({ ...form, tripId: e.target.value })}
-                                    className="rmb-input" style={{ appearance: 'none' }}>
+                                <select className="rmb-input" style={{ appearance: 'none' }}>
                                     <option value="">Sem vínculo</option>
                                     {trips.map((t: any) => (
                                         <option key={t.id} value={t.id}>

@@ -23,6 +23,13 @@ export class EmployeesService {
         // Se senha fornecida, criar User de acesso com role mapeado
         let userId: string | undefined;
         if (dto.password && dto.password.length >= 6) {
+            if (!dto.email) {
+                throw new Error('E-mail é obrigatório para criar acesso ao sistema. Preencha o campo de e-mail.');
+            }
+            // Verificar se já existe User com esse email
+            const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
+            if (existingUser) throw new ConflictException('E-mail já cadastrado como usuário do sistema');
+
             const roleMap: Record<string, string> = {
                 INSTRUCTOR: 'TEACHER',
                 NURSE: 'TEACHER',
@@ -37,13 +44,14 @@ export class EmployeesService {
             const user = await this.prisma.user.create({
                 data: {
                     name: dto.name,
-                    email: dto.email!,
+                    email: dto.email,
                     password: hashed,
                     role: userRole as any,
                 },
             });
             userId = user.id;
         }
+
 
         return this.prisma.employee.create({
             data: {

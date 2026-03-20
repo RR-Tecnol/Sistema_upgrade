@@ -181,12 +181,20 @@ export default function ConfiguracoesPage() {
     });
 
     useEffect(() => {
-        const u = localStorage.getItem('user');
-        if (u) {
-            const parsed = JSON.parse(u);
-            setUser(parsed);
-            setCfg(c => ({ ...c, nomeAdmin: parsed.name || '', emailAdmin: parsed.email || '' }));
-        }
+        // Busca /users/me para garantir que o nome real do admin é exibido
+        api.get('/users/me').then(res => {
+            const u = res.data;
+            setUser(u);
+            setCfg(c => ({ ...c, nomeAdmin: u.name || '', emailAdmin: u.email || '' }));
+            localStorage.setItem('user', JSON.stringify({ ...JSON.parse(localStorage.getItem('user') || '{}'), ...u }));
+        }).catch(() => {
+            const u = localStorage.getItem('user');
+            if (u) {
+                const parsed = JSON.parse(u);
+                setUser(parsed);
+                setCfg(c => ({ ...c, nomeAdmin: parsed.name || '', emailAdmin: parsed.email || '' }));
+            }
+        });
         // REQ-14: Carregar configurações salvas no backend
         api.get('/settings')
             .then(r => {

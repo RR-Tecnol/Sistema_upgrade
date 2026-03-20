@@ -52,7 +52,7 @@ export class DashboardService {
 
             // Enrollments
             this.prisma.enrollment.count(),
-            this.prisma.enrollment.count({ where: { status: 'PENDING' } }),
+            this.prisma.enrollment.count({ where: { status: { in: ['ENROLLED', 'DOCUMENT_PENDING'] } } }),
         ]);
 
         return {

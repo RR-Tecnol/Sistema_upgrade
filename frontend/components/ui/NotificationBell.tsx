@@ -126,9 +126,9 @@ export default function NotificationBell() {
                         position: 'absolute', top: -4, right: -4,
                         width: unread > 9 ? 22 : 18, height: 18,
                         borderRadius: 100, fontSize: '0.6rem', fontWeight: 900,
-                        background: '#DC2626', color: '#fff',
+                        background: '#EF4444', color: '#fff',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        border: '2px solid #0F172A', animation: 'bellPulse 2s ease-in-out infinite',
+                        border: '2px solid #fff', animation: 'bellPulse 2s ease-in-out infinite',
                     }}>
                         {unread > 99 ? '99+' : unread}
                     </span>

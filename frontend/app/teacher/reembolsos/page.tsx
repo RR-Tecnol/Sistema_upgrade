@@ -151,8 +151,8 @@ export default function TeacherReembolsos() {
             </div>
 
             {/* Formulário */}
-            <div style={{ background: '#1E293B', borderRadius: 12, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '1.5rem' }}>
-                <h2 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#F1F5F9', marginBottom: '1.25rem' }}>Nova Solicitação</h2>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '1.5rem', border: '1px solid #E5E7EB', marginBottom: '1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                <h2 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827', marginBottom: '1.25rem', fontFamily: 'Orbitron', letterSpacing: '0.06em' }}>NOVA SOLICITAÇÃO</h2>
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     {/* Tipo */}
                     <div>
@@ -160,7 +160,7 @@ export default function TeacherReembolsos() {
                         <select
                             value={tipo}
                             onChange={e => setTipo(e.target.value)}
-                            style={{ width: '100%', minHeight: 44, background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0 0.75rem', color: '#F1F5F9', fontSize: '0.9rem' }}
+                            style={{ width: '100%', minHeight: 44, background: '#F9FAFB', border: '1.5px solid #E5E7EB', borderRadius: 8, padding: '0 0.75rem', color: '#111827', fontSize: '0.9rem', cursor: 'pointer' }}
                         >
                             {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                         </select>
@@ -173,7 +173,7 @@ export default function TeacherReembolsos() {
                             type="number" step="0.01" min="0" placeholder="0,00"
                             value={valor}
                             onChange={e => setValor(e.target.value)}
-                            style={{ width: '100%', minHeight: 44, background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0 0.75rem', color: '#F1F5F9', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                            style={{ width: '100%', minHeight: 44, background: '#F9FAFB', border: '1.5px solid #E5E7EB', borderRadius: 8, padding: '0 0.75rem', color: '#111827', fontSize: '0.9rem', boxSizing: 'border-box' }}
                         />
                     </div>
 
@@ -185,7 +185,7 @@ export default function TeacherReembolsos() {
                             value={descricao}
                             onChange={e => setDescricao(e.target.value)}
                             rows={3}
-                            style={{ width: '100%', background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0.6rem 0.75rem', color: '#F1F5F9', fontSize: '0.9rem', resize: 'none', boxSizing: 'border-box' }}
+                            style={{ width: '100%', background: '#F9FAFB', border: '1.5px solid #E5E7EB', borderRadius: 8, padding: '0.6rem 0.75rem', color: '#111827', fontSize: '0.9rem', resize: 'none', boxSizing: 'border-box' }}
                         />
                     </div>
 
@@ -248,11 +248,11 @@ export default function TeacherReembolsos() {
 
             {/* Histórico */}
             <div>
-                <h2 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#F1F5F9', marginBottom: '1rem' }}>Minhas Solicitações</h2>
+                <h2 style={{ fontSize: '0.78rem', fontWeight: 800, color: '#B89B00', marginBottom: '1rem', fontFamily: 'Orbitron', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Minhas Solicitações</h2>
                 {loading ? (
                     <div style={{ textAlign: 'center', color: '#64748B', padding: '2rem' }}>Carregando...</div>
                 ) : reembolsos.length === 0 ? (
-                    <div style={{ background: '#1E293B', borderRadius: 12, padding: '2rem', textAlign: 'center', color: '#64748B', border: '1px solid rgba(255,255,255,0.06)', fontSize: '0.85rem' }}>
+                    <div style={{ background: '#fff', borderRadius: 12, padding: '2rem', textAlign: 'center', color: '#9CA3AF', border: '1px solid #E5E7EB', fontSize: '0.85rem' }}>
                         Nenhuma solicitação encontrada.
                     </div>
                 ) : (
@@ -261,21 +261,25 @@ export default function TeacherReembolsos() {
                             const st = STATUS_COLORS[r.status] || STATUS_COLORS.PENDING;
                             return (
                                 <div key={r.id} style={{
-                                    background: '#1E293B', borderRadius: 10,
-                                    border: '1px solid rgba(255,255,255,0.06)',
+                                    background: '#fff', borderRadius: 10,
+                                    border: '1px solid #E5E7EB',
                                     padding: '0.875rem 1rem',
                                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                }}>
+                                    transition: 'box-shadow 0.2s',
+                                }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = 'none'}
+                                >
                                     <div>
-                                        <div style={{ fontWeight: 600, color: '#F1F5F9', fontSize: '0.88rem' }}>
+                                        <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.88rem' }}>
                                             {TIPOS.find(t => t.value === r.type)?.label || r.type}
                                         </div>
-                                        <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: 2 }}>
+                                        <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginTop: 2 }}>
                                             {r.description || 'Sem descrição'} · {new Date(r.createdAt || Date.now()).toLocaleDateString('pt-BR')}
                                         </div>
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 700, color: '#F1F5F9', fontSize: '0.95rem', fontFamily: 'Orbitron, sans-serif' }}>
+                                        <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', fontFamily: 'Orbitron, sans-serif' }}>
                                             {fmtCurr(r.amount)}
                                         </div>
                                         <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 10px', borderRadius: 20, background: st.bg, color: st.color }}>

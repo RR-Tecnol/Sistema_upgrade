@@ -8,7 +8,7 @@ import {
     ClipboardDocumentCheckIcon,
     DocumentTextIcon,
     IdentificationIcon,
-    UserCircleIcon,
+    Cog6ToothIcon,
     ArrowRightOnRectangleIcon,
     XMarkIcon,
     ExclamationTriangleIcon,
@@ -22,8 +22,8 @@ const navItems = [
     { name: 'Frequência', href: '/student/attendance', icon: ClipboardDocumentCheckIcon },
     { name: 'Inscrições', href: '/student/enrollments', icon: DocumentTextIcon },
     { name: 'Certificados', href: '/student/certificates', icon: IdentificationIcon },
-    { name: 'Meu Perfil', href: '/student/profile', icon: UserCircleIcon },
     { name: 'Imprevistos', href: '/student/imprevistos', icon: ExclamationTriangleIcon },
+    { name: 'Configurações', href: '/student/configuracoes', icon: Cog6ToothIcon },
 ];
 
 interface Props {

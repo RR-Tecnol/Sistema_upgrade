@@ -147,7 +147,7 @@ function ModalReview({ absence, onClose, onSaved }: { absence: Absence; onClose:
 export default function AdminImprevistos() {
     const [absences, setAbsences] = useState<Absence[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState('PENDING');
+    const [filter, setFilter] = useState('');
     const [reviewing, setReviewing] = useState<Absence | null>(null);
 
     const load = async () => {

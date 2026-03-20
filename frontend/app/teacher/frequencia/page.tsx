@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -22,7 +22,7 @@ export default function TeacherFrequencia() {
             const list = Array.isArray(res.data) ? res.data : [];
             setClasses(list);
 
-            // Verificar quais turmas já têm frequência registrada hoje
+            // Verificar quais turmas jÃ¡ tÃªm frequÃªncia registrada hoje
             const checks: Record<string, boolean> = {};
             list.forEach((cls: any) => { checks[cls.id] = false; });
             setAttendanceToday(checks);
@@ -37,10 +37,10 @@ export default function TeacherFrequencia() {
         <div>
             <div style={{ marginBottom: '1.5rem' }}>
                 <h1 className="gradient-text" style={{ fontSize: '1.8rem', fontWeight: 900, fontFamily: 'Orbitron, sans-serif', letterSpacing: '0.08em', margin: 0 }}>
-                    FREQUÊNCIA
+                    FREQUÃŠNCIA
                 </h1>
                 <p style={{ color: '#64748B', fontSize: '0.85rem', marginTop: 4 }}>
-                    Selecione a turma para registrar a frequência de hoje
+                    Selecione a turma para registrar a frequÃªncia de hoje
                 </p>
             </div>
 
@@ -61,19 +61,19 @@ export default function TeacherFrequencia() {
                         return (
                             <Link key={cls.id} href={`/teacher/frequencia/${cls.id}`} style={{ textDecoration: 'none' }}>
                                 <div style={{
-                                    background: '#1E293B', borderRadius: 12,
-                                    border: '1px solid rgba(255,255,255,0.06)',
+                                    background: '#fff', borderRadius: 12,
+                                    border: '1.5px solid rgba(255,214,0,0.35)',
                                     padding: '1rem 1.25rem',
                                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                     cursor: 'pointer', transition: 'all 0.18s',
                                     minHeight: 72,
                                 }}>
                                     <div style={{ flex: 1 }}>
-                                        <div style={{ fontWeight: 600, color: '#F1F5F9', fontSize: '0.92rem', marginBottom: 4 }}>
+                                        <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.92rem', marginBottom: 4 }}>
                                             {cls.course?.name || 'Curso'}
                                         </div>
                                         <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
-                                            {cls.city?.name} · {cls.classIdentifier}
+                                            {cls.city?.name} Â· {cls.classIdentifier}
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -84,7 +84,7 @@ export default function TeacherFrequencia() {
                                             border: `1px solid ${done ? 'rgba(16,185,129,0.3)' : 'rgba(255,214,0,0.25)'}`,
                                             whiteSpace: 'nowrap',
                                         }}>
-                                            {done ? '✓ Registrada hoje' : '⏳ Pendente'}
+                                            {done ? 'âœ“ Registrada hoje' : 'â³ Pendente'}
                                         </span>
                                         <ChevronRightIcon style={{ width: 16, height: 16, color: '#475569' }} />
                                     </div>
@@ -97,3 +97,4 @@ export default function TeacherFrequencia() {
         </div>
     );
 }
+

@@ -246,6 +246,7 @@ export default function DriverDashboard() {
     const [nextTrip,   setNextTrip]   = useState<Trip | null>(null);
     const [stats,      setStats]      = useState({ tripsMonth: 0, kmMonth: 0, pending: 0 });
     const [loading,    setLoading]    = useState(true);
+    const [user,       setUser]       = useState<any>(null);
     const [kmInput,    setKmInput]    = useState('');
     const [noteInput,  setNoteInput]  = useState('');
     const [kmModal,    setKmModal]    = useState<'start'|'end'|null>(null);
@@ -280,7 +281,11 @@ export default function DriverDashboard() {
         } catch { /* erros individuais são silenciados */ }
         finally { setLoading(false); }
     };
-    useEffect(() => { load(); }, []);
+    useEffect(() => {
+        const stored = localStorage.getItem('user');
+        if (stored) setUser(JSON.parse(stored));
+        load();
+    }, []);
 
     /* ── Ações do motorista ── */
     const handleStart = async () => {
@@ -338,21 +343,25 @@ export default function DriverDashboard() {
 
             {/* ══ HERO PAINEL ══ */}
             <div className="drv-hero">
-                <div style={{ position:'relative' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:'.75rem', marginBottom:'.5rem' }}>
+                <div style={{ position: 'relative' }}>
+                    {/* Banner boas-vindas padrão */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
                         <div style={{
-                            width:38, height:38, borderRadius:10,
-                            background:'linear-gradient(135deg,#FFD600,#F59E0B)',
-                            display:'flex', alignItems:'center', justifyContent:'center',
-                            fontSize:'1.1rem', boxShadow:'0 4px 12px rgba(255,214,0,.4)', flexShrink:0,
-                        }}>🚛</div>
+                            width: 50, height: 50, borderRadius: 13,
+                            background: '#000',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.9rem',
+                            color: '#FFD600', boxShadow: '0 4px 12px rgba(0,0,0,0.25)', flexShrink: 0,
+                        }}>
+                            {user?.name ? user.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase() : 'MT'}
+                        </div>
                         <div>
-                            <h1 style={{
-                                fontFamily:'Orbitron,sans-serif', fontWeight:900, fontSize:'1.25rem',
-                                color:'#92400E', letterSpacing:'.08em', margin:0,
-                            }}>PAINEL DO MOTORISTA</h1>
-                            <p style={{ color:'#B45309', fontSize:'.62rem', letterSpacing:'.1em', margin:0, marginTop:2 }}>
-                                OPERAÇÕES DE CAMPO — SISTEMA UPGRADE
+                            <p style={{ fontSize: '0.62rem', color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700, margin: 0, marginBottom: '0.15rem' }}>Portal do Motorista</p>
+                            <h1 style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: '#92400E', letterSpacing: '.06em', margin: 0, lineHeight: 1.1 }}>
+                                Olá, {user?.name?.split(' ')[0] || 'Motorista'}!
+                            </h1>
+                            <p style={{ fontSize: '0.72rem', color: 'rgba(0,0,0,0.5)', margin: 0, marginTop: '0.2rem' }}>
+                                {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
                             </p>
                         </div>
                     </div>

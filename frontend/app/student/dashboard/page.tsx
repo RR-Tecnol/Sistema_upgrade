@@ -139,7 +139,7 @@ export default function StudentDashboard() {
                         <h1 style={{ fontFamily: 'Orbitron', fontSize: '1.4rem', fontWeight: 900, color: '#000', letterSpacing: '0.04em', lineHeight: 1.2 }}>
                             Olá, {user?.name?.split(' ')[0] || 'Aluno'}!
                         </h1>
-                        <p style={{ fontSize: '0.82rem', color: 'rgba(0,0,0,0.6)', marginTop: '0.25rem' }}>Bem-vindo ao seu painel acadêmico UPGRADE</p>
+                        <p style={{ fontSize: '0.82rem', color: 'rgba(0,0,0,0.6)', marginTop: '0.25rem' }}>{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</p>
                     </div>
                 </div>
             </div>

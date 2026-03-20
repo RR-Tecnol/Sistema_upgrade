@@ -14,12 +14,17 @@ import {
 export default function TeacherDashboard() {
     const [classes, setClasses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [teacherName, setTeacherName] = useState('Professor');
+    const [user, setUser] = useState<any>(null);
+    const [teacherName, setTeacherName] = useState('');
     const [pendingReimb, setPendingReimb] = useState(0);
 
     useEffect(() => {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        if (user?.name) setTeacherName(user.name.split(' ')[0]);
+        const stored = localStorage.getItem('user');
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            setUser(parsed);
+            if (parsed?.name) setTeacherName(parsed.name.split(' ')[0]);
+        }
         loadData();
     }, []);
 
@@ -42,14 +47,30 @@ export default function TeacherDashboard() {
 
     return (
         <div className="animate-fade-in">
-            {/* Header saudação */}
-            <div style={{ marginBottom: '2rem' }}>
-                <h1 style={{ fontSize: '1.75rem', fontWeight: 900, fontFamily: 'Orbitron, sans-serif' }} className="gradient-text">
-                    {greeting}, {teacherName}! 👋
-                </h1>
-                <p style={{ color: '#9CA3AF', fontSize: '0.87rem', marginTop: 4 }}>
-                    {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                </p>
+            {/* ── Banner amarelo padrão (igual student/driver) ── */}
+            <div style={{
+                borderRadius: 18, overflow: 'hidden', position: 'relative',
+                background: 'linear-gradient(135deg, #FFD600 0%, #FFC107 60%, #FFB300 100%)',
+                padding: '1.75rem 2rem',
+                boxShadow: '0 4px 20px rgba(255,214,0,0.3)',
+                marginBottom: '2rem',
+            }}>
+                <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(0,0,0,0.06)' }} />
+                <div style={{ position: 'absolute', bottom: -30, left: 200, width: 120, height: 120, borderRadius: '50%', background: 'rgba(0,0,0,0.04)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', position: 'relative' }}>
+                    <div style={{ width: 56, height: 56, borderRadius: 14, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1rem', color: '#FFD600', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', flexShrink: 0 }}>
+                        {user?.name ? user.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase() : 'PR'}
+                    </div>
+                    <div>
+                        <p style={{ fontSize: '0.72rem', color: 'rgba(0,0,0,0.55)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700, marginBottom: '0.2rem' }}>Portal do Professor</p>
+                        <h1 style={{ fontFamily: 'Orbitron', fontSize: '1.4rem', fontWeight: 900, color: '#000', letterSpacing: '0.04em', lineHeight: 1.2 }}>
+                            Olá, {teacherName}!
+                        </h1>
+                        <p style={{ fontSize: '0.82rem', color: 'rgba(0,0,0,0.6)', marginTop: '0.25rem' }}>
+                            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                        </p>
+                    </div>
+                </div>
             </div>
 
             {/* KPI Cards */}

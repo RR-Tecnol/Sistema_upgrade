@@ -41,6 +41,26 @@ const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; ic
 const fmtDate = (d: string) =>
     new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
 
+/** Infere o tipo do feriado a partir do campo reason/description quando type não existe */
+function inferType(h: Holiday): string {
+    if (h.type) return h.type; // Se a API retornar o campo, usa
+    const r = (h.reason || h.description || '').toLowerCase();
+    if (r.includes('\ud83c\udde7\ud83c\uddf7') || r.includes('nacional') || r.includes('tiradentes') ||
+        r.includes('carnaval') || r.includes('trabalho') || r.includes('independ') ||
+        r.includes('aparecida') || r.includes('finados') || r.includes('rep\u00fablica') ||
+        r.includes('natal') || r.includes('ano novo') || r.includes('corpus')) {
+        return 'NATIONAL';
+    }
+    if (r.includes('\u26c8') || r.includes('chuva') || r.includes('clima') || r.includes('enchente') ||
+        r.includes('temporal') || r.includes('inundac')) {
+        return 'WEATHER';
+    }
+    if (r.includes('local') || r.includes('municipal') || r.includes('estadual')) {
+        return 'LOCAL';
+    }
+    return 'OTHER';
+}
+
 /* ── Feriados Nacionais Brasileiros 2025/2026 ── FEAT-FERIADO ── */
 const FERIADOS_NACIONAIS: { date: string; reason: string }[] = [
     // 2025
@@ -96,11 +116,26 @@ function ModalNovaOcorrencia({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.classId) { setError('Selecione uma turma'); return; }
+        if (!form.date) { setError('Selecione a data'); return; }
+        if (!form.reason.trim()) { setError('Informe a descrição'); return; }
         setLoading(true); setError('');
         try {
+            // Incluir prefixo do tipo no reason para que inferType() classifique corretamente
+            const TYPE_PREFIX: Record<string, string> = {
+                NATIONAL: '🇧🇷 ',
+                LOCAL: '[LOCAL] 📍 ',
+                WEATHER: '[WEATHER] ⛈️ ',
+                OTHER: '[OTHER] ⚠️ ',
+            };
+            const prefix = TYPE_PREFIX[form.type] ?? '';
+            // Evitar prefixo duplo
+            const reasonWithType = form.reason.startsWith(prefix.trim())
+                ? form.reason
+                : `${prefix}${form.reason}`;
+
             const res = await api.post(`/holiday/class/${form.classId}`, {
                 date: form.date,
-                reason: form.reason,
+                reason: reasonWithType,
             });
             setResult(res.data);
             setTimeout(() => { onCreated(); onClose(); }, 2000);
@@ -258,7 +293,7 @@ export default function FeriadosPage() {
         await load();
     };
 
-    const filtered = filterType ? holidays.filter(h => h.type === filterType) : holidays;
+    const filtered = filterType ? holidays.filter(h => inferType(h) === filterType) : holidays;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }} className="animate-fade-in">
@@ -266,7 +301,7 @@ export default function FeriadosPage() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                 <div>
                     <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '1.7rem', fontWeight: 900, letterSpacing: '0.08em', margin: 0 }}>
-                        FERIADOS &amp; IMPREVISTOS
+                        FERIADOS
                     </h1>
                     <p style={{ color: '#9CA3AF', fontSize: '0.82rem', margin: '4px 0 0' }}>
                         Registre feriados e imprevistos — data final de turmas é recalculada automaticamente (REQ-08)
@@ -304,7 +339,7 @@ export default function FeriadosPage() {
             {/* KPIs rápidos */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                 {Object.entries(TYPE_CONFIG).map(([k, v]) => {
-                    const count = holidays.filter(h => h.type === k && h.active).length;
+                    const count = holidays.filter(h => inferType(h) === k).length;
                     return (
                         <div key={k} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', border: `1px solid ${v.color}22`, borderLeft: `4px solid ${v.color}` }}>
                             <div style={{ fontSize: '1.2rem', marginBottom: 4 }}>{v.icon}</div>
@@ -355,7 +390,7 @@ export default function FeriadosPage() {
                             </thead>
                             <tbody>
                                 {filtered.map(h => {
-                                    const cfg = TYPE_CONFIG[h.type ?? 'OTHER'] ?? TYPE_CONFIG['OTHER'];
+                                    const cfg = TYPE_CONFIG[inferType(h)] ?? TYPE_CONFIG['OTHER'];
                                     const cls = classes.find(c => c.id === h.classId);
                                     return (
                                         <tr key={h.id} style={{ opacity: h.active ? 1 : 0.5 }}>
