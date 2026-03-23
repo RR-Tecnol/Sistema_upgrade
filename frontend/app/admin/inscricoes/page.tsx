@@ -88,7 +88,7 @@ export default function InscricoesPage() {
             const res = await api.get('/enrollments?limit=100');
             setEnrollments(Array.isArray(res.data) ? res.data : res.data?.data || []);
         } catch (e) {
-            console.error(e);
+            /* silencioso — estado vazio exibido ao usuário */
         } finally {
             setLoading(false);
         }

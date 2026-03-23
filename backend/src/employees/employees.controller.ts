@@ -12,7 +12,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 @ApiTags('Funcionários')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'SUPER_ADMIN')
+@Roles('ADMIN', 'COORDINATOR')
 @Controller('employees')
 export class EmployeesController {
     constructor(private readonly service: EmployeesService) { }

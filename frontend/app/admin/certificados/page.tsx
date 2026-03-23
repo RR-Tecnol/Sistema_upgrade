@@ -58,8 +58,8 @@ export default function CertificadosPage() {
                     { id: '3', name: 'Maria Oliveira', cpf: '111.222.333-44', enrollmentId: 'enr3', classId: 'cls2', courseName: 'Costura Industrial', classIdentifier: 'COS-002/PI', attendanceRate: 81 },
                 ]);
             }
-        } catch (e) {
-            console.error(e);
+        } catch {
+            /* silencioso — estado vazio exibido */
         } finally {
             setLoading(false);
         }

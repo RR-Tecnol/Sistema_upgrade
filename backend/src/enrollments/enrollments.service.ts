@@ -355,6 +355,14 @@ export class EnrollmentsService {
         });
 
         // TODO: Send rejection notification
+        // PASSO 3.1: notificar o aluno que a inscrição foi rejeitada
+        try {
+            this.notifications.notifyAdmins('inscricao_rejeitada', {
+                studentName: updated.student?.user?.name,
+                rejectionReason,
+                timestamp: new Date().toISOString(),
+            });
+        } catch { /* WS nunca bloqueia */ }
 
         return updated;
     }

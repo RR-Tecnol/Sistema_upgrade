@@ -21,7 +21,7 @@ export class ContasPagarController {
     }
 
     @Get()
-    @ApiOperation({ summary: 'Listar contas a pagar com filtros' })
+    @ApiOperation({ summary: 'Listar contas a pagar com filtros (includeDeleted=true para excluídas)' })
     findAll(
         @Query('tipo_conta') tipo_conta?: string,
         @Query('status') status?: string,
@@ -29,8 +29,12 @@ export class ContasPagarController {
         @Query('data_inicio') data_inicio?: string,
         @Query('data_fim') data_fim?: string,
         @Query('search') search?: string,
+        @Query('includeDeleted') includeDeleted?: string,
     ) {
-        return this.service.findAll({ tipo_conta, status, cidade, data_inicio, data_fim, search });
+        return this.service.findAll({
+            tipo_conta, status, cidade, data_inicio, data_fim, search,
+            includeDeleted: includeDeleted === 'true',
+        });
     }
 
     @Get(':id')
@@ -49,6 +53,13 @@ export class ContasPagarController {
     @ApiOperation({ summary: 'Marcar conta como paga' })
     marcarComoPaga(@Param('id') id: string) {
         return this.service.marcarComoPaga(id);
+    }
+
+    // PASSO 3.9: restaurar conta excluída (soft delete reversal)
+    @Patch(':id/restore')
+    @ApiOperation({ summary: 'Restaurar conta excluída (PASSO 3.9)' })
+    restore(@Param('id') id: string) {
+        return this.service.restore(id);
     }
 
     @Delete(':id')

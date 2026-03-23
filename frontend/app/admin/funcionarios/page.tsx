@@ -931,8 +931,7 @@ export default function FuncionariosPage() {
             const data = res.data;
             setEmployees(data.employees || []);
             setKpis({ total: data.total || 0, active: data.activeCount || 0, byRole: data.byRole || [], byDept: data.byDept || [] });
-        } catch (e) {
-            console.error('Failed to fetch employees:', e);
+        } catch {
             setEmployees([]);
         } finally {
             setLoading(false);
@@ -944,11 +943,11 @@ export default function FuncionariosPage() {
     const handleEdit = (emp: Employee) => { setEditingEmployee(emp); setModalOpen(true); };
 
     const handleToggleActive = async (id: string) => {
-        try { await api.patch(`/employees/${id}/toggle-active`); fetchEmployees(); } catch (e) { console.error(e); }
+        try { await api.patch(`/employees/${id}/toggle-active`); fetchEmployees(); } catch { /* silencioso */ }
     };
 
     const handleDelete = async (id: string) => {
-        try { await api.delete(`/employees/${id}`); setDeleteConfirm(null); fetchEmployees(); } catch (e) { console.error(e); }
+        try { await api.delete(`/employees/${id}`); setDeleteConfirm(null); fetchEmployees(); } catch { /* silencioso */ }
     };
 
     const handleModalSave = () => { setModalOpen(false); setEditingEmployee(null); fetchEmployees(); };

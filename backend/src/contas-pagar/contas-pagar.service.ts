@@ -32,8 +32,11 @@ export class ContasPagarService {
         data_inicio?: string;
         data_fim?: string;
         search?: string;
+        includeDeleted?: boolean; // PASSO 3.9: aba excluídos
     }) {
         const where: any = {};
+        // PASSO 3.9: por padrão filtra apenas activos; includeDeleted mostra só os excluídos
+        where.active = filters?.includeDeleted ? false : true;
         if (filters?.tipo_conta) where.tipo_conta = filters.tipo_conta;
         if (filters?.status) where.status = filters.status as ContaPagarStatus;
         if (filters?.cidade) where.cidade = { contains: filters.cidade, mode: 'insensitive' };
@@ -113,9 +116,24 @@ export class ContasPagarService {
         });
     }
 
+    // PASSO 3.9: soft delete — nunca apaga fisicamente
     async remove(id: string) {
         await this.findOne(id);
-        return this.prisma.contaPagar.delete({ where: { id } });
+        return this.prisma.contaPagar.update({
+            where: { id },
+            data: { active: false },
+        });
+    }
+
+    // PASSO 3.9: restaurar conta excluída
+    async restore(id: string) {
+        const conta = await this.prisma.contaPagar.findUnique({ where: { id } });
+        if (!conta) throw new NotFoundException('Conta não encontrada');
+        return this.prisma.contaPagar.update({
+            where: { id },
+            data: { active: true },
+            include: { acao: { select: { id: true, nome: true } } },
+        });
     }
 
     async updateAnexo(id: string, comprovante_url: string) {

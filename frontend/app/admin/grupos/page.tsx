@@ -119,7 +119,7 @@ export default function GruposPage() {
             const data = await groupsApi.getAll();
             setGroups(data);
         } catch (error) {
-            console.error('Error loading groups:', error);
+            /* silencioso — lista vazia exibida ao usuário */
         } finally {
             setLoading(false);
         }

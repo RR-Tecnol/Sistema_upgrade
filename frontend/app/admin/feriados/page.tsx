@@ -263,6 +263,8 @@ export default function FeriadosPage() {
     useEffect(() => { load(); }, []);
 
     const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+    const [confirmRemoveDesc, setConfirmRemoveDesc] = useState('');
+    const [removeMotivo, setRemoveMotivo] = useState('');
     const handleRemove = async (id: string) => {
         setDeleting(id);
         try { await api.delete(`/holiday/${id}`); toast.success('Ocorrência removida!'); await load(); }
@@ -424,7 +426,7 @@ export default function FeriadosPage() {
                                                 ) : <span style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>Auto-calculado</span>}
                                             </td>
                                             <td>
-                                                <button onClick={() => handleRemove(h.id)} disabled={deleting === h.id}
+                                                <button onClick={() => { setConfirmRemoveId(h.id); setConfirmRemoveDesc(h.reason || h.date?.split('T')[0] || ''); setRemoveMotivo(''); }} disabled={deleting === h.id}
                                                     title="Remover ocorrência"
                                                     style={{ padding: '5px', borderRadius: 7, background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer', display: 'flex', opacity: deleting === h.id ? 0.5 : 1 }}>
                                                     <TrashIcon style={{ width: 14, height: 14 }} />
@@ -440,6 +442,64 @@ export default function FeriadosPage() {
             </div>
 
             {showModal && <ModalNovaOcorrencia classes={classes} onClose={() => setShowModal(false)} onCreated={load} />}
+
+            {/* PASSO 3.8: Modal de confirmação com motivo de exclusão */}
+            {confirmRemoveId && (
+                <div
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+                    onClick={() => setConfirmRemoveId(null)}
+                >
+                    <div
+                        style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div style={{ padding: '1.1rem 1.4rem', background: '#FEF2F2', borderBottom: '1px solid #FECACA', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ width: 34, height: 34, borderRadius: 9, background: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>🗑️</div>
+                            <div>
+                                <div style={{ fontFamily: 'Orbitron', fontSize: '0.78rem', fontWeight: 900, color: '#111827' }}>REMOVER FERIADO</div>
+                                <div style={{ fontSize: '0.7rem', color: '#9CA3AF', marginTop: 2 }}>{confirmRemoveDesc}</div>
+                            </div>
+                            <button onClick={() => setConfirmRemoveId(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+                        </div>
+                        {/* Body */}
+                        <div style={{ padding: '1.25rem 1.4rem' }}>
+                            <p style={{ fontSize: '0.83rem', color: '#374151', marginBottom: '1rem', lineHeight: 1.6 }}>
+                                O feriado será removido e o prazo da turma será recalculado automaticamente.
+                            </p>
+                            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                                Motivo da remoção <span style={{ color: '#DC2626' }}>*</span>
+                            </label>
+                            <textarea
+                                className="form-input"
+                                rows={3}
+                                placeholder="Ex: Data incorreta, feriado não se aplica a esta turma..."
+                                value={removeMotivo}
+                                onChange={e => setRemoveMotivo(e.target.value)}
+                                autoFocus
+                                style={{ resize: 'none', fontSize: '0.85rem' }}
+                            />
+                        </div>
+                        {/* Footer */}
+                        <div style={{ padding: '0.85rem 1.4rem', borderTop: '1px solid #F3F4F6', display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+                            <button onClick={() => setConfirmRemoveId(null)} className="btn-ghost" style={{ fontSize: '0.82rem' }}>Cancelar</button>
+                            <button
+                                onClick={() => { if (confirmRemoveId) handleRemove(confirmRemoveId); }}
+                                disabled={!removeMotivo.trim() || deleting === confirmRemoveId}
+                                style={{
+                                    padding: '0.55rem 1.1rem', borderRadius: 9, border: 'none',
+                                    background: removeMotivo.trim() ? '#DC2626' : '#9CA3AF',
+                                    color: '#fff', fontSize: '0.82rem', fontWeight: 700,
+                                    cursor: removeMotivo.trim() ? 'pointer' : 'not-allowed',
+                                    opacity: deleting === confirmRemoveId ? 0.6 : 1,
+                                }}
+                            >
+                                {deleting === confirmRemoveId ? 'Removendo...' : '🗑️ Confirmar Remoção'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -338,19 +338,21 @@ export class ClassesService {
     }
 
     async delete(id: string) {
-        const classData = await this.findOne(id);
+        await this.findOne(id);
 
-        // Check if class has enrollments
+        // Check if class has enrollments before deactivating
         const enrollmentCount = await this.prisma.enrollment.count({
             where: { classId: id },
         });
 
         if (enrollmentCount > 0) {
-            throw new ConflictException('Cannot delete class with existing enrollments');
+            throw new ConflictException('Turma tem inscrições — não pode ser desativada');
         }
 
-        return this.prisma.class.delete({
+        // Soft delete: marcar como CANCELLED em vez de remover do banco
+        return this.prisma.class.update({
             where: { id },
+            data: { status: 'CANCELLED' },
         });
     }
 
@@ -512,7 +514,11 @@ export class ClassesService {
         records: { studentId: string; present: boolean }[],
         registeredBy: string,
     ) {
-        const dateObj = new Date(date);
+        // Normalizar para meia-noite UTC — elimina diferenças de timezone
+        // que causariam dois registros distintos no unique constraint [classId, studentId, date]
+        const [y, m, d] = date.split('-').map(Number);
+        const dateObj = new Date(Date.UTC(y, m - 1, d));
+
         await Promise.all(
             records.map(r =>
                 this.prisma.attendance.upsert({
@@ -523,7 +529,7 @@ export class ClassesService {
                             date: dateObj,
                         },
                     },
-                    update: { present: r.present },
+                    update: { present: r.present, registeredBy, registeredAt: new Date() },
                     create: {
                         classId,
                         studentId: r.studentId,
@@ -549,8 +555,7 @@ export class ClassesService {
     }
 
     // EXEC-06: Histórico de frequência lançada pelo professor
-    async getTeacherAttendanceHistory(teacherUserId: string) {
-        return this.prisma.attendance.findMany({
+    async getTeacherAttendanceHistory(teacherUserId: string) {        return this.prisma.attendance.findMany({
             where: { registeredBy: teacherUserId },
             select: {
                 id: true,
@@ -572,6 +577,20 @@ export class ClassesService {
             },
             orderBy: { date: 'desc' },
             take: 200,
+        });
+    }
+
+    // Histórico de frequência por turma — usado pelo calendário do ADM e professor
+    async getAttendanceHistory(classId: string) {
+        await this.findOne(classId);
+        return this.prisma.attendance.findMany({
+            where: { classId },
+            select: {
+                date: true,
+                present: true,
+                studentId: true,
+            },
+            orderBy: { date: 'asc' },
         });
     }
 }

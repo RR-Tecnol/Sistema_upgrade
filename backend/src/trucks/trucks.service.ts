@@ -113,8 +113,16 @@ export class TrucksService {
             throw new NotFoundException('Group not found');
         }
 
+        // PASSO 1.5: converter strings ISO para Date antes de passar ao Prisma
+        // O DTO valida com @IsDateString() mas Prisma exige DateTime (objeto Date)
+        const { lastMaintenanceDate, nextMaintenanceDate, ...rest } = data;
+
         return this.prisma.truck.create({
-            data,
+            data: {
+                ...rest,
+                ...(lastMaintenanceDate ? { lastMaintenanceDate: new Date(lastMaintenanceDate) } : {}),
+                ...(nextMaintenanceDate ? { nextMaintenanceDate: new Date(nextMaintenanceDate) } : {}),
+            },
             include: {
                 group: true,
             },
@@ -163,9 +171,16 @@ export class TrucksService {
             }
         }
 
+        // PASSO 1.5: converter strings ISO para Date antes de passar ao Prisma (igual ao create)
+        const { lastMaintenanceDate, nextMaintenanceDate, ...rest } = data;
+
         return this.prisma.truck.update({
             where: { id },
-            data,
+            data: {
+                ...rest,
+                ...(lastMaintenanceDate ? { lastMaintenanceDate: new Date(lastMaintenanceDate) } : {}),
+                ...(nextMaintenanceDate ? { nextMaintenanceDate: new Date(nextMaintenanceDate) } : {}),
+            },
             include: {
                 group: true,
             },
@@ -189,8 +204,9 @@ export class TrucksService {
             throw new ConflictException('Cannot delete truck with active classes');
         }
 
-        return this.prisma.truck.delete({
+        return this.prisma.truck.update({
             where: { id },
+            data: { status: 'INACTIVE' },
         });
     }
 

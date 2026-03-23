@@ -23,18 +23,21 @@ export default function StudentHeader({ onToggleSidebar, sidebarOpen = false }: 
 
     return (
         <header className="admin-topbar">
-            {/* Hamburger button */}
+            {/* Hamburger button — classe hamburger-btn: display:none no desktop, flex no mobile via globals.css */}
             <button
                 onClick={onToggleSidebar}
+                className="hamburger-btn"
                 style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 36, height: 36, borderRadius: 9, marginRight: '0.75rem',
                     border: `1px solid ${sidebarOpen ? 'rgba(255,214,0,0.5)' : 'rgba(0,0,0,0.1)'}`,
                     background: sidebarOpen ? 'rgba(255,214,0,0.1)' : 'transparent',
-                    cursor: 'pointer', flexShrink: 0, transition: 'all 0.18s',
                 }}
                 aria-label={sidebarOpen ? 'Fechar menu' : 'Abrir menu'}
             >
+                {sidebarOpen
+                    ? <XMarkIcon style={{ width: 16, height: 16, color: '#FFD600' }} />
+                    : <Bars3Icon style={{ width: 16, height: 16, color: '#6B7280' }} />
+                }
+            </button>
                 {sidebarOpen
                     ? <XMarkIcon style={{ width: 16, height: 16, color: '#FFD600' }} />
                     : <Bars3Icon style={{ width: 16, height: 16, color: '#6B7280' }} />

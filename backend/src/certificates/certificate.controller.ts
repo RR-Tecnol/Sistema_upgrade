@@ -26,21 +26,21 @@ export class CertificateController {
 
     @ApiBearerAuth()
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('ADMIN', 'SUPER_ADMIN', 'TEACHER')
+    @Roles('ADMIN', 'COORDINATOR', 'TEACHER')
     @Get()
     @ApiOperation({ summary: 'Lista todos os certificados emitidos' })
     findAll() { return this.svc.findAll(); }
 
     @ApiBearerAuth()
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('ADMIN', 'SUPER_ADMIN', 'TEACHER')
+    @Roles('ADMIN', 'COORDINATOR', 'TEACHER')
     @Get('eligible')
     @ApiOperation({ summary: 'Alunos elegíveis para certificação (freq. ≥75%)' })
     findEligible() { return this.svc.findEligible(); }
 
     @ApiBearerAuth()
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('ADMIN', 'SUPER_ADMIN', 'TEACHER')
+    @Roles('ADMIN', 'COORDINATOR', 'TEACHER')
     @Post()
     @ApiOperation({ summary: 'Emite certificado (REQ-06)' })
     issue(@Body() dto: IssueCertDto, @Request() req: any) {

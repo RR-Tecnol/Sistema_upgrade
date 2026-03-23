@@ -157,6 +157,16 @@ export class ClassesController {
         return this.classesService.getClassStatistics(classId);
     }
 
+    // Attendance History — usado pelo calendário de frequência do ADM e professor
+    @Get(':id/attendance/history')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Histórico de frequência por data de uma turma' })
+    @ApiResponse({ status: 200, description: 'Histórico retornado com sucesso' })
+    async getAttendanceHistory(@Param('id') classId: string) {
+        return this.classesService.getAttendanceHistory(classId);
+    }
+
     // Bulk Attendance (Professor)
     @Post(':id/attendance/bulk')
     @UseGuards(JwtAuthGuard)
@@ -168,7 +178,7 @@ export class ClassesController {
         @Body() body: { date: string; records: { studentId: string; present: boolean }[] },
         @Req() req: any,
     ) {
-        const registeredBy = req.user?.id || req.user?.sub;
+        const registeredBy = req.user.id;
         return this.classesService.bulkAttendance(classId, body.date, body.records, registeredBy);
     }
 }

@@ -295,3 +295,192 @@ antes de fazer o primeiro seed.
 
 *Sistema Upgrade | RR TECNOL | Método RR Technology*
 *Atualizado em: 18/03/2026 após EXEC-01 completo + validação ao vivo*
+
+---
+
+## SESSÃO 23/03/2026 — Auditoria Completa + Reformulação da Documentação | Gravity 2.0
+
+### Contexto
+Davi (Tech Lead) iniciou a sessão com o feedback completo da auditoria do sistema — 40+ itens
+distribuídos nos 4 portais (Admin, Professor, Aluno, Motorista) + itens gerais.
+O sistema está em ~90% de completude. Gravity 2.0 foi acionado para analisar CADA ARQUIVO do projeto
+(schema Prisma completo, todos os módulos backend, todas as páginas frontend, todas as docs existentes)
+como dev sênior e reformular a documentação sem mexer no código.
+
+### Contexto adicional do Tech Lead (orientações do chefe do Davi)
+- **UTF-8:** Atenção especial a encoding — strings com acentos em template literals, nunca concatenação
+- **CRUD completo:** Toda entidade que o usuário cria precisa ter: criar, listar, editar, excluir (soft delete), reverter
+- **BOOM (Build Only On Master):** Nunca commitar código que não compila
+- **Encoding:** Mesmo conceito do UTF-8 — garantir que dados do banco chegam corretamente ao frontend
+- **Mock em produção é proibido:** Arrays hardcoded que simulam dados reais são bugs, não features
+- **Um seed master:** O projeto já tem `seed.ts` + `seed-extra.ts` — nunca criar seeds adicionais separados
+
+### O que foi feito nesta sessão
+
+**Análise técnica completa sem mexer no código:**
+- Leitura do `schema.prisma` (1310 linhas) — schema sólido, correto, sem problemas estruturais
+- Leitura de todos os módulos backend: auth, users, classes, enrollments, attendance, notifications, reimbursement, trips, trucks, absences, employees, reports, settings, audit-log
+- Leitura das páginas frontend críticas: turmas/[id], configuracoes (student), layout.tsx dos portais
+- Leitura do `NotificationsGateway` — implementação correta com auth no handshake, rooms por userId e por role
+- Leitura de toda a documentação existente
+
+**Bugs identificados por análise de código (sem executar — pure code review):**
+1. `enrollments.map` TypeError: `stats?.enrollments || []` não é defensivo o suficiente quando API retorna estrutura aninhada
+2. Frequência não persiste: dates enviadas com timestamp completo — o unique constraint `[classId, studentId, date]` não localiza o registro existente
+3. Configurações não salva: `handleSave()` só atualiza `name` via PATCH — preferências não têm colunas no banco
+4. Reembolso histórico: possível problema de ordem de rotas (`/:id` antes de `/my`)
+5. Carretas 500: enum `TruckType` aceita apenas `STANDARD | MULTICOURSE` — frontend pode enviar valor errado
+6. Nome hardcoded: string "João da Silva (Teste)" literal no código em vez de `req.user.name`
+
+**Documentos reformulados nesta sessão:**
+- `PROX-PASSOS.md` — Reescrito do zero com 13 passos detalhados, código de referência, ordem de execução
+- `LIVRO_DE_REGRAS.md` — Atualizado para v4.0 com tabela de anti-padrões, novas regras de modal/data/encoding
+- `ERROS_E_SOLUCOES.md` — Atualizado para v4.0 com 9 bugs ativos + bugs resolvidos preservados
+- `ESTADO_SISTEMA.md` — Atualizado com tabela completa por portal, status real de cada funcionalidade
+- `DIARIO_DE_BORDO.md` — Esta entrada (sessão atual)
+- `SEEDS_GUIDE.md` — Atualizado para refletir estado atual dos dois seeds e guia atualizado
+
+### Decisões técnicas tomadas nesta sessão
+- **UserPreferences como model separado** (não em SystemConfig): mais limpo, FK direta, upsert simples
+- **EmployeeAttendance como model separado** (não reutilizar Absence): semânticas diferentes
+- **ContaPagar precisa de campo `active`**: migration necessária para aba "Excluídos"
+- **WS entre perfis**: o gateway já suporta tudo — falta apenas chamar os métodos nos services
+- **Tutorial assistido**: componente global `TutorialOverlay` com `getBoundingClientRect` + `clip-path`
+- **Persistência de formulário**: `sessionStorage` (não localStorage) — limpa ao fechar o browser
+
+### Recomendação para próxima sessão de execução
+Iniciar pelo GRUPO 1 (bugs críticos) do PROX-PASSOS.md na ordem 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 1.6.
+O PASSO 1.3 (configurações) requer migration — rodar `npx prisma migrate dev` após criar o model.
+Usar `npx tsc --noEmit` após cada PASSO antes de avançar.
+
+
+---
+
+## SESSÃO 23/03/2026 — Sprint Final Parte 2 | Gravity 2.0 + Davi (sem Windsurf)
+
+### Contexto
+Gravity (Windsurf) atingiu o limite de quota às ~13h. Davi assumiu o papel de executor junto
+com Gravity 2.0 (Claude) diretamente via MCP Desktop Commander + Filesystem.
+Esta sessão marcou a conclusão dos Grupos 0 e 1 do PROX-PASSOS.md.
+
+### O que foi feito
+
+**Correções de limpeza (pré-execução):**
+- `ERROS_E_SOLUCOES.md` tinha entradas duplicadas de quando os bugs foram marcados como resolvidos.
+  Arquivo reescrito limpo (v5.1) — sem duplicatas, estrutura clara: resolvidos / ativos / histórico.
+- `admin/frequencia/page.tsx` tinha dois `console.error` violando LIVRO_DE_REGRAS §1.
+  Substituídos por blocos `catch` silenciosos com comentário explicativo.
+- `SEEDS_GUIDE.md` ainda referenciava `seed.ts` e `seed-extra.ts` (inexistentes).
+  Corrigido para `seed-full.ts` — único arquivo de seed do projeto.
+
+**Sprint Final — Grupo 0 completo:**
+- PASSO 0.1: `package.json` — `prisma:seed` → `seed-full.ts`, scripts órfãos removidos ✅
+- PASSO 0.2: `prisma generate` + `AbsenceType`/`AbsenceStatus` importados, casts `as any` removidos ✅
+- PASSO 0.3: `@UseGuards(RolesGuard)` adicionado em `approve`/`reject` do reimbursement controller ✅
+- PASSO 0.4: `req.user.id` direto (sem fallback `sub`) no `bulkAttendance` controller ✅
+- PASSO 0.5: Soft delete nos 3 services (employees/trucks/classes) ✅
+
+**Sprint Final — Grupo 1 (bugs críticos) parcialmente concluído:**
+- PASSO 1.1: `turma.enrollments` em vez de `stats.enrollments` — TypeError resolvido ✅
+- PASSO 1.2: Normalização UTC `Date.UTC(y,m-1,d)` no `bulkAttendance` ✅
+- PASSO 1.4: Reembolso teacher usa `res.data?.data ?? []` + enum reset para `'FOOD'` ✅
+- PASSO 1.7: localStorage fallback removido da frequência ADM ✅
+- PASSO 1.8: Endpoint `GET /classes/:id/attendance/history` criado ✅
+- `npx tsc --noEmit` → zero erros após todos os changes ✅
+
+**Pendente do Grupo 1:**
+- PASSO 1.3: Migration `UserPreferences` + endpoints (requer `prisma migrate dev`)
+- PASSO 1.5: Validação do formulário de cadastro de carretas
+
+### Decisões desta sessão
+- Gravity (Windsurf) volta às 13h28. Até lá, Claude + Davi executam direto.
+- `SEEDS_GUIDE.md` atualizado para refletir que só existe `seed-full.ts`.
+- `ERROS_E_SOLUCOES.md` foi simplificado — bugs resolvidos têm resumo compacto, detalhes no histórico.
+- Próximo passo quando Gravity voltar: continuar do PASSO 1.3 (migration UserPreferences).
+
+---
+
+## SESSÃO 23/03/2026 — Sprint Contínuo Parte 3 | Gravity 2.0 + Davi
+
+### O que foi feito
+
+**PASSO 1.5 — Carretas Internal Server Error:**
+Causa raiz: `trucks.service.ts` passava `lastMaintenanceDate`/`nextMaintenanceDate` como string ISO ao Prisma que exige `DateTime` (objeto `Date`). Corrigido com destruturação + `new Date(str)` nos métodos `create` e `update`. `console.error` removido do formulário.
+
+**PASSO 2.5 — Hamburger visível no desktop:**
+`student/Header.tsx` e `teacher/Header.tsx` usavam `style={{ display: 'flex' }}` inline que sobrescrevia qualquer classe CSS. Substituído por `className="hamburger-btn"` que já tem `display: none !important` em desktop via `globals.css`.
+
+**PASSO 3.7 — Registro de ponto do professor:**
+`teacher/historico/page.tsx` tinha `alert()` (proibido) e TODO não implementado. Substituído por chamada real `POST /teachers/me/checkin` com `toast.success/error`. Endpoint exposto na UI removido.
+
+**PASSO 3.14 — Logout dual-source:**
+`useAuthStore.logout()` agora remove `token`, `user`, `student`, `auth-storage` do localStorage antes de limpar Zustand. `console.error('Login error:', error)` também removido.
+
+**PASSO 3.1 — Notificações em tempo real (completo):**
+- `useNotifications.ts`: fetch histórico do banco ao montar, 4 eventos novos adicionados, função `buildMessage()` centralizada com PT-BR.
+- `reimbursement.service.ts`: injetado `NotificationsGateway`, emite `reembolso_solicitado` no `create` e `reembolso_revisado` no `approve`/`reject`. WS em try/catch separado (nunca causa rollback).
+- `absences.service.ts`: injetado gateway, emite `imprevisto_cadastrado` no `create`.
+- `enrollments.service.ts`: emite `inscricao_rejeitada` no `reject`.
+
+**Validação:** `tsc --noEmit` → EXIT:0 após cada passo ✅
+
+### Decisões desta sessão
+- `.then()` em vez de `async/await` para emitir WS após operação Prisma — mantém o retorno síncrono do método e garante que WS é auxiliar.
+- `@Global()` do `NotificationsModule` confirma que não é necessário adicionar em `imports[]` de nenhum módulo.
+- Eventos WS SEMPRE em try/catch separado — conforme LIVRO_DE_REGRAS §6.
+
+---
+
+## SESSÃO 23/03/2026 — Sprint Contínuo Parte 4 | Auditoria + Passos 3.11/3.12/2.3
+
+### Auditoria completa de docs e código
+
+Leitura integral de LIVRO_DE_REGRAS, ERROS_E_SOLUCOES, ESTADO_SISTEMA, PROX-PASSOS. Inconsistências encontradas e corrigidas em ESTADO_SISTEMA (itens marcados como 🔴 já resolvidos em sessões anteriores).
+
+**Novo bug descoberto:** 14 `console.error` ativos em 10 arquivos de produção frontend (violava LIVRO_DE_REGRAS §1). Não estavam documentados. Todos removidos:
+- admin/carretas/[id]/manutencao, admin/certificados, admin/contas-a-pagar
+- admin/funcionarios (3x), admin/grupos, admin/inscricoes, admin/turmas
+- cursos, student/dashboard, student/profile (2x)
+- enrollment/Step3Address, enrollment/Step8Confirmation
+- `app/error.tsx` mantido — é o error boundary do Next.js (padrão correto)
+
+### PASSO 3.11 — Frequência: 2 botões P/F
+
+Substituído o sistema de triple-click (null→true→false→null) por dois botões explícitos P e F por aluno. Layout horizontal (avatar + nome + botões), touch-friendly com `minWidth:48, minHeight:44` conforme LIVRO_DE_REGRAS §1. Botão ativo tem cor sólida + glow; inativo tem borda suave.
+
+### PASSO 3.12 — Frequência: carregar estado salvo ao reabrir dia
+
+Adicionado `useEffect` que reage a mudança de `selectedDate`. Se o dia tem histórico (`attendanceHistory[selectedDate]`), busca os registros reais via `GET /classes/:id/attendance/history`, filtra pelo dia e popula o estado `attendance`. Se não tem histórico, zera para "não marcado". Banner amarelo "Editando registro existente" aparece com data formatada em PT-BR.
+
+### PASSO 2.3 — Campo valor do reembolso
+
+`driver/reembolsos/page.tsx`: `type="text"` → `type="number" step="0.01" min="0"`. Teacher já estava correto.
+
+### Validação final
+
+`tsc --noEmit` → EXIT:0 após cada passo.
+
+---
+
+## SESSÃO 23/03/2026 — Sprint Contínuo Parte 5 | BLOCOs D→H
+
+### BLOCO D — Dead code removido
+`toggleAttendance` em `admin/frequencia/page.tsx` era uma função declarada mas nunca chamada desde o PASSO 3.11 (substituída pelos setters inline dos botões P/F). Removida sem impacto funcional.
+
+### BLOCO E — ContaPagar: soft delete + aba Excluídos
+**Schema:** `active Boolean @default(true)` adicionado ao model `ContaPagar`. Aplicado via `prisma db push --accept-data-loss` (campo com default, operação não-destrutiva). `prisma generate` regenerou o client.
+**Backend:** `contas-pagar.service.ts` — `findAll` filtra `active:true` por padrão, `includeDeleted:true` inverte; `remove` virou soft delete (`active: false`); método `restore` adicionado. `contas-pagar.controller.ts` — novo query param `includeDeleted` no GET e nova rota `PATCH /:id/restore`.
+**API client:** `lib/api/contasPagar.ts` — `restoreContaPagar` adicionado, `getContasPagar` aceita `includeDeleted`.
+**Frontend:** `admin/contas-a-pagar/page.tsx` — estado `deletedContas`, `showDeleted`, `handleRestore`; tab "Excluídos" na barra; seção de cards vermelhos com botão "↩ Restaurar"; `load()` busca ativos e excluídos em paralelo.
+
+### BLOCO F — Histórico ADM paginado
+Auditoria confirmou que o PASSO 3.5 já estava **100% implementado**: paginação com `page`/`limit`/`totalPages`, filtros por módulo (select), período (data início/fim) e busca por ação (input com debounce 450ms). Backend com endpoint `GET /audit-logs` suportando todos os params. Nenhuma ação necessária.
+
+### BLOCO G — Feriados: motivo obrigatório ao excluir
+`admin/feriados/page.tsx`: botão lixeira agora abre modal de confirmação em vez de excluir direto. Modal tem textarea de motivo obrigatória (botão Confirmar desabilitado enquanto vazio), header vermelho com nome do feriado, `position: fixed; inset: 0` conforme LIVRO_DE_REGRAS §1.
+
+### BLOCO H — Aluno: inscrições + cursos disponíveis
+`student/enrollments/page.tsx` reescrito: duas tabs — "Minhas Inscrições" (comportamento anterior + filtros de status) e "Cursos Disponíveis" (PASSO 3.10: busca `GET /classes?status=ENROLLMENT_OPEN`, cards com vagas/datas/cidade, botão "🎓 Inscrever-se" que navega para `/inscricao/:classId`). Hook `useRouter` para navegação.
+
+### Validação
+`tsc --noEmit` → EXIT:0 após cada bloco.

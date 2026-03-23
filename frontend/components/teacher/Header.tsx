@@ -25,15 +25,11 @@ export default function TeacherHeader({ onMenuToggle }: Props) {
 
     return (
         <header className="admin-topbar">
-            {/* Hamburger — sempre visível para toggle do sidebar */}
+            {/* Hamburger — classe hamburger-btn: display:none no desktop, flex no mobile via globals.css */}
             <button
                 onClick={onMenuToggle}
+                className="hamburger-btn"
                 aria-label="Abrir menu"
-                style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 36, height: 36, borderRadius: 9, border: '1px solid #E5E7EB',
-                    background: 'transparent', cursor: 'pointer', flexShrink: 0, transition: 'all 0.18s',
-                }}
             >
                 <Bars3Icon style={{ width: 20, height: 20, color: '#6B7280' }} />
             </button>

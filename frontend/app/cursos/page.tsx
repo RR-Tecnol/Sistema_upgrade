@@ -272,7 +272,7 @@ export default function CursosPublicPage() {
             const response = await api.get('/classes/public', { params });
             setClasses(response.data);
         } catch (error) {
-            console.error('Erro ao carregar cursos:', error);
+            /* silencioso — lista vazia exibida ao usuário */
         } finally {
             setLoading(false);
         }

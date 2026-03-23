@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
     getContasPagar, createContaPagar, updateContaPagar,
-    marcarComoPaga, deleteContaPagar, ContaPagar, ContasPagarResponse,
+    marcarComoPaga, deleteContaPagar, restoreContaPagar, ContaPagar, ContasPagarResponse,
 } from '@/lib/api/contasPagar';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
@@ -450,6 +450,9 @@ export default function ContasPagarPage() {
     const [mousePos, setMousePos] = useState({ x: .5, y: .5 });
     const [deleteContaId, setDeleteContaId] = useState<string | null>(null);
     const [deleteContaDesc, setDeleteContaDesc] = useState('');
+    // PASSO 3.9: aba excluídos
+    const [showDeleted, setShowDeleted] = useState(false);
+    const [deletedContas, setDeletedContas] = useState<ContaPagar[]>([]);
     const heroRef = useRef<HTMLDivElement>(null);
     const PARTICLES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     const [showReport, setShowReport] = useState(false);
@@ -475,16 +478,21 @@ export default function ContasPagarPage() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const d = await getContasPagar({
-                tipo_conta: filterTipo || undefined,
-                status: filterStatus || undefined,
-                cidade: filterCidade || undefined,
-                data_inicio: filterDataInicio || undefined,
-                data_fim: filterDataFim || undefined,
-                search: searchTerm || undefined,
-            });
+            const [d, del] = await Promise.all([
+                getContasPagar({
+                    tipo_conta: filterTipo || undefined,
+                    status: filterStatus || undefined,
+                    cidade: filterCidade || undefined,
+                    data_inicio: filterDataInicio || undefined,
+                    data_fim: filterDataFim || undefined,
+                    search: searchTerm || undefined,
+                }),
+                // PASSO 3.9: buscar excluídos em paralelo
+                getContasPagar({ includeDeleted: true }),
+            ]);
             setResp(d);
-        } catch (e) { console.error(e); }
+            setDeletedContas(del.contas || []);
+        } catch { /* silencioso — estado vazio exibido */ }
         finally { setLoading(false); }
     }, [filterTipo, filterStatus, filterCidade, filterDataInicio, filterDataFim, searchTerm]);
 
@@ -501,6 +509,12 @@ export default function ContasPagarPage() {
     const handleDelete = async () => {
         if (!deleteContaId) return;
         try { await deleteContaPagar(deleteContaId); setDeleteContaId(null); load(); toast.success('Conta excluída com sucesso!'); } catch { toast.error('Erro ao excluir conta.'); setDeleteContaId(null); }
+    };
+
+    // PASSO 3.9: restaurar conta excluída
+    const handleRestore = async (id: string, desc: string) => {
+        try { await restoreContaPagar(id); load(); toast.success(`"${desc}" restaurada com sucesso!`); }
+        catch { toast.error('Erro ao restaurar conta.'); }
     };
 
     const handlePagar = async (id: string) => {
@@ -714,10 +728,11 @@ export default function ContasPagarPage() {
                         { label: 'Pagas', value: 'paga', icon: '✅', count: contas.filter(c => c.status === 'paga').length },
                         { label: 'Vencidas', value: 'vencida', icon: '🔴', count: contas.filter(c => c.status === 'vencida').length },
                         { label: 'Canceladas', value: 'cancelada', icon: '🚫', count: contas.filter(c => c.status === 'cancelada').length },
+                        { label: 'Excluídos', value: '__deleted__', icon: '🗑️', count: deletedContas.length },
                     ].map(tab => {
                         const active = filterStatus === tab.value;
                         return (
-                            <button key={tab.value} onClick={() => { setFilterStatus(tab.value); }}
+                            <button key={tab.value} onClick={() => { if (tab.value === '__deleted__') { setShowDeleted(s => !s); } else { setFilterStatus(tab.value); setShowDeleted(false); } }}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 5,
                                     padding: '5px 12px', borderRadius: 8, border: 'none',
@@ -869,6 +884,53 @@ export default function ContasPagarPage() {
                 )}
             </div>
         </div>
+        {/* PASSO 3.9: Seção de contas excluídas */}
+        {showDeleted && (
+            <div style={{ marginTop: '1.5rem', borderRadius: 14, border: '2px solid #FECACA', overflow: 'hidden' }}>
+                <div style={{ padding: '12px 18px', background: '#FEF2F2', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: '1rem' }}>🗑️</span>
+                    <span style={{ fontFamily: 'Orbitron', fontSize: '.62rem', fontWeight: 800, color: '#DC2626', letterSpacing: '.1em' }}>CONTAS EXCLUÍDAS ({deletedContas.length})</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '.72rem', color: '#9CA3AF' }}>Clique em Restaurar para reativar</span>
+                </div>
+                {deletedContas.length === 0 ? (
+                    <div style={{ padding: '2rem', textAlign: 'center', background: '#fff' }}>
+                        <div style={{ color: '#9CA3AF', fontSize: '.85rem' }}>Nenhuma conta excluída</div>
+                    </div>
+                ) : (
+                    <div style={{ background: '#fff', padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {deletedContas.map(c => (
+                            <div key={c.id} style={{
+                                display: 'flex', alignItems: 'center', gap: '1rem',
+                                padding: '0.75rem 1rem', borderRadius: 10,
+                                background: '#FEF2F2', border: '1px solid #FECACA',
+                                opacity: 0.85,
+                            }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 700, fontSize: '.88rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {c.descricao}
+                                    </div>
+                                    <div style={{ fontSize: '.72rem', color: '#9CA3AF', marginTop: 2 }}>
+                                        {c.tipo_conta.replace(/_/g, ' ')} · {fmtCur(c.valor)} · Venc. {fmtDate(c.data_vencimento)}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleRestore(c.id, c.descricao)}
+                                    style={{
+                                        padding: '6px 14px', borderRadius: 8, flexShrink: 0,
+                                        background: 'rgba(5,150,105,.1)', border: '1px solid rgba(5,150,105,.35)',
+                                        color: '#059669', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer',
+                                        transition: 'all .15s',
+                                    }}
+                                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(5,150,105,.2)'; }}
+                                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(5,150,105,.1)'; }}
+                                >↩ Restaurar</button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        )}
+
         {/* FEAT-CP2: Modal de confirmação de exclusão */}
         {deleteContaId && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}

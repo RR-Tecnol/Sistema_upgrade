@@ -38,6 +38,32 @@ export class UsersController {
         return this.usersService.update(req.user.userId || req.user.id, data);
     }
 
+    // ─── PASSO 1.3: Preferências — ANTES de /:id ─────────────────────────────
+
+    @Get('me/preferences')
+    @ApiOperation({ summary: 'Buscar preferências do usuário autenticado' })
+    @ApiResponse({ status: 200, description: 'Preferências retornadas com defaults caso não existam' })
+    async getMyPreferences(@Request() req: any) {
+        return this.usersService.getPreferences(req.user.id);
+    }
+
+    @Patch('me/preferences')
+    @ApiOperation({ summary: 'Atualizar preferências do usuário autenticado' })
+    @ApiResponse({ status: 200, description: 'Preferências atualizadas com sucesso' })
+    async updateMyPreferences(
+        @Request() req: any,
+        @Body() data: {
+            notifEmail?: boolean;
+            notifCertificado?: boolean;
+            notifInscricao?: boolean;
+            notifFrequencia?: boolean;
+            animacoes?: boolean;
+            fonteGrande?: boolean;
+        },
+    ) {
+        return this.usersService.updatePreferences(req.user.id, data);
+    }
+
     @Get(':id')
     @ApiOperation({ summary: 'Get user by ID' })
     @ApiResponse({ status: 200, description: 'User retrieved successfully' })

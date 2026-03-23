@@ -399,7 +399,7 @@ export default function ManutencaoPage() {
             setLoading(true);
             const [s, l] = await Promise.all([api.get(`/truck-maintenance/truck/${truckId}/stats`), api.get(`/truck-maintenance/truck/${truckId}`)]);
             setStats(s.data); setList(l.data);
-        } catch (e) { console.error(e); } finally { setLoading(false); }
+        } catch { /* silencioso — estado vazio exibido ao usuário */ } finally { setLoading(false); }
     }, [truckId]);
 
     useEffect(() => { load(); }, [load]);

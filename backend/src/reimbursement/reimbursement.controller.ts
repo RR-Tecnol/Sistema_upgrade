@@ -12,6 +12,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ReimbursementType, ExpenseStatus } from '@prisma/client';
 import { ReimbursementService } from './reimbursement.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 // ─── DTOs ───────────────────────────────────────────────────────────────────
@@ -137,6 +138,7 @@ export class ReimbursementController {
    * ADMIN: Aprova reembolso
    */
   @Patch(':id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
   @ApiOperation({ summary: 'Aprovar reembolso (apenas ADMIN/COORDINATOR/FINANCIAL)' })
   @ApiParam({ name: 'id', description: 'ID do reembolso' })
@@ -148,6 +150,7 @@ export class ReimbursementController {
    * ADMIN: Rejeita reembolso com motivo
    */
   @Patch(':id/reject')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
   @ApiOperation({ summary: 'Rejeitar reembolso com motivo' })
   @ApiParam({ name: 'id', description: 'ID do reembolso' })

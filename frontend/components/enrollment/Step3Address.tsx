@@ -36,7 +36,7 @@ export default function Step3Address() {
                 }));
             }
         } catch (error) {
-            console.error('Erro ao buscar CEP:', error);
+            /* silencioso — CEP não preenchido automaticamente, usuário digita manualmente */
         } finally {
             setLoadingCep(false);
         }

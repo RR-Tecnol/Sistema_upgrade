@@ -64,13 +64,25 @@ export default function DriverConfiguracoes() {
             const stored = localStorage.getItem('user');
             if (stored) { const p = JSON.parse(stored); setUser(p); setCfg(c => ({ ...c, nome: p.name || '', email: p.email || '' })); }
         });
+        // Carrega preferências separadamente
+        api.get('/users/me/preferences').then(res => {
+            if (res.data) {
+                setCfg(c => ({ ...c, animacoes: res.data.animacoes, fonteGrande: res.data.fonteGrande }));
+            }
+        }).catch(() => { /* silencioso — usa defaults */ });
     }, []);
 
     const set = (k: string, v: any) => setCfg(c => ({ ...c, [k]: v }));
 
     const handleSave = async () => {
         try {
-            await api.patch('/users/me', { name: cfg.nome });
+            await Promise.all([
+                api.patch('/users/me', { name: cfg.nome }),
+                api.patch('/users/me/preferences', {
+                    animacoes: cfg.animacoes,
+                    fonteGrande: cfg.fonteGrande,
+                }),
+            ]);
             const stored = localStorage.getItem('user');
             if (stored) { const u = JSON.parse(stored); u.name = cfg.nome; localStorage.setItem('user', JSON.stringify(u)); window.dispatchEvent(new Event('userUpdated')); }
             setSaved(true); setTimeout(() => setSaved(false), 2800);

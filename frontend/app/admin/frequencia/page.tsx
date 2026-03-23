@@ -28,6 +28,9 @@ export default function FrequenciaPage() {
     const [saved, setSaved] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [generatingPdf, setGeneratingPdf] = useState(false);
+    // PASSO 3.12 — estado do dia selecionado
+    const [isEditingExisting, setIsEditingExisting] = useState(false);
+    const [loadingDayAttendance, setLoadingDayAttendance] = useState(false);
     
     // BUG-07: calendário de histórico
     const [attendanceHistory, setAttendanceHistory] = useState<Record<string, 'present' | 'absent' | 'holiday'>>({});
@@ -61,8 +64,8 @@ export default function FrequenciaPage() {
         try {
             const data = await classesApi.getAll({ status: 'IN_PROGRESS' });
             setClasses(data);
-        } catch (e) {
-            console.error(e);
+        } catch {
+            // falha silenciosa — lista fica vazia, usuário vê "Selecione uma turma"
         } finally {
             setLoadingClasses(false);
         }
@@ -105,8 +108,8 @@ export default function FrequenciaPage() {
             } catch {
                 setAttendanceHistory({});
             }
-        } catch (e) {
-            console.error('[Frequência] Erro ao carregar alunos:', e);
+        } catch {
+            // falha silenciosa — lista de alunos fica vazia, usuário vê estado vazio
             setStudents([]);
         } finally {
             setLoadingStudents(false);
@@ -117,15 +120,36 @@ export default function FrequenciaPage() {
         if (selectedClass) loadStudents(selectedClass);
     }, [selectedClass, loadStudents]);
 
-    const toggleAttendance = (studentId: string) => {
-        setAttendance(prev => {
-            const curr = prev[studentId];
-            // Cycle: null → true → false → null
-            const next = curr === null ? true : curr === true ? false : null;
-            return { ...prev, [studentId]: next };
-        });
-        setSaved(false);
-    };
+    // PASSO 3.12 — ao mudar a data, carregar frequência já salva para esse dia
+    useEffect(() => {
+        if (!selectedClass || students.length === 0) return;
+        const hasPrev = !!attendanceHistory[selectedDate];
+        if (!hasPrev) {
+            // Dia sem registro — zerar para não marcado
+            const init: Record<string, boolean | null> = {};
+            students.forEach(s => { init[s.id] = null; });
+            setAttendance(init);
+            setIsEditingExisting(false);
+            return;
+        }
+        // Dia com registro — buscar os dados reais do backend
+        setLoadingDayAttendance(true);
+        setIsEditingExisting(true);
+        api.get(`/classes/${selectedClass}/attendance/history`)
+            .then(res => {
+                const all: any[] = Array.isArray(res.data) ? res.data : res.data?.data ?? [];
+                const dayRecords = all.filter((r: any) => r.date?.split('T')[0] === selectedDate);
+                if (dayRecords.length > 0) {
+                    const loaded: Record<string, boolean | null> = {};
+                    // Inicializa todos como null, depois aplica os registros encontrados
+                    students.forEach(s => { loaded[s.id] = null; });
+                    dayRecords.forEach((r: any) => { if (r.studentId) loaded[r.studentId] = r.present; });
+                    setAttendance(loaded);
+                }
+            })
+            .catch(() => { /* silencioso — mantém estado atual */ })
+            .finally(() => setLoadingDayAttendance(false));
+    }, [selectedDate, selectedClass, students, attendanceHistory]);
 
     const markAll = (present: boolean) => {
         const upd: Record<string, boolean> = {};
@@ -150,12 +174,8 @@ export default function FrequenciaPage() {
             toast.success(`${records.length} presenças registradas com sucesso!`);
             setTimeout(() => setSaved(false), 3000);
         } catch (e: any) {
-            // Graceful fallback — save to localStorage if backend not ready
-            const key = `attendance_${selectedClass}_${selectedDate}`;
-            localStorage.setItem(key, JSON.stringify({ date: selectedDate, records: students.map(s => ({ studentId: s.id, present: attendance[s.id] })) }));
-            setSaved(true);
-            toast.success('Frequência salva localmente (sincronizará quando o servidor estiver disponível)');
-            setTimeout(() => setSaved(false), 3000);
+            toast.error(e?.response?.data?.message || 'Erro ao salvar frequência. Tente novamente.');
+            setSaved(false);
         } finally {
             setSaving(false);
         }
@@ -412,68 +432,95 @@ export default function FrequenciaPage() {
                 </div>
             ) : (
                 <>
-                    {/* Touch-friendly student grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                    {/* PASSO 3.12 — Banner de edição de registro existente */}
+                    {isEditingExisting && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '0.75rem',
+                            padding: '0.75rem 1rem', borderRadius: 10,
+                            background: 'rgba(255,214,0,0.08)',
+                            border: '1.5px solid rgba(255,214,0,0.35)',
+                        }}>
+                            {loadingDayAttendance
+                                ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, boxShadow: 'none' }} /> <span style={{ fontSize: '0.82rem', color: 'var(--neon-yellow)', fontWeight: 600 }}>Carregando registro do dia...</span></>
+                                : <><span style={{ fontSize: '1rem' }}>✏️</span> <span style={{ fontSize: '0.82rem', color: 'var(--neon-yellow)', fontWeight: 700 }}>Editando registro existente — {new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}. Salve novamente para atualizar.</span></>
+                            }
+                        </div>
+                    )}
+
+                    {/* PASSO 3.11 — 2 botões P/F por aluno (touch-friendly, min 44px) */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {students.map((student, i) => {
                             const state = attendance[student.id];
                             const isPresent = state === true;
                             const isAbsent = state === false;
-                            const isUnmarked = state === null;
 
                             return (
-                                <button
+                                <div
                                     key={student.id}
-                                    onClick={() => toggleAttendance(student.id)}
                                     className="animate-fade-in"
                                     style={{
-                                        animationDelay: `${i * 30}ms`,
-                                        padding: '1.1rem',
-                                        borderRadius: 14,
-                                        border: `2px solid ${isPresent ? 'rgba(0,255,138,0.5)' : isAbsent ? 'rgba(255,45,85,0.5)' : 'var(--border-default)'}`,
-                                        background: isPresent ? 'rgba(0,255,138,0.08)' : isAbsent ? 'rgba(255,45,85,0.08)' : 'rgba(255,255,255,0.02)',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                                        textAlign: 'center' as const,
-                                        position: 'relative' as const,
-                                        transform: isPresent || isAbsent ? 'scale(0.97)' : 'scale(1)',
-                                        boxShadow: isPresent ? '0 0 16px rgba(0,255,138,0.15)' : isAbsent ? '0 0 16px rgba(255,45,85,0.15)' : 'none',
+                                        animationDelay: `${i * 20}ms`,
+                                        display: 'flex', alignItems: 'center',
+                                        gap: '0.75rem', padding: '0.65rem 1rem',
+                                        borderRadius: 12,
+                                        border: `1.5px solid ${isPresent ? 'rgba(0,255,138,0.4)' : isAbsent ? 'rgba(255,45,85,0.4)' : 'var(--border-default)'}`,
+                                        background: isPresent ? 'rgba(0,255,138,0.06)' : isAbsent ? 'rgba(255,45,85,0.06)' : 'rgba(255,255,255,0.02)',
+                                        transition: 'all 0.15s',
                                     }}
                                 >
-                                    {/* Status indicator */}
-                                    <div style={{
-                                        position: 'absolute', top: '0.6rem', right: '0.6rem',
-                                        width: 24, height: 24, borderRadius: '50%',
-                                        background: isPresent ? 'var(--neon-green)' : isAbsent ? 'var(--neon-red)' : 'var(--border-default)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '0.7rem', fontWeight: 900,
-                                        boxShadow: isPresent ? '0 0 10px rgba(0,255,138,0.6)' : isAbsent ? '0 0 10px rgba(255,45,85,0.6)' : 'none',
-                                        color: isUnmarked ? 'var(--text-muted)' : '#000',
-                                        transition: 'all 0.2s',
-                                    }}>
-                                        {isPresent ? '✓' : isAbsent ? '✕' : '?'}
-                                    </div>
-
                                     {/* Avatar */}
                                     <div style={{
-                                        width: 52, height: 52, borderRadius: '50%',
+                                        width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
                                         background: isPresent ? 'var(--neon-green)' : isAbsent ? 'var(--neon-red)' : 'rgba(255,214,0,0.1)',
                                         border: `2px solid ${isPresent ? 'var(--neon-green)' : isAbsent ? 'var(--neon-red)' : 'var(--border-default)'}`,
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        margin: '0 auto 0.7rem',
-                                        fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1.1rem',
+                                        fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.75rem',
                                         color: isPresent || isAbsent ? '#000' : 'var(--neon-yellow)',
-                                        transition: 'all 0.2s',
+                                        transition: 'all 0.15s',
                                     }}>
                                         {student.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
                                     </div>
 
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3, marginBottom: '0.3rem', paddingRight: '1.5rem' }}>
-                                        {student.name}
+                                    {/* Nome */}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {student.name}
+                                        </div>
+                                        <div style={{ fontSize: '0.65rem', color: isPresent ? 'var(--neon-green)' : isAbsent ? 'var(--neon-red)' : 'var(--text-muted)', fontWeight: 700, marginTop: '0.1rem' }}>
+                                            {isPresent ? '✓ Presente' : isAbsent ? '✕ Faltou' : '— Não marcado'}
+                                        </div>
                                     </div>
-                                    <div style={{ fontSize: '0.65rem', color: isPresent ? 'var(--neon-green)' : isAbsent ? 'var(--neon-red)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                                        {isPresent ? '✓ Presente' : isAbsent ? '✕ Faltou' : '— Não marcado'}
+
+                                    {/* PASSO 3.11 — 2 botões explícitos P e F */}
+                                    <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                                        <button
+                                            onClick={() => { setAttendance(prev => ({ ...prev, [student.id]: true })); setSaved(false); }}
+                                            style={{
+                                                minWidth: 48, minHeight: 44, borderRadius: 9,
+                                                fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer',
+                                                border: `2px solid ${isPresent ? 'var(--neon-green)' : 'rgba(0,255,138,0.2)'}`,
+                                                background: isPresent ? 'var(--neon-green)' : 'transparent',
+                                                color: isPresent ? '#000' : 'var(--neon-green)',
+                                                transition: 'all 0.15s',
+                                                boxShadow: isPresent ? '0 0 12px rgba(0,255,138,0.4)' : 'none',
+                                            }}
+                                            title="Marcar como Presente"
+                                        >P</button>
+                                        <button
+                                            onClick={() => { setAttendance(prev => ({ ...prev, [student.id]: false })); setSaved(false); }}
+                                            style={{
+                                                minWidth: 48, minHeight: 44, borderRadius: 9,
+                                                fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer',
+                                                border: `2px solid ${isAbsent ? 'var(--neon-red)' : 'rgba(255,45,85,0.2)'}`,
+                                                background: isAbsent ? 'var(--neon-red)' : 'transparent',
+                                                color: isAbsent ? '#000' : 'var(--neon-red)',
+                                                transition: 'all 0.15s',
+                                                boxShadow: isAbsent ? '0 0 12px rgba(255,45,85,0.4)' : 'none',
+                                            }}
+                                            title="Marcar como Faltou"
+                                        >F</button>
                                     </div>
-                                </button>
+                                </div>
                             );
                         })}
                     </div>

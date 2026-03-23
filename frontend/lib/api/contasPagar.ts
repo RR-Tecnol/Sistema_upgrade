@@ -44,6 +44,7 @@ export async function getContasPagar(filters?: {
     data_inicio?: string;
     data_fim?: string;
     search?: string;
+    includeDeleted?: boolean; // PASSO 3.9: buscar contas excluídas
 }): Promise<ContasPagarResponse> {
     const params = new URLSearchParams();
     if (filters?.tipo_conta) params.set('tipo_conta', filters.tipo_conta);
@@ -52,6 +53,7 @@ export async function getContasPagar(filters?: {
     if (filters?.data_inicio) params.set('data_inicio', filters.data_inicio);
     if (filters?.data_fim) params.set('data_fim', filters.data_fim);
     if (filters?.search) params.set('search', filters.search);
+    if (filters?.includeDeleted) params.set('includeDeleted', 'true');
     const { data } = await api.get(`/contas-pagar?${params.toString()}`);
     return data;
 }
@@ -73,4 +75,10 @@ export async function marcarComoPaga(id: string): Promise<ContaPagar> {
 
 export async function deleteContaPagar(id: string): Promise<void> {
     await api.delete(`/contas-pagar/${id}`);
+}
+
+// PASSO 3.9: restaurar conta excluída (soft delete reversal)
+export async function restoreContaPagar(id: string): Promise<ContaPagar> {
+    const { data } = await api.patch(`/contas-pagar/${id}/restore`);
+    return data;
 }

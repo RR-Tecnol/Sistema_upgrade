@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface LogActionDto {
@@ -20,6 +20,8 @@ export interface LogActionDto {
  */
 @Injectable()
 export class AuditLogService {
+    private readonly logger = new Logger(AuditLogService.name);
+
     constructor(private readonly prisma: PrismaService) {}
 
     async log(dto: LogActionDto): Promise<void> {
@@ -38,7 +40,7 @@ export class AuditLogService {
             });
         } catch (err) {
             // Log de auditoria nunca deve quebrar o fluxo principal
-            console.error('[AuditLog] Falha ao registrar ação:', err);
+            this.logger.error(`Falha ao registrar ação de auditoria: ${err}`);
         }
     }
 }

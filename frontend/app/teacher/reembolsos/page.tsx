@@ -44,7 +44,8 @@ export default function TeacherReembolsos() {
     async function loadReembolsos() {
         try {
             const res = await api.get('/reimbursements');
-            setReembolsos(Array.isArray(res.data) ? res.data : []);
+            // Service retorna { data: [], meta: {} } — extrair o array interno
+            setReembolsos(Array.isArray(res.data) ? res.data : (res.data?.data ?? []));
         } catch {
             setReembolsos([]);
         } finally {
@@ -113,7 +114,7 @@ export default function TeacherReembolsos() {
             });
 
             showToast('Solicitação enviada com sucesso!', 'success');
-            setTipo('ALIMENTACAO');
+            setTipo('FOOD');
             setValor('');
             setDescricao('');
             setFotoPreview(null);

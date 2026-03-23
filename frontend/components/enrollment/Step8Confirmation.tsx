@@ -87,7 +87,7 @@ export default function Step8Confirmation() {
             }, 1000);
 
         } catch (err: any) {
-            console.error('Erro ao enviar inscrição:', err);
+            /* silencioso — erro tratado via setError/setStep acima */
             setError(err.response?.data?.message || 'Erro ao enviar inscrição. Por favor, tente novamente.');
         } finally {
             setSubmitting(false);

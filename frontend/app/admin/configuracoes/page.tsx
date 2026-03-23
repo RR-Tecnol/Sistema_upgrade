@@ -197,8 +197,7 @@ export default function ConfiguracoesPage() {
         });
         // REQ-14: Carregar configurações salvas no backend
         api.get('/settings')
-            .then(r => {
-                const data = r.data;
+            .then(r => {                const data = r.data;
                 setCfg(c => ({
                     ...c,
                     nomeSistema: data.nomeSistema ?? c.nomeSistema,
@@ -230,6 +229,19 @@ export default function ConfiguracoesPage() {
                 }));
             })
             .finally(() => setSettingsLoaded(true)); // sempre libera o botão, mesmo se erro
+
+        // PASSO 1.3: Carregar preferências pessoais do admin
+        api.get('/users/me/preferences').then(r => {
+            if (r.data) {
+                setCfg(c => ({
+                    ...c,
+                    notifEmail: r.data.notifEmail,
+                    notifCertificado: r.data.notifCertificado,
+                    notifNovaInscricao: r.data.notifInscricao,
+                    notifFrequenciaBaixa: r.data.notifFrequencia,
+                }));
+            }
+        }).catch(() => { /* silencioso — usa defaults */ });
     }, []);
 
     const set = (k: string, v: any) => setCfg(c => ({ ...c, [k]: v }));
@@ -237,35 +249,43 @@ export default function ConfiguracoesPage() {
     const handleSave = async () => {
         setSaveError(false);
         try {
-            // Envia apenas as configs do sistema (sem dados pessoais do admin)
-            await api.put('/settings', {
-                nomeSistema: cfg.nomeSistema,
-                emailContato: cfg.emailContato,
-                fusoHorario: cfg.fusoHorario,
-                idioma: cfg.idioma,
-                notifEmail: cfg.notifEmail,
-                notifNovaInscricao: cfg.notifNovaInscricao,
-                notifFrequenciaBaixa: cfg.notifFrequenciaBaixa,
-                notifCertificado: cfg.notifCertificado,
-                notifSistema: cfg.notifSistema,
-                limiteFrequencia: cfg.limiteFrequencia,
-                sessaoTimeout: cfg.sessaoTimeout,
-                doisFatores: cfg.doisFatores,
-                logAcesso: cfg.logAcesso,
-                senhaComplexidade: cfg.senhaComplexidade,
-                manutencao: cfg.manutencao,
-                backupAuto: cfg.backupAuto,
-                intervalBackup: cfg.intervalBackup,
-                modoDebug: cfg.modoDebug,
-                periodoRetencao: cfg.periodoRetencao,
-                exportFormato: cfg.exportFormato,
-                // Financeiro (S3-00)
-                valorPassagemViagem: parseFloat(cfg.valorPassagemViagem),
-                valorDiariaPadrao: parseFloat(cfg.valorDiariaPadrao),
-                kmLimitePassagemSemanal: parseInt(cfg.kmLimitePassagemSemanal),
-                diasUteisReferenciaMes: parseInt(cfg.diasUteisReferenciaMes),
-                percentualAlertaCusto: parseFloat(cfg.percentualAlertaCusto),
-            });
+            // Salva configs do sistema e preferências pessoais em paralelo
+            await Promise.all([
+                api.put('/settings', {
+                    nomeSistema: cfg.nomeSistema,
+                    emailContato: cfg.emailContato,
+                    fusoHorario: cfg.fusoHorario,
+                    idioma: cfg.idioma,
+                    notifEmail: cfg.notifEmail,
+                    notifNovaInscricao: cfg.notifNovaInscricao,
+                    notifFrequenciaBaixa: cfg.notifFrequenciaBaixa,
+                    notifCertificado: cfg.notifCertificado,
+                    notifSistema: cfg.notifSistema,
+                    limiteFrequencia: cfg.limiteFrequencia,
+                    sessaoTimeout: cfg.sessaoTimeout,
+                    doisFatores: cfg.doisFatores,
+                    logAcesso: cfg.logAcesso,
+                    senhaComplexidade: cfg.senhaComplexidade,
+                    manutencao: cfg.manutencao,
+                    backupAuto: cfg.backupAuto,
+                    intervalBackup: cfg.intervalBackup,
+                    modoDebug: cfg.modoDebug,
+                    periodoRetencao: cfg.periodoRetencao,
+                    exportFormato: cfg.exportFormato,
+                    valorPassagemViagem: parseFloat(cfg.valorPassagemViagem),
+                    valorDiariaPadrao: parseFloat(cfg.valorDiariaPadrao),
+                    kmLimitePassagemSemanal: parseInt(cfg.kmLimitePassagemSemanal),
+                    diasUteisReferenciaMes: parseInt(cfg.diasUteisReferenciaMes),
+                    percentualAlertaCusto: parseFloat(cfg.percentualAlertaCusto),
+                }),
+                // PASSO 1.3: salvar preferências pessoais do admin
+                api.patch('/users/me/preferences', {
+                    notifEmail: cfg.notifEmail,
+                    notifCertificado: cfg.notifCertificado,
+                    notifInscricao: cfg.notifNovaInscricao,
+                    notifFrequencia: cfg.notifFrequenciaBaixa,
+                }),
+            ]);
             setSaved(true);
             // Atualizar nome/email do admin no localStorage para Header e Sidebar refletirem
             const stored = localStorage.getItem('user');

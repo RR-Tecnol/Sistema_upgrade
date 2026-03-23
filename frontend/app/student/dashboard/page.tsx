@@ -99,7 +99,7 @@ export default function StudentDashboard() {
                 // sem dados de frequência ainda — mantém zeros
             }
         } catch (e) {
-            console.error(e);
+            /* silencioso — dashboard exibe estado vazio */
         } finally {
             setLoading(false);
         }

@@ -54,15 +54,25 @@ export default function TeacherConfiguracoes() {
     const [cfg, setCfg] = useState({ nome: '', email: '', notifEmail: true, notifFrequencia: true, notifReembolsos: true, logAcesso: true, animacoes: true, fonteGrande: false });
 
     useEffect(() => {
-        // Sempre busca /users/me para garantir que o nome real do perfil logado é exibido
-        api.get('/users/me').then(res => {
-            const p = res.data;
+        Promise.all([
+            api.get('/users/me'),
+            api.get('/users/me/preferences').catch(() => null),
+        ]).then(([profileRes, prefRes]) => {
+            const p = profileRes.data;
             setUser(p);
-            setCfg(c => ({ ...c, nome: p.name || '', email: p.email || '' }));
-            // Atualiza localStorage com dados frescos da API
+            setCfg(c => ({
+                ...c,
+                nome: p.name || '',
+                email: p.email || '',
+                ...(prefRes?.data ? {
+                    notifEmail: prefRes.data.notifEmail,
+                    notifFrequencia: prefRes.data.notifFrequencia,
+                    animacoes: prefRes.data.animacoes,
+                    fonteGrande: prefRes.data.fonteGrande,
+                } : {}),
+            }));
             localStorage.setItem('user', JSON.stringify({ ...JSON.parse(localStorage.getItem('user') || '{}'), ...p }));
         }).catch(() => {
-            // Fallback para localStorage se offline
             const stored = localStorage.getItem('user');
             if (stored) { const p = JSON.parse(stored); setUser(p); setCfg(c => ({ ...c, nome: p.name || '', email: p.email || '' })); }
         });
@@ -72,7 +82,15 @@ export default function TeacherConfiguracoes() {
 
     const handleSave = async () => {
         try {
-            await api.patch('/users/me', { name: cfg.nome });
+            await Promise.all([
+                api.patch('/users/me', { name: cfg.nome }),
+                api.patch('/users/me/preferences', {
+                    notifEmail: cfg.notifEmail,
+                    notifFrequencia: cfg.notifFrequencia,
+                    animacoes: cfg.animacoes,
+                    fonteGrande: cfg.fonteGrande,
+                }),
+            ]);
             const stored = localStorage.getItem('user');
             if (stored) { const u = JSON.parse(stored); u.name = cfg.nome; localStorage.setItem('user', JSON.stringify(u)); window.dispatchEvent(new Event('userUpdated')); }
             setSaved(true); setTimeout(() => setSaved(false), 2800);

@@ -289,6 +289,7 @@ model User {
   employee          Employee?
   tripsAsDriver     Trip[]    @relation("TripDriver") // EXEC-02
   absences          Absence[]                          // Módulo de imprevistos
+  preferences       UserPreferences?                   // PASSO 1.3: preferências de UI por usuário
 
   @@index([email])
   @@index([role])
@@ -1164,6 +1165,7 @@ model ContaPagar {
   comprovante_url  String?
   cidade           String?
   acaoId           String?           // vinculo opcional com uma Ação
+  active           Boolean           @default(true)  // PASSO 3.9: soft delete
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -1306,5 +1308,33 @@ model Absence {
   @@index([status])
   @@index([date])
   @@map("absences")
+}
+
+// ============================================
+// PASSO 1.3: PREFERÊNCIAS DO USUÁRIO
+// Persiste configurações de UI por usuário (notificações, animações, etc.)
+// Criado com upsert — nunca precisa de create separado.
+// ============================================
+
+model UserPreferences {
+  id               String  @id @default(uuid())
+  userId           String  @unique
+
+  // Notificações
+  notifEmail       Boolean @default(true)
+  notifCertificado Boolean @default(true)
+  notifInscricao   Boolean @default(true)
+  notifFrequencia  Boolean @default(true)
+
+  // Interface
+  animacoes        Boolean @default(true)
+  fonteGrande      Boolean @default(false)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
 }
 

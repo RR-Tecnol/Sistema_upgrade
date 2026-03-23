@@ -4,7 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class UsersService {
     constructor(private prisma: PrismaService) { }
-
     async findAll(role?: string) {
         const where = role ? { role: role as any } : {};
 
@@ -66,5 +65,31 @@ export class UsersService {
 
     async deactivate(id: string) {
         return this.update(id, { active: false });
+    }
+
+    // ─── PASSO 1.3: Preferências do usuário ──────────────────────────────────
+
+    async getPreferences(userId: string) {
+        // upsert garante que sempre retorna com defaults, mesmo sem registro prévio
+        return this.prisma.userPreferences.upsert({
+            where: { userId },
+            create: { userId },
+            update: {},
+        });
+    }
+
+    async updatePreferences(userId: string, data: {
+        notifEmail?: boolean;
+        notifCertificado?: boolean;
+        notifInscricao?: boolean;
+        notifFrequencia?: boolean;
+        animacoes?: boolean;
+        fonteGrande?: boolean;
+    }) {
+        return this.prisma.userPreferences.upsert({
+            where: { userId },
+            create: { userId, ...data },
+            update: data,
+        });
     }
 }

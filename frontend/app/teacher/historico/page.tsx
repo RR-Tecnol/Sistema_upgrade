@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import api from '@/lib/api/client';
+import { toast } from '@/components/ui/Toast';
 import {
     CalendarDaysIcon, CheckCircleIcon, XCircleIcon, ClockIcon,
     UserGroupIcon, AcademicCapIcon, ClipboardDocumentCheckIcon,
@@ -353,9 +354,13 @@ export default function TeacherHistorico() {
                                 }}
                                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'}
                                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform = ''}
-                                onClick={() => {
-                                    // TODO: conectar ao endpoint POST /teachers/me/checkin
-                                    alert('Ponto registrado! (endpoint a conectar: POST /teachers/me/checkin)');
+                                onClick={async () => {
+                                    try {
+                                        await api.post('/teachers/me/checkin');
+                                        toast.success(`Ponto registrado! ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
+                                    } catch (err: any) {
+                                        toast.error(err?.response?.data?.message || 'Erro ao registrar ponto. Tente novamente.');
+                                    }
                                 }}>
                                     ⏱ REGISTRAR PONTO
                                 </button>
@@ -363,8 +368,7 @@ export default function TeacherHistorico() {
 
                             <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.8rem', padding: '1.5rem' }}>
                                 <ClockIcon style={{ width: 32, height: 32, color: '#E5E7EB', margin: '0 auto 0.5rem' }} />
-                                <p>Histórico de pontos aparecerá aqui</p>
-                                <p style={{ fontSize: '0.72rem', marginTop: '0.25rem' }}>Endpoint: <code>GET /teachers/me/checkins</code></p>
+                                <p>Histórico de pontos aparecerá aqui após os primeiros registros.</p>
                             </div>
                         </div>
                     </div>

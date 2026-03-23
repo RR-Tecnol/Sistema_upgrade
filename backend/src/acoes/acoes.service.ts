@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { AcaoStatus } from '@prisma/client';
@@ -9,6 +9,8 @@ import { CreateAcaoFuncionarioDto } from './dto/create-acao-funcionario.dto';
 
 @Injectable()
 export class AcoesService {
+    private readonly logger = new Logger(AcoesService.name);
+
     constructor(
         private prisma: PrismaService,
         private settingsService: SettingsService,
@@ -406,8 +408,8 @@ export class AcoesService {
                 const fatorAlerta = settings.percentualAlertaCusto / 100;
                 if (resumo.estimado.total > 0 &&
                     resumo.real.total > resumo.estimado.total * fatorAlerta) {
-                    console.warn(
-                        `⚠️ ALERTA CUSTO: Rota "${acaoAtual.nome}" atingiu ` +
+                    this.logger.warn(
+                        `ALERTA CUSTO: Rota "${acaoAtual.nome}" atingiu ` +
                         `R$ ${resumo.real.total.toFixed(2)}, acima de ${settings.percentualAlertaCusto}% ` +
                         `do estimado (R$ ${resumo.estimado.total.toFixed(2)}).`
                     );

@@ -1,13 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { AbsenceType, AbsenceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class AbsencesService {
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private notifications: NotificationsGateway,
+    ) {}
 
     // Driver: lista suas próprias ausências
     async findByUser(userId: string) {
-        return (this.prisma as any).absence.findMany({
+        return this.prisma.absence.findMany({
             where: { userId },
             orderBy: { date: 'desc' },
         });
@@ -15,15 +20,27 @@ export class AbsencesService {
 
     // Driver: registra imprevisto
     async create(userId: string, data: { type: string; date: string; description: string; documentUrl?: string }) {
-        return (this.prisma as any).absence.create({
+        return this.prisma.absence.create({
             data: {
                 userId,
-                type: data.type,
+                type: data.type as AbsenceType,
                 date: new Date(data.date),
                 description: data.description,
                 documentUrl: data.documentUrl ?? null,
-                status: 'PENDING',
+                status: AbsenceStatus.PENDING,
             },
+        }).then(absence => {
+            // PASSO 3.1: notificar admins — WS em try/catch SEPARADO
+            try {
+                this.notifications.notifyAdmins('imprevisto_cadastrado', {
+                    absenceId: absence.id,
+                    userId,
+                    type: data.type,
+                    date: data.date,
+                    timestamp: new Date().toISOString(),
+                });
+            } catch { /* WS nunca causa rollback */ }
+            return absence;
         });
     }
 
@@ -33,7 +50,7 @@ export class AbsencesService {
         if (status) where.status = status;
         if (userId) where.userId = userId;
 
-        return (this.prisma as any).absence.findMany({
+        return this.prisma.absence.findMany({
             where,
             orderBy: { date: 'desc' },
             include: {
@@ -52,13 +69,13 @@ export class AbsencesService {
             penalty?: number;
         },
     ) {
-        const absence = await (this.prisma as any).absence.findUnique({ where: { id } });
+        const absence = await this.prisma.absence.findUnique({ where: { id } });
         if (!absence) throw new NotFoundException('Imprevisto não encontrado');
 
-        return (this.prisma as any).absence.update({
+        return this.prisma.absence.update({
             where: { id },
             data: {
-                status: data.status,
+                status: data.status as AbsenceStatus,
                 adminNote: data.adminNote ?? null,
                 penalty: data.penalty ?? null,
                 reviewedBy: adminId,

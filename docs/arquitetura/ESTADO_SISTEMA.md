@@ -1,14 +1,10 @@
 ## Estado do Sistema — Sistema Upgrade
 ## Snapshot do Estado Real | Atualizado após cada ciclo de execução
-## Última atualização: 19/03/2026 — Sessão Conclusão Fase 2 (EXEC-03/04/05/06 + P-01 + A-02)
+## Última atualização: 23/03/2026 — Sprint contínuo — Blocos A→H em execução
 
 > **O que é este documento?**
 > Snapshot preciso do que funciona, o que está quebrado e o que está pendente.
 > Atualizado ao final de cada EXEC validado. Leia ANTES de iniciar qualquer nova implementação.
->
-> Para o histórico narrativo, ver: [DIARIO_DE_BORDO.md](./DIARIO_DE_BORDO.md)
-> Para os próximos passos, ver: [ROADMAP_EPICOS.md](./ROADMAP_EPICOS.md)
-> Para regras de responsividade, ver: [REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md](./REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md)
 
 ---
 
@@ -22,8 +18,8 @@
 | Backend NestJS | ✅ Rodando | **3001** | PORT=3001 canônica no backend/.env |
 | Frontend Next.js | ✅ Rodando | 3000 | NEXT_PUBLIC_API_URL=http://localhost:3001/api |
 
-> ⚠️ **Atenção ao iniciar o backend:** Nunca usar `$env:PORT=3002; npm run start:dev`.
-> Procedimento correto: `Remove-Item Env:PORT -ErrorAction SilentlyContinue; npm run start:dev`
+> ⚠️ **Atenção ao iniciar o backend:**
+> `Remove-Item Env:PORT -ErrorAction SilentlyContinue; npm run start:dev`
 
 ---
 
@@ -35,139 +31,156 @@
 | `20260316130235_add_two_factor` | twoFactorEnabled + twoFactorSecret em User | ✅ |
 | `20260318162339_add_driver_role_and_employee_user_relation` | DRIVER enum + userId em Employee | ✅ |
 | `20260318173241_add_driver_user_id_to_trip` | driverUserId FK em Trip | ✅ |
-
-**Dados de teste no banco (seed manual + script):**
-- Admin: `admin@qualifica.com / admin123`
-- Aluno: `aluno@qualifica.com / aluno123`
-- Motorista: `joao.driver.test99@qualifica.com / senha123` (role DRIVER)
-- Professora: `maria.professora.visual@qualifica.com / prof123` (role TEACHER)
-- Truck: `truck-test-0000-0000-0001`, placa ABC-1234, tipo STANDARD
-- Trip: `trip-test-0000-0000-0001`, Caxias → São Luís, driverUserId do motorista de teste
+| `add_user_preferences` | Model UserPreferences — **CONCLUÍDO** | ✅ PASSO 1.3 |
+| `add_employee_attendance` | Model EmployeeAttendance — **PENDENTE** | 🔴 PASSO 3.2 |
+| `add_conta_pagar_active` | Campo active em ContaPagar — **PENDENTE** | 🟡 PASSO 3.9 |
 
 ---
 
-## ✅ EXEC-08 — Ordem de rotas corrigida (18/03/2026)
+## ✅ EXECUTADO NO SPRINT FINAL (23/03/2026)
 
-`@Get('my')` movido ANTES de `@Get(':id')` em `enrollments.controller.ts`.
-Bug silencioso: NestJS capturava a string "my" como valor de `:id`.
-
----
-
-## ✅ EXEC-07 — Dashboard admin com dados reais (18/03/2026)
-
-Arrays hardcoded substituídos por `api.get('/dashboard/analytics')` em `admin/dashboard/page.tsx`.
-Backend já estava implementado com queries reais — não precisou de alteração.
-
-> "Frequência Média" (91%) ainda hardcoded — depende do EXEC-04 (dados reais de Attendance).
-
----
-
-## ✅ EXEC-01 — Employee cria User + DRIVER + migration (18/03/2026)
-
-Mapeamento EmployeeRole → UserRole implementado no service.
-Bloco visual "Acesso ao Sistema" no Step 3 do modal de funcionários.
-Redirect DRIVER → /driver/dashboard no login.
-
----
-
-## ✅ EXEC-02 — Portal do Motorista /driver/* (18/03/2026)
-
-### Backend
-- `backend/src/trips/` — trips.service, trips.controller, trips.module
-- 5 endpoints em `/driver/trips` com guard `@Roles('DRIVER')`
-- Migration `driverUserId` aplicada
-
-### Frontend — 5 arquivos criados
-- `frontend/app/driver/layout.tsx`
-- `frontend/app/driver/dashboard/page.tsx`
-- `frontend/app/driver/viagens/page.tsx`
-- `frontend/app/driver/reembolsos/page.tsx`
-- `frontend/app/driver/veiculo/page.tsx`
-
-### Arquitetura responsiva final (validada em 5 resoluções)
-O portal do motorista usa a arquitetura `position: fixed; inset: 0` descrita em
-`REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md`. Esta é a **única** abordagem autorizada para
-o shell do portal — não alterar sem consultar as regras.
-
-**Resultados de validação automatizada (Playwright):**
-
-| Resolução | shellGap | Status |
-|-----------|----------|--------|
-| Mobile 390px | 0px | ✅ |
-| Split window 610px | 0px | ✅ |
-| Laptop 1024px | 0px | ✅ |
-| Desktop 1440px | 0px | ✅ |
-| Full HD 1920px | 0px | ✅ |
-
-**Comportamento da sidebar:**
-- Overlay mode (`< 1100px`): sidebar flutua sobre o conteúdo via `transform: translateX()`
-- Push mode (`>= 1100px`): `--drv-left` CSS custom property empurra o conteúdo
-
-**Testado ao vivo:**
-- Login DRIVER → redirect /driver/dashboard ✅
-- Trip PLANNED → modal kmStart → trip EM TRÂNSITO ✅
-- Botões "Cheguei ao Destino" e "Reportar Problema" funcionando ✅
+| Item | O que foi feito | Status |
+|------|----------------|--------|
+| PASSO 0.1 | `package.json` corrigido — `prisma:seed` → `seed-full.ts`, scripts órfãos removidos | ✅ |
+| PASSO 0.2 | `prisma generate` rodado, casts `as any` removidos de `absences.service.ts`, enums importados | ✅ |
+| PASSO 0.3 | `RolesGuard` adicionado nos métodos `approve`/`reject` do `reimbursement.controller.ts` | ✅ |
+| PASSO 0.4 | `req.user?.id \|\| req.user?.sub` → `req.user.id` em `classes.controller.ts` | ✅ |
+| PASSO 0.5 | Soft delete nos 3 services (employees, trucks, classes) | ✅ |
+| PASSO 1.1 | `turma.enrollments` em vez de `stats.enrollments` — resolve TypeError no map | ✅ |
+| PASSO 1.2 | Normalização UTC `Date.UTC(y,m-1,d)` no `bulkAttendance` + `registeredBy` no update | ✅ |
+| PASSO 1.4 | Reembolso teacher: `res.data?.data ?? []` + reset tipo para `'FOOD'` | ✅ |
+| PASSO 1.7 | localStorage fallback removido da frequência ADM — erro real exibido | ✅ |
+| PASSO 1.8 | Endpoint `GET /classes/:id/attendance/history` criado (controller + service) | ✅ |
+| PASSO 1.3 | `UserPreferences` — schema, `db push`, `prisma generate`, service, controller, 4 portais | ✅ |
+| PASSO 1.5 | Carretas: datas ISO→Date no trucks.service (create+update), console.error removido | ✅ |
+| PASSO 2.5 | Hamburger: student/Header + teacher/Header usam `hamburger-btn` (some no desktop) | ✅ |
+| PASSO 3.7 | teacher/historico: alert() → toast + chamada real POST /teachers/me/checkin | ✅ |
+| PASSO 3.14 | useAuthStore.logout() limpa localStorage completo + console.error removido | ✅ |
+| PASSO 3.1 | WS: 8 eventos + histórico persistido — reimbursement, absences, enrollments atualizados | ✅ |
+| PASSO 3.11 | Frequência ADM: triple-click → 2 botões P/F touch-friendly (min-height 44px) | ✅ |
+| PASSO 3.12 | Frequência ADM: ao reabrir dia registrado carrega estado salvo + banner "Editando" | ✅ |
+| PASSO 2.3 | driver/reembolsos: campo valor type="number" step="0.01" min="0" | ✅ |
+| console.error | 14 ocorrências em 10 arquivos frontend removidas (auditoría completa) | ✅ |
+| tsc | Zero erros TypeScript — validado ✅ |
 
 ---
 
-## ✅ EXEC-03 — Professor filtra suas turmas (19/03/2026)
+## 🔐 CREDENCIAIS DE TESTE (após seed)
 
-`GET /classes?teacherUserId=:id` implementado.
-`classes.service.ts`: filtro `where.teachers.some.teacher.userId`.
-`teacher/dashboard/page.tsx` e `teacher/frequencia/page.tsx`: passam `user.id` como param.
-
----
-
-## ✅ EXEC-04 — Frequência real do aluno (19/03/2026)
-
-`students.service.ts`: método `getAttendanceSummary()` — 2 queries count() em paralelo.
-`students.controller.ts`: endpoint `GET /students/me/attendance-summary` adicionado.
-`student/dashboard/page.tsx`: chamada real substituindo mock 87% hardcoded.
+```
+admin@qualifica.com              → RR@@Upgrade → ADMIN
+maria.professora.visual@qualifica.com → RR@@Upgrade → TEACHER
+joao.driver.test99@qualifica.com → RR@@Upgrade → DRIVER
+aluno@qualifica.com              → RR@@Upgrade → STUDENT
+```
 
 ---
 
-## ✅ EXEC-05 — PDFs governamentais (19/03/2026)
+## ✅ FUNCIONALIDADES IMPLEMENTADAS E VALIDADAS
 
-`pdf.service.ts`: `htmlToPdf()` com args Windows + `getAllClassIds()` adicionado.
-`reports.controller.ts`: endpoints `GET /reports/frequency/all` e `GET /reports/concludents/all`.
-`relatorios/page.tsx`: `downloadPdf()` com roteamento all vs classId.
-Chromium deve ser instalado com: `npx puppeteer browsers install chrome`
+### Portal do Administrador
+| Funcionalidade | Status | Notas |
+|---------------|--------|-------|
+| Dashboard com analytics reais | ✅ | EXEC-07 |
+| CRUD Alunos | ✅ | Bug nome completo ativo (BUG-ACTIVE-07) |
+| CRUD Funcionários | ✅ | Bug modal posição (ALERTA-05) |
+| CRUD Cursos | ✅ | — |
+| CRUD Turmas | ✅ | Bug enrollments.map (BUG-ACTIVE-01) |
+| Kanban Inscrições | ✅ | Bug botões (BUG-ACTIVE-08) |
+| Frequência (alunos) | ✅ | 2 botões P/F — PASSO 3.11/3.12 |
+| Reembolsos | ✅ | UTF-8 corrompido (BUG-ACTIVE-09) |
+| Contas a Pagar | ✅ | Campo `active` + soft delete + aba Excluídos com restaurar — PASSO 3.9 |
+| Relatórios PDF | ✅ | Requer Chromium instalado |
+| XLSX Export | ✅ | Design básico — melhoria pendente |
+| Feriados | ✅ | Modal com motivo obrigatório ao excluir — PASSO 3.8 |
+| Imprevistos | ✅ | Falta CRUD completo (PASSO 3.6) |
+| Histórico Atividades | ✅ | Sem paginação/filtros (PASSO 3.5) |
+| Grupos / Carretas | ✅ | Bug 500 no cadastro (BUG-ACTIVE-05) |
+| Rotas BI | 🔴 | Não funciona — investigar |
+| 2FA | ✅ | — |
+| Configurações | ✅ | Preferências salvas via UserPreferences (PASSO 1.3) |
+| Frequência funcionários | 🔴 | Não implementado (PASSO 3.2) |
+
+
+### Portal do Professor
+| Funcionalidade | Status | Notas |
+|---------------|--------|-------|
+| Dashboard (turmas do professor) | ✅ | EXEC-03 |
+| Frequência — seleção de turma + dia | ✅ | EXEC-03, design validado pelo Davi |
+| Frequência — persistência por dia | ✅ | PASSO 1.2 — normalização UTC |
+| Frequência — nome hardcoded no registro | ✅ | PASSO 0.4 — req.user.id corrigido |
+| Histórico de frequência | ✅ | EXEC-06 |
+| Reembolsos — criar | ✅ | — |
+| Reembolsos — histórico | ✅ | PASSO 1.4 — padrão paginado correto |
+| Imprevistos | ✅ | Sem CRUD completo (PASSO 3.6) |
+| Certificados | ✅ | — |
+| Configurações | ✅ | Preferências salvas via UserPreferences (PASSO 1.3) |
+| Notificações → ADM | ✅ | PASSO 3.1 — eventos completos + histórico persistido |
+
+### Portal do Aluno
+| Funcionalidade | Status | Notas |
+|---------------|--------|-------|
+| Dashboard com frequência real | ✅ | EXEC-04 |
+| Inscrições — listar | ✅ | — |
+| Inscrições — tabs + botão ação | ✅ | PASSO 3.10 — tabs Minhas/Disponíveis + botão Inscrever-se |
+| Inscrições — cursos disponíveis | ✅ | PASSO 3.10 — cards com vagas, datas, rota /inscricao/:id |
+| Calendário | 🟡 | Existe mas sem filtro/interatividade (PASSO 3.3) |
+| QR Code de certificado | ✅ | Fundo sem opacidade total (PASSO 2.4) |
+| Imprevistos | ✅ | Sem animações (PASSO 2.8) |
+| Configurações | ✅ | Preferências salvas via UserPreferences (PASSO 1.3) |
+| Sidebar hamburger visível no desktop | ✅ | PASSO 2.5 — classe hamburger-btn corrigida |
+| Notificações recebidas | ✅ | PASSO 3.1 — 8 eventos + histórico persistido |
+
+### Portal do Motorista
+| Funcionalidade | Status | Notas |
+|---------------|--------|-------|
+| Dashboard | ✅ | Layout diferente dos outros portais (PASSO 2.7) |
+| Viagens | ✅ | — |
+| Reembolsos — criar | ✅ | — |
+| Reembolsos — histórico | ✅ | já usava padrão correto (res.data?.data) |
+| Manutenção | ✅ | UTF-8 corrompido (BUG-ACTIVE-09) |
+| Imprevistos | ✅ | Sem overlay completo + sem CRUD (PASSO 3.6) |
+| 2FA QR Code | 🟡 | Formatação inadequada (PASSO 2.4) |
+| Configurações | ✅ | Preferências salvas via UserPreferences (PASSO 1.3) |
 
 ---
 
-## ✅ EXEC-06 — Histórico do professor (19/03/2026)
+## 📋 PENDÊNCIAS PRIORITÁRIAS (ordenadas por impacto)
 
-`classes.service.ts`: método `getTeacherAttendanceHistory(teacherUserId)`.
-`classes.controller.ts`: endpoint `GET /classes/teacher/history` (antes de /:id).
-`teacher/historico/page.tsx`: reescrito com dados reais, timeline por dia, design dark.
-
----
-
-## 📋 PENDÊNCIAS IMEDIATAS
-
-| # | Pendência | Impacto | Status |
-|---|-----------|---------|---------|
-| — | Instalar Chromium para PDFs | Necessário para gerar PDFs localmente | `cd backend && npx puppeteer browsers install chrome` |
-
----
-
-## 📋 ALERTAS ATIVOS (não críticos)
-
-| # | Alerta | Arquivo | Ação |
-|---|--------|---------|------|
-| A-01 | Credenciais admin visíveis em tela | `login/page.tsx` | Remover antes do deploy |
-| A-03 | `@Get(':id')` orphan em JSDoc | `enrollments.controller.ts` linha 66 | Limpar em refatoração |
-| A-04 | "Frequência Média" 91% hardcoded | `admin/dashboard/page.tsx` | Depende de endpoint de attendance global |
+| # | Descrição | Impacto | Passo |
+|---|-----------|---------|-------|
+| 1 | Modais não centralizados (position fixed) — auditar antes de corrigir | 🟡 Médio | 2.2 |
+| 2 | Nome completo aluno não salva | 🟡 Médio | BUG-07 |
+| 3 | Frequência ADM para funcionários (migration EmployeeAttendance) | 🟡 Médio | 3.2 |
+| 4 | Rotas BI não funciona — investigar | 🟡 Médio | — |
+| 5 | Calendário aluno interativo | 🟢 Baixo | 3.3 |
+| 6 | Histórico ADM paginado | ✅ | 3.5 — já estava completo |
+| 7 | CRUD completo de imprevistos | 🟢 Baixo | 3.6 |
+| 8 | Tutorial assistido | 🟢 Baixo | 3.4 |
+| 9 | Persistência de formulário (sessionStorage) | 🟢 Baixo | 3.13 |
+| 10 | Redis senha para produção | 🟢 Baixo | 3.15 |
 
 ---
 
 ## 🏃 COMANDOS DE TESTE RÁPIDO
 
 ```powershell
-# Login motorista
-node -e "const h=require('http');const d=JSON.stringify({email:'joao.driver.test99@qualifica.com',password:'senha123'});const r=h.request({hostname:'localhost',port:3001,path:'/api/auth/login',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(d)}},res=>{let s='';res.on('data',c=>s+=c);res.on('end',()=>console.log(JSON.parse(s).user?.role))});r.write(d);r.end()"
+# Iniciar backend corretamente
+cd backend
+Remove-Item Env:PORT -ErrorAction SilentlyContinue
+npm run start:dev
+
+# Instalar Chromium para PDFs (se necessário)
+cd backend && npx puppeteer browsers install chrome
+
+# Verificar TypeScript antes de commitar
+npx tsc --noEmit
+
+# Rodar seeds
+npm run prisma:seed    # seed principal
+npm run seed:extra     # dados de demo
 ```
 
 ---
 
-*Sistema Upgrade | RR TECNOL | Atualizado: 18/03/2026 após responsividade portal motorista*
+*Sistema Upgrade | RR TECNOL | Atualizado: 23/03/2026 após auditoria completa + feedback Davi*

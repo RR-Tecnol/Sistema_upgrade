@@ -47,7 +47,7 @@ export default function TurmasPage() {
             const data = await classesApi.getAll(filters);
             setClasses(data);
         } catch (error) {
-            console.error('Error loading classes:', error);
+            /* silencioso — lista vazia exibida ao usuário */
         } finally {
             setLoading(false);
         }

@@ -1,236 +1,131 @@
 # 🌱 Seeds Guide — Sistema UPGRADE
+## v2.0 | 23/03/2026 — Atualizado após auditoria completa
 
 > Guia completo sobre como funcionam os seeds, como executá-los e como criar novos.
-> **Para humanos e para IAs** que precisam entender o padrão de dados do sistema.
+> **Regra de ouro:** Nunca criar arquivos seed separados. Tudo em `seed.ts` + `seed-extra.ts`.
 
 ---
 
-## O Que São Seeds?
+## Estrutura de Seeds (Definitiva)
 
-Seeds são scripts TypeScript que populam o banco de dados com dados iniciais e de demonstração. O sistema possui dois arquivos principais:
+| Arquivo | Propósito | Comando | Idempotente |
+|---------|-----------|---------|-------------|
+| `backend/prisma/seed-full.ts` | Dados **obrigatórios + demonstração** — usuários, cursos, grupos, cidades, carretas, turmas, viagens, reembolsos, ausências, notificações | `npm run prisma:seed` | ✅ Sim |
 
-| Arquivo | Propósito | Comando |
-|---------|-----------|---------|
-| `backend/prisma/seed.ts` | Dados **obrigatórios** — admin, cursos, grupos, cidades | `npm run prisma:seed` |
-| `backend/prisma/seed-extra.ts` | Dados de **demonstração** — viagens, manutenções, reembolsos, ausências, notificações | `npm run seed:extra` |
+> ⛔ **NUNCA criar:** `seed-novo.ts`, `seed-temp.ts`, `seed-test.ts`, `seed_trip_test.js` etc.
+> Qualquer dado de teste vai em `seed-extra.ts`. Seeds avulsos são legado e devem ser excluídos.
 
 ---
 
-## Usuários de Teste Criados pelo Seed Principal
+## Credenciais de Teste (criadas pelo seed.ts)
 
 ```
-admin@qualifica.com      → Senha: RR@@Upgrade → role: ADMIN
-maria.professora.visual@qualifica.com → Senha: RR@@Upgrade → role: TEACHER  
-joao.driver.test99@qualifica.com      → Senha: RR@@Upgrade → role: DRIVER
-aluno@qualifica.com      → Senha: RR@@Upgrade → role: STUDENT
+admin@qualifica.com                   → Senha: RR@@Upgrade → ADMIN
+maria.professora.visual@qualifica.com → Senha: RR@@Upgrade → TEACHER
+joao.driver.test99@qualifica.com      → Senha: RR@@Upgrade → DRIVER
+aluno@qualifica.com                   → Senha: RR@@Upgrade → STUDENT
 ```
 
-> ⚠️ **IMPORTANTE para criação de seeds:** Sempre busque usuários por **email**, nunca por role!
+> ⚠️ **IMPORTANTE:** Sempre buscar usuários por **email**, nunca por role!
 > ```typescript
 > // ✅ CORRETO
-> const driverUser = await prisma.user.findFirst({ where: { email: 'joao.driver.test99@qualifica.com' } });
->
+> const driver = await prisma.user.findFirst({ where: { email: 'joao.driver.test99@qualifica.com' } });
 > // ❌ ERRADO — pode pegar o usuário errado
-> const driverUser = await prisma.user.findFirst({ where: { role: 'DRIVER' } });
+> const driver = await prisma.user.findFirst({ where: { role: 'DRIVER' } });
 > ```
 
 ---
 
-## Como Executar os Seeds
+## Como Executar
 
 ```powershell
 cd backend
 
-# 1. Seed principal (obrigatório — roda uma vez)
+# Único seed do projeto (idempotente — pode rodar várias vezes)
 npm run prisma:seed
 
-# 2. Seed extra (dados demo — idempotente, usa count para checar)
-npm run seed:extra
-
-# Alternativa com tsx (mais confiável no Windows):
-npx tsx prisma/seed.ts
-npx tsx prisma/seed-extra.ts
+# Alternativa direta com tsx:
+npx tsx prisma/seed-full.ts
 ```
 
 ---
 
-## Padrão de Seed — Modelo para Criar Novos
+## Padrão de Seed — Modelo para Adicionar ao seed-extra.ts
 
-Todo seed deve seguir este padrão para ser **idempotente** (seguro de rodar múltiplas vezes):
+Todo bloco de seed deve ser **idempotente** (seguro de rodar múltiplas vezes):
 
 ```typescript
-/**
- * seed-master.ts — [Descrição do que este seed popula]
- * 
- * Categorias de dados criados:
- *   - [Lista de entidades]
- *
- * Rodar: npx tsx prisma/seed-master.ts
- */
-import { PrismaClient } from '@prisma/client';
+// ─── BLOCO: [Nome da Entidade] ─────────────────────────────────────────────
+const entidadeCount = await prisma.minhaEntidade.count();
 
-const prisma = new PrismaClient();
+if (entidadeCount < 3) {
+  // Buscar dependências sempre por email/identifier único (nunca por role)
+  const adminUser = await prisma.user.findFirst({ where: { email: 'admin@qualifica.com' } });
+  if (!adminUser) throw new Error('Admin não encontrado — rode prisma:seed primeiro');
 
-async function main() {
-    console.log('🌱 Iniciando [nome-do-seed]...');
-    console.log('═══════════════════════════════════');
+  const items = [
+    { campo1: 'valor1', userId: adminUser.id },
+    { campo1: 'valor2', userId: adminUser.id },
+  ];
 
-    // ─── 1. SEMPRE buscar usuários por email ──────────────────────────────
-    const adminUser   = await prisma.user.findFirst({ where: { email: 'admin@qualifica.com' } });
-    const teacherUser = await prisma.user.findFirst({ where: { email: 'maria.professora.visual@qualifica.com' } });
-    const driverUser  = await prisma.user.findFirst({ where: { email: 'joao.driver.test99@qualifica.com' } });
-    const studentUser = await prisma.user.findFirst({ where: { email: 'aluno@qualifica.com' } });
-
-    if (!adminUser) {
-        console.error('❌ Admin não encontrado. Rode npm run prisma:seed primeiro!');
-        process.exit(1);
+  for (const item of items) {
+    const exists = await prisma.minhaEntidade.findFirst({ where: { campo1: item.campo1 } });
+    if (!exists) {
+      await prisma.minhaEntidade.create({ data: item });
     }
-
-    // ─── 2. PADRÃO de criação idempotente ────────────────────────────────
-    // Sempre verificar se os dados já existem antes de criar
-    const itemCount = await prisma.minhaEntidade.count();
-    
-    if (itemCount < 5) {
-        // Criar apenas se não existir
-        const data = [
-            { campo1: 'valor1', campo2: 'valor2', userId: adminUser.id },
-            { campo1: 'valor3', campo2: 'valor4', userId: teacherUser?.id ?? adminUser.id },
-        ];
-        
-        for (const item of data) {
-            // Verificar por campo único antes de criar
-            const exists = await prisma.minhaEntidade.findFirst({ 
-                where: { campo1: item.campo1 } 
-            });
-            if (!exists) {
-                await prisma.minhaEntidade.create({ data: item });
-            }
-        }
-        console.log(`✅ Dados criados`);
-    } else {
-        console.log(`ℹ️  Já existem ${itemCount} registros — pulando`);
-    }
-
-    // ─── SUMMARY ─────────────────────────────────────────────────────────
-    console.log('\n═══════════════════════════════════');
-    console.log('✅ Seed concluído!');
-    console.log(`  📊 Total: ${await prisma.minhaEntidade.count()}`);
+  }
+  console.log(`✅ MinhaEntidade: ${await prisma.minhaEntidade.count()} registros`);
+} else {
+  console.log(`ℹ️  MinhaEntidade: já existem ${entidadeCount} registros — pulando`);
 }
-
-main()
-    .catch(e => { console.error('❌ Erro:', e); process.exit(1); })
-    .finally(async () => { await prisma.$disconnect(); });
 ```
 
 ---
 
-## Mapeamento de Modelos do Schema
+## Mapeamento de Campos Críticos (erros comuns)
 
-### Principais modelos e campos críticos:
-
-#### `Trip` (Viagens do Motorista)
+### `Trip` (Viagens)
 ```typescript
-await prisma.trip.create({ data: {
-    truckId: truck.id,           // ID da carreta
-    driverUserId: driverUser.id, // ID do motorista
-    driverName: 'João Motorista',
-    originCityId: originCity.id,
-    destinationCityId: destCity.id,
-    departureDate: new Date(),
-    expectedArrivalDate: new Date(),
-    status: 'PLANNED',           // PLANNED | IN_TRANSIT | COMPLETED | CANCELLED
-    kmStart: 102000,             // ⚠️ NÃO usar distanceKm (campo inválido)
-    kmEnd: 102500,               // kmStart + kmEnd definem a distância
-}});
+// ✅ Campos corretos
+{ truckId, driverUserId, driverName, originCityId, destinationCityId,
+  departureDate, expectedArrivalDate, status: 'PLANNED', kmStart, kmEnd }
+// ❌ Campo INVÁLIDO — não existe no schema
+{ distanceKm: 500 }  // ← TypeError: Unknown field
 ```
 
-#### `TruckMaintenance` (Manutenção de Carreta)
+### `TruckMaintenance` (Manutenção)
 ```typescript
-await prisma.truckMaintenance.create({ data: {
-    truckId: truck.id,
-    tipo: 'preventiva',          // preventiva | corretiva | eletrica | pneu
-    titulo: 'Troca de Óleo',
-    descricao: 'Descrição detalhada...',
-    status: 'concluida',         // agendada | em_andamento | concluida | cancelada
-    prioridade: 'media',         // baixa | media | alta | critica
-    custoEstimado: 450.00,
-    custoReal: 480.00,
-}});
+// ✅ tipo é string livre (não enum)
+{ tipo: 'preventiva' }  // preventiva | corretiva | revisao | pneu | eletrica | outro
+// ✅ status é string (não enum)
+{ status: 'agendada' }  // agendada | em_andamento | concluida | cancelada
+// ✅ prioridade é string (não enum)
+{ prioridade: 'media' }  // baixa | media | alta | critica
 ```
 
-#### `Reimbursement` (Reembolsos)
+### `Truck` (Carreta)
 ```typescript
-await prisma.reimbursement.create({ data: {
-    requestedBy: driverUser.id,
-    type: 'FOOD',                // FOOD | CLASSROOM_MATERIAL | EMERGENCY_REPAIR | CLEANING_MATERIAL | OTHER
-    amount: 38.50,
-    description: 'Almoço durante deslocamento',
-    status: 'PENDING',           // PENDING | APPROVED | REJECTED
-    approvedBy: adminUser.id,    // Preencher se APPROVED
-    approvedAt: new Date(),
-}});
+// ✅ TruckType é enum com apenas 2 valores
+{ type: 'STANDARD' }    // ou 'MULTICOURSE'
+// ❌ INVÁLIDO
+{ type: 'TRUCK' }       // não existe
+{ type: 'CAMINHAO' }    // não existe
 ```
 
-#### `Notification` (Notificações)
+### `Notification` (Notificações)
 ```typescript
-await prisma.notification.create({ data: {
-    userId: targetUser.id,
-    type: 'GENERAL_ANNOUNCEMENT',
-    title: 'Título da Notificação',
-    message: 'Corpo da mensagem',
-    data: { link: '/rota/de/destino' }, // ⚠️ NÃO usar campo 'link' direto
-    channel: 'IN_APP',
-    deliveryStatus: 'DELIVERED',
-}});
+// ✅ Campo data é JSON — link vai dentro
+{ data: { link: '/rota/de/destino' } }
+// ❌ Campo 'link' não existe diretamente no model
+{ link: '/rota' }  // campo não existe
 ```
 
-#### `AuditLog` (Histórico de Auditoria)
+### `Reimbursement` (Reembolsos)
 ```typescript
-await prisma.auditLog.create({ data: {
-    userId: adminUser.id,
-    action: 'LOGIN',             // LOGIN | CREATE | UPDATE | DELETE | APPROVE | REJECT
-    tableName: 'users',          // Tabela afetada
-    recordId: 'uuid-do-registro',
-    ipAddress: '192.168.1.1',
-}});
-```
-
----
-
-## Dados que Ainda Faltam (Próximo Seed — seed-master.ts)
-
-Para o sistema funcionar completamente com dados de demonstração, o próximo seed deve criar:
-
-```typescript
-// 1. Student completo para aluno@qualifica.com
-await prisma.student.create({ data: {
-    userId: studentUser.id,
-    cpf: '123.456.789-00',
-    rg: '12.345.678',
-    birthDate: new Date('2000-01-15'),
-    // ... outros campos obrigatórios
-}});
-
-// 2. Enrollment (Inscrição) do aluno em uma turma
-const turma = await prisma.class.findFirst();
-await prisma.enrollment.create({ data: {
-    studentId: student.id,
-    classId: turma.id,
-    status: 'ENROLLED',
-    approvedAt: new Date(),
-}});
-
-// 3. ClassTeacher (Vincular Maria à turma)
-await prisma.classTeacher.create({ data: {
-    classId: turma.id,
-    userId: teacherUser.id,
-}});
-
-// 4. AuditLogs variados
-// 5. Employees
-// 6. CoursePeriods (Períodos de Curso)
-// 7. AttendanceRecords (Presenças do aluno)
-// 8. Certificate para o aluno
+// ✅ Campo type (não category)
+{ type: 'FOOD' }  // FOOD | CLASSROOM_MATERIAL | EMERGENCY_REPAIR | CLEANING_MATERIAL | OTHER
+// ❌ INVÁLIDO
+{ category: 'ALIMENTACAO' }  // campo errado + valor errado
 ```
 
 ---
@@ -240,7 +135,31 @@ await prisma.classTeacher.create({ data: {
 | Problema | Causa | Solução |
 |----------|-------|---------|
 | `Field does not exist: distanceKm` | Campo inválido em Trip | Use `kmStart` e `kmEnd` |
-| `Field does not exist: link` | Campo inválido em Notification | Use o campo `data: { link: '...' }` (JSON) |
-| `Prisma.absence is not a function` | Model Absence não está no client | `npx prisma generate` + restartar backend |
+| `Field does not exist: link` | Campo inválido em Notification | Use `data: { link: '...' }` |
+| `Prisma.absence is not a function` | Model Absence não no client | `npx prisma generate` + restart backend |
 | `Unique constraint failed` | Dado já existe | Usar `findFirst` antes de `create` |
 | `Admin not found` | Seed principal não foi rodado | `npm run prisma:seed` primeiro |
+| `TruckType must be STANDARD or MULTICOURSE` | Enum inválido | Verificar valores do enum |
+| Encoding corrompido nos dados | Container sem `pt_BR.UTF-8` | Recriar container com o argumento correto |
+
+---
+
+## Seeds a Implementar (ainda pendentes em seed-extra.ts)
+
+```typescript
+// 1. UserPreferences para cada usuário de teste (após migration PASSO 1.3)
+await prisma.userPreferences.upsert({
+  where: { userId: adminUser.id },
+  create: { userId: adminUser.id },
+  update: {},
+});
+
+// 2. EmployeeAttendance (após migration PASSO 3.2)
+// 3. ClassTeacher vinculando Maria à turma de teste
+// 4. AuditLogs variados para popular histórico do ADM
+```
+
+---
+
+*Sistema Upgrade | RR TECNOL | v2.0 | 23/03/2026*
+*Seeds legados removidos da doc — o projeto usa APENAS seed.ts + seed-extra.ts*

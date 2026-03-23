@@ -187,7 +187,6 @@ export default function NovaCarretaPage() {
                 err?.message ||
                 'Erro ao cadastrar carreta. Verifique os dados e tente novamente.';
             setSubmitError(Array.isArray(msg) ? msg.join('; ') : msg);
-            console.error('[Nova Carreta] erro:', err?.response?.data || err);
         } finally {
             setSaving(false);
         }

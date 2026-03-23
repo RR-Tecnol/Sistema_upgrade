@@ -243,7 +243,7 @@ export default function DriverReembolsos() {
                         </select>
 
                         <label className="rmb-label">Valor (R$)</label>
-                        <input type="text" inputMode="decimal" placeholder="Ex: 45,90"
+                        <input type="number" inputMode="decimal" step="0.01" min="0" placeholder="Ex: 45.90"
                             value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}
                             className="rmb-input" />
 

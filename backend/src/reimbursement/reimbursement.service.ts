@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ReimbursementType, ExpenseStatus } from '@prisma/client';
 import { MinioService } from './minio.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 /**
  * ReimbursementService — REQ-10
@@ -26,6 +27,7 @@ export class ReimbursementService {
   constructor(
       private prisma: PrismaService,
       private minio: MinioService,
+      private notifications: NotificationsGateway,
   ) {}
 
   /**
@@ -65,11 +67,23 @@ export class ReimbursementService {
         employeeId: data.employeeId,
         acaoId: data.acaoId,
         type: data.type,
-        amount: data.amount, // Prisma converte para Decimal(10,2) — nunca Float
+        amount: data.amount,
         description: data.description,
         receiptUrl: data.receiptUrl,
         status: 'PENDING',
       },
+    }).then(reimbursement => {
+      // PASSO 3.1: notificar admins — WS em try/catch SEPARADO (nunca dentro de $transaction)
+      try {
+        this.notifications.notifyAdmins('reembolso_solicitado', {
+          reimbursementId: reimbursement.id,
+          userId: data.requestedBy,
+          amount: data.amount,
+          type: data.type,
+          timestamp: new Date().toISOString(),
+        });
+      } catch { /* WS nunca causa rollback */ }
+      return reimbursement;
     });
   }
 
@@ -136,6 +150,17 @@ export class ReimbursementService {
         approvedBy,
         approvedAt: new Date(),
       },
+    }).then(updated => {
+      // PASSO 3.1: notificar o solicitante — WS em try/catch SEPARADO
+      try {
+        this.notifications.notifyUser(item.requestedBy, 'reembolso_revisado', {
+          reimbursementId: id,
+          status: 'APPROVED',
+          amount: item.amount,
+          timestamp: new Date().toISOString(),
+        });
+      } catch { /* WS nunca causa rollback */ }
+      return updated;
     });
   }
 
@@ -157,6 +182,18 @@ export class ReimbursementService {
         rejectedAt: new Date(),
         rejectionReason,
       },
+    }).then(updated => {
+      // PASSO 3.1: notificar o solicitante — WS em try/catch SEPARADO
+      try {
+        this.notifications.notifyUser(item.requestedBy, 'reembolso_revisado', {
+          reimbursementId: id,
+          status: 'REJECTED',
+          amount: item.amount,
+          rejectionReason,
+          timestamp: new Date().toISOString(),
+        });
+      } catch { /* WS nunca causa rollback */ }
+      return updated;
     });
   }
 

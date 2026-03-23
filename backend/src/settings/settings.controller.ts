@@ -17,7 +17,7 @@ export class SettingsController {
      */
     @ApiBearerAuth()
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('ADMIN', 'SUPER_ADMIN')
+    @Roles('ADMIN', 'COORDINATOR')
     @Get()
     @ApiOperation({ summary: 'Retorna configurações do sistema (REQ-14)' })
     getSettings() {
@@ -31,11 +31,11 @@ export class SettingsController {
      */
     @ApiBearerAuth()
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles('ADMIN', 'SUPER_ADMIN')
+    @Roles('ADMIN', 'COORDINATOR')
     @Put()
     @ApiOperation({ summary: 'Salva configurações do sistema (REQ-14)' })
     updateSettings(@Body() body: Partial<SystemSettings>, @Request() req: any) {
-        return this.svc.update(body, req.user?.sub ?? 'admin');
+        return this.svc.update(body, req.user.id);
     }
 
     /**

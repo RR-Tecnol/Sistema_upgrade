@@ -45,12 +45,17 @@ export const useAuthStore = create<AuthState>()(
                         isAuthenticated: true,
                     });
                 } catch (error) {
-                    console.error('Login error:', error);
                     throw error;
                 }
             },
 
             logout: () => {
+                // PASSO 3.14: limpa AMBAS as fontes de estado de autenticação
+                // Sem isso, Zustand diz "deslogado" mas localStorage ainda tem token válido
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                localStorage.removeItem('student');
+                localStorage.removeItem('auth-storage');
                 set({
                     user: null,
                     token: null,

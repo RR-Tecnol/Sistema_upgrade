@@ -64,7 +64,7 @@ export default function StudentProfile() {
             const response = await api.get('/students/me');
             setProfile(response.data);
         } catch (error) {
-            console.error('Error fetching profile:', error);
+            /* silencioso — perfil exibe dados locais como fallback */
         } finally {
             setLoading(false);
         }
@@ -88,7 +88,7 @@ export default function StudentProfile() {
             setShowPasswordForm(false);
             setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
         } catch (error) {
-            console.error('Error changing password:', error);
+            /* silencioso — mensagem de erro exibida via estado */
             showToast('Erro ao alterar senha. Verifique a senha atual.', 'error');
         }
     };

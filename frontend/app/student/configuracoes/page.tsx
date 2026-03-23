@@ -74,11 +74,27 @@ export default function StudentConfiguracoes() {
     });
 
     useEffect(() => {
-        // Sempre busca /users/me para garantir que o nome real do perfil logado é exibido
-        api.get('/users/me').then(res => {
-            const p = res.data;
+        // Busca perfil e preferências em paralelo
+        Promise.all([
+            api.get('/users/me'),
+            api.get('/users/me/preferences').catch(() => null),
+        ]).then(([profileRes, prefRes]) => {
+            const p = profileRes.data;
             setUser(p);
-            setCfg(c => ({ ...c, nome: p.name || '', email: p.email || '' }));
+            setCfg(c => ({
+                ...c,
+                nome: p.name || '',
+                email: p.email || '',
+                // Carrega preferências do banco se disponíveis
+                ...(prefRes?.data ? {
+                    notifEmail: prefRes.data.notifEmail,
+                    notifCertificado: prefRes.data.notifCertificado,
+                    notifInscricao: prefRes.data.notifInscricao,
+                    notifFrequencia: prefRes.data.notifFrequencia,
+                    animacoes: prefRes.data.animacoes,
+                    fonteGrande: prefRes.data.fonteGrande,
+                } : {}),
+            }));
             localStorage.setItem('user', JSON.stringify({ ...JSON.parse(localStorage.getItem('user') || '{}'), ...p }));
         }).catch(() => {
             const stored = localStorage.getItem('user');
@@ -103,8 +119,18 @@ export default function StudentConfiguracoes() {
 
     const handleSave = async () => {
         try {
-            // BUG-03 FIX: usar /users/me (não /auth/me)
-            await api.patch('/users/me', { name: cfg.nome });
+            // Salva nome e preferências em paralelo
+            await Promise.all([
+                api.patch('/users/me', { name: cfg.nome }),
+                api.patch('/users/me/preferences', {
+                    notifEmail: cfg.notifEmail,
+                    notifCertificado: cfg.notifCertificado,
+                    notifInscricao: cfg.notifInscricao,
+                    notifFrequencia: cfg.notifFrequencia,
+                    animacoes: cfg.animacoes,
+                    fonteGrande: cfg.fonteGrande,
+                }),
+            ]);
             const stored = localStorage.getItem('user');
             if (stored) {
                 const u = JSON.parse(stored);

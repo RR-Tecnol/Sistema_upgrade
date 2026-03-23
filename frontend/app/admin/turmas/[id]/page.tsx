@@ -93,11 +93,13 @@ export default function TurmaDetailPage() {
     if (!turma) return null;
 
     const cfg = STATUS_CFG[turma.status] || STATUS_CFG.PLANNED;
-    const enrollments: any[] = stats?.enrollments || [];
+    // enrollments reais vêm de turma.enrollments (classesApi.getOne inclui a relação)
+    // stats.enrollments é { total, approved, pending } — objeto de métricas, não array
+    const enrollments: any[] = Array.isArray(turma?.enrollments) ? turma.enrollments : [];
     const attendanceHistory: any[] = stats?.attendanceHistory || [];
-    const totalPresent = stats?.totalPresent ?? 0;
-    const totalAbsent = stats?.totalAbsent ?? 0;
-    const avgRate = stats?.averageAttendanceRate ?? 0;
+    const totalPresent = stats?.attendance?.present ?? 0;
+    const totalAbsent = (stats?.attendance?.total ?? 0) - totalPresent;
+    const avgRate = stats?.attendance?.rate ?? 0;
 
     const startDate = new Date(turma.startDate);
     const endDate = new Date(turma.endDate);

@@ -22,7 +22,7 @@ import { PayrollService } from './payroll.service';
 @ApiTags('payroll')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'SUPER_ADMIN')
+@Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
 @Controller('payroll')
 export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}

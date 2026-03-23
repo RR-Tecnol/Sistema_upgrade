@@ -155,6 +155,9 @@ export class EmployeesService {
 
     async remove(id: string) {
         await this.findOne(id);
-        return this.prisma.employee.delete({ where: { id } });
+        return this.prisma.employee.update({
+            where: { id },
+            data: { active: false },
+        });
     }
 }

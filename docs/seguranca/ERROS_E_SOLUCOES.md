@@ -1,219 +1,209 @@
 # 🚨 ERROS E SOLUÇÕES — Catálogo de Bugs
-## "As Vacinas Técnicas" | Método RR Technology | v3.1 | 19/03/2026
+## "As Vacinas Técnicas" | v5.1 | 23/03/2026 — Limpo após Sprint Final
 
 > **Regra:** ANTES de debugar qualquer erro, consulte este arquivo.
 > Se não estiver aqui, resolva, documente e avise o Tech Lead.
-> Formato: Data | Módulo | Erro | Contexto | Causa Raiz | Solução | Prevenção
+> Formato: Bug # | Arquivo | Sintoma | Causa Raiz | Solução | Prevenção
 
 ---
 
-## MODELO PARA NOVOS ERROS
+## ✅ BUGS RESOLVIDOS NO SPRINT FINAL (23/03/2026)
 
-```
-### BUG-XX — Título Curto [DATA] [STATUS]
-**Módulo/Arquivo:** `caminho/do/arquivo.ts`
-**Sintoma:** O que o usuário/dev vê
-**Causa Raiz:** Por que acontece
-**Solução:** O que corrige
-**Prevenção:** Como evitar
-```
-
----
-
-## BUGS RESOLVIDOS — Ambiente e Infraestrutura
-
-### BUG-PUPPETEER-01 — npm install falha no Windows por download do Chrome [19/03/2026] ✅
-**Módulo:** `backend/package.json` — dependência `puppeteer ^24.x`
-**Sintoma:** `npm install` falha com erro de extração/download do Chrome Headless (~200MB) durante o pós-install do Puppeteer. Ocorre em qualquer novo clone do repositório no Windows.
-**Causa Raiz:** Puppeteer v24+ mudou o comportamento — não faz mais o download automático do Chrome silenciosamente. O script de pós-instalação tenta baixar o Chrome e falha na extração no Windows.
-**Solução:**
-```powershell
-cd backend
-
-# Pula o download do Chrome durante o install
-$env:PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
-$env:PUPPETEER_SKIP_DOWNLOAD = "true"
-npm install --legacy-peer-deps
-
-# Se não tem Chrome instalado no Windows:
-npx puppeteer browsers install chrome
-
-# Se já tem Chrome, o .puppeteerrc.cjs detecta automaticamente.
-# Se não detectar, adicionar ao .env:
-# PUPPETEER_EXECUTABLE_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
-```
-**Prevenção:** Arquivo `backend/.puppeteerrc.cjs` já está no repositório com `skipDownload: true` e detecção automática do Chrome. Nunca remover este arquivo.
+### BUG-01 — `enrollments.map is not a function` em Turmas ✅
+**Arquivo:** `frontend/app/admin/turmas/[id]/page.tsx` linha 96
+**Causa raiz:** `getStatistics` retorna `{ enrollments: { total, approved, pending } }` — objeto, não array.
+`stats?.enrollments || []` retornava o objeto; `.map()` explodia.
+**Solução:** `Array.isArray(turma?.enrollments) ? turma.enrollments : []`
+Métricas: `stats.attendance.present`, `stats.attendance.total`, `stats.attendance.rate`.
+**Prevenção:** Dados reais de `findOne`, métricas de `getStatistics` — nunca misturar.
 
 ---
 
-### BUG-ENV-01 — Duplo `/api` na URL → 404 Not Found [12/03/2026] ✅
-**Módulo:** `frontend/.env` + `lib/api/client.ts`
-**Sintoma:** `GET /api/api/auth/login 404 Not Found`
-**Causa:** `NEXT_PUBLIC_API_URL=http://localhost:3001/api` + Axios também concatenava `/api`
-**Solução:** `NEXT_PUBLIC_API_URL` sempre inclui o prefixo `/api`. Nunca hard-code `/api` na baseURL do Axios.
-**Prevenção:** Verificar `.env` e `client.ts` antes de qualquer mudança de URL base.
+### BUG-02 — Frequência não persiste por dia ✅
+**Arquivo:** `backend/src/classes/classes.service.ts` — `bulkAttendance()`
+**Causa raiz:** `new Date(date)` sem normalização UTC. Timestamps levemente diferentes
+para a mesma data quebravam o `@@unique([classId, studentId, date])`.
+**Solução:** `const [y,m,d] = date.split('-').map(Number); new Date(Date.UTC(y, m-1, d))`
+Adicionado `registeredBy` e `registeredAt: new Date()` no `update` do upsert.
+**Prevenção:** Datas de frequência SEMPRE normalizadas para meia-noite UTC.
 
 ---
 
-### BUG-DOCKER-01 — Pull de imagem Docker bloqueado [12/03/2026] ✅
-**Módulo:** `docker-compose.yml`
-**Sintoma:** `Error: unable to get image 'postgres:15-alpine'`
-**Causa:** Proxy/firewall corporativo bloqueando Docker Hub
-**Solução:** `docker pull postgres:15-alpine` manual. Desativar proxy temporariamente.
-**Prevenção:** Em ambiente corporativo, configurar mirror registry no Docker Desktop.
+### BUG-04 — Reembolso histórico vazio (professor) ✅
+**Arquivo:** `frontend/app/teacher/reembolsos/page.tsx`
+**Causa raiz:** `reimbursement.service` retorna `{ data: [...], meta: {} }` paginado.
+`Array.isArray(res.data)` é `false` para objeto → retornava `[]`.
+O `driver/reembolsos` já usava o padrão correto.
+**Solução:** `Array.isArray(res.data) ? res.data : (res.data?.data ?? [])`
+**Prevenção:** Endpoints de reembolso retornam `{ data, meta }` — NUNCA assumir array direto.
 
 ---
 
-### BUG-PORT-01 — EADDRINUSE na porta [12/03/2026] ✅
-**Módulo:** Backend — porta
-**Sintoma:** `Error: listen EADDRINUSE: address already in use :::3001`
-**Causa:** Processo Node.js zumbi ocupando a porta após reinicialização
-**Solução:**
-```powershell
-netstat -ano | findstr :3001
-taskkill /F /PID <PID>
-# OU matar tudo:
-Get-Process -Name node | Stop-Process -Force
-```
-**Prevenção:** Sempre `Ctrl+C` nos terminais antes de reiniciar. Nunca usar `$env:PORT=X` inline.
+### BUG-06 — `npm run prisma:seed` apontava para arquivo inexistente ✅
+**Arquivo:** `backend/package.json`
+**Causa raiz:** Script `"prisma:seed": "ts-node prisma/seed.ts"` mas arquivo real é `seed-full.ts`.
+Scripts `seed:test` e `seed:demo` também apontavam para arquivos que não existem.
+**Solução:** `"prisma:seed": "npx tsx prisma/seed-full.ts"`. Scripts órfãos removidos.
+**Prevenção:** Sempre verificar que o arquivo referenciado no script existe no repo.
 
 ---
 
-### BUG-SCRIPT-01 — `npm run dev` não existe no backend [12/03/2026] ✅
-**Módulo:** `backend/package.json`
-**Sintoma:** `npm error Missing script: dev`
-**Causa:** NestJS usa `start:dev`, não `dev`
-**Solução:** `npm run start:dev` (porta 3001 definida em `backend/.env PORT=3001`)
-**Prevenção:** Scripts backend: `start` (sem watch), `start:dev` (hot-reload), `start:prod` (produção).
+### BUG-07 — TEACHER podia aprovar/rejeitar reembolsos (seg. crítica) ✅
+**Arquivo:** `backend/src/reimbursement/reimbursement.controller.ts`
+**Causa raiz:** `@Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')` sem `@UseGuards(RolesGuard)`.
+O decorator só define metadata — sem o Guard ninguém lê. Zero proteção real.
+**Solução:** `@UseGuards(JwtAuthGuard, RolesGuard)` adicionado nos métodos `approve` e `reject`.
+**Prevenção:** `@Roles()` sem `@UseGuards(RolesGuard)` = sem efeito. Sempre usar os dois juntos.
 
 ---
 
-### BUG-DB-01 — Encoding de cidades com acentos corrompidos [13/03/2026] ✅
-**Módulo:** PostgreSQL / `docker-compose.yml`
-**Sintoma:** `SÃ£o LuÃ­s` em vez de `São Luís` nos dropdowns
-**Causa:** Container criado sem collation `pt_BR.UTF-8`
-**Solução:**
-```powershell
-docker-compose down -v  # REMOVE dados!
-# docker-compose.yml → postgres → environment:
-# POSTGRES_INITDB_ARGS: "--locale=pt_BR.UTF-8 --encoding=UTF8"
-docker-compose up -d
-cd backend && npx prisma migrate deploy && npm run prisma:seed
-```
-**Prevenção:** `POSTGRES_INITDB_ARGS` configurado desde a criação do container.
+### BUG-08 — Hard delete em 3 services ✅
+**Arquivos:** `employees.service.ts`, `trucks.service.ts`, `classes.service.ts`
+**Causa raiz:** `.delete()` direto — hard delete violando LIVRO_DE_REGRAS §3.
+**Solução:** employees → `active: false` | trucks → `status: 'INACTIVE'` | classes → `status: 'CANCELLED'`
+**Prevenção:** Nunca `.delete()` em entidades de negócio. Soft delete sempre.
 
 ---
 
-### BUG-TS-01 — Cannot find module (cache TypeScript LS) [13/03/2026] ✅
-**Módulo:** VS Code + TypeScript Language Server
-**Sintoma:** `Cannot find module './holiday.service'` (arquivo existe e compila)
-**Causa:** Cache antigo do TS Language Server
-**Solução:**
-```powershell
-cd backend && npx prisma generate
-# VS Code: Ctrl+Shift+P → "TypeScript: Restart TS Server"
-```
-**Prevenção:** SEMPRE `npx prisma generate` após alterar schema ou clonar o repo.
+### BUG-09 — `(this.prisma as any).absence` — Prisma client desatualizado ✅
+**Arquivo:** `backend/src/absences/absences.service.ts`
+**Causa raiz:** Model `Absence` adicionado ao schema sem rodar `npx prisma generate`.
+Cast `as any` suprimia o erro TypeScript mas não garantia compatibilidade em runtime.
+**Solução:** `prisma generate` rodado. `AbsenceType` e `AbsenceStatus` importados de `@prisma/client`.
+**Prevenção:** SEMPRE `npx prisma generate` após qualquer alteração no schema.
 
 ---
 
-## BUGS RESOLVIDOS — Aplicação
-
-### BUG-WS-01 — NestJS DI error: módulo sem NotificationsModule [16/03/2026] ✅
-**Módulo:** `enrollments.module.ts` / `classes.module.ts`
-**Sintoma:** `Nest can't resolve dependencies of the EnrollmentsService (?)`
-**Causa:** Service injetava `NotificationsGateway` mas o Module não declarava `NotificationsModule` em `imports[]`
-**Solução:** Adicionar `NotificationsModule` ao `imports[]` do módulo afetado.
-**Prevenção:** Todo módulo externo injetado deve ser declarado em `imports[]`. Ver Regra 2 em LIVRO_DE_REGRAS.
+### BUG-11 — Admin frequência: localStorage como fallback silencioso ✅
+**Arquivo:** `frontend/app/admin/frequencia/page.tsx`
+**Causa raiz:** `catch` salvava em `localStorage` e exibia "sucesso" — dado nunca ia ao banco.
+**Solução:** Removido o fallback. `catch` agora exibe `toast.error()` com mensagem real.
+**Prevenção:** Nunca fingir sucesso quando operação crítica falha.
 
 ---
 
-### BUG-AUTH-01 — `login()` retorna undefined [16/03/2026] ✅
-**Módulo:** `backend/src/auth/auth.service.ts`
-**Sintoma:** Login retorna `{}` vazio. Sem erro no console. TypeScript compila normalmente.
-**Causa:** `login()` montava `response` mas não tinha `return response` no path sem 2FA
-**Solução:** Adicionado `return response;` explícito.
-**Prevenção:** SEMPRE `return` explícito em métodos que montam objetos de resposta.
+### BUG-12 — Endpoint `GET /classes/:id/attendance/history` não existia ✅
+**Arquivos:** `classes.controller.ts` + `classes.service.ts`
+**Causa raiz:** Frontend chamava endpoint que não existia. Falha silenciosa — calendário sempre vazio.
+**Solução:** Endpoint criado no controller + método `getAttendanceHistory` no service.
+**Prevenção:** Verificar Swagger `/api/docs` antes de chamar qualquer endpoint no frontend.
 
 ---
 
-### BUG-REIMB-01 — Reembolso retorna 400 (category vs type) [16/03/2026] ✅
-**Módulo:** `frontend/app/teacher/reembolsos/page.tsx`
-**Sintoma:** `POST /api/reimbursements` retorna 400.
-**Causa:** Frontend enviava `category: 'ALIMENTACAO'` mas backend esperava `type: 'FOOD'`
-**Solução:** Reescrever array de tipos com enum do backend. Campo `category` → `type`.
-**Prevenção:** Sempre consultar DTO do backend antes de criar formulários.
+### BUG-13 — `bulkAttendance` usava `req.user?.sub` como fallback ✅
+**Arquivo:** `backend/src/classes/classes.controller.ts`
+**Causa raiz:** `const registeredBy = req.user?.id || req.user?.sub` — `sub` nunca existe após JwtStrategy.
+**Solução:** `const registeredBy = req.user.id`
+**Prevenção:** `req.user.id` SEMPRE. Nunca `req.user.sub`.
 
 ---
 
-### BUG-REDIRECT-01 — Professor redireciona para 404 [16/03/2026] ✅
-**Módulo:** `frontend/app/login/page.tsx`
-**Sintoma:** Professor faz login → tela branca 404
-**Causa:** Redirect apontava para `/professor/dashboard` (portal criado em `/teacher/`)
-**Solução:** `router.push('/professor/dashboard')` → `router.push('/teacher/dashboard')`
-**Prevenção:** Ao criar novo portal, verificar todos os redirects por role.
+### BUG-14 — Teacher reembolsos: reset para enum inválido após submit ✅
+**Arquivo:** `frontend/app/teacher/reembolsos/page.tsx`
+**Causa raiz:** `setTipo('ALIMENTACAO')` — `ALIMENTACAO` não existe no enum `ReimbursementType`.
+**Solução:** `setTipo('FOOD')` — valor correto do enum do backend.
+**Prevenção:** Labels de UI são tradução; values de enum são os do backend. Nunca misturar.
 
 ---
 
-### BUG-SUB-01 — `req.user.sub` em controllers [16/03/2026] ✅
-**Módulo:** `enrollments.controller.ts` + `certificate.controller.ts`
-**Sintoma:** Aluno não vê inscrições; `issuedBy` em certificados fica null
-**Causa:** JwtStrategy.validate() retorna `id`, não `sub`.
-**Solução:** 3 ocorrências de `req.user.sub` → `req.user.id`
-**Prevenção:** SEMPRE `req.user.id` em todos os controllers. Ver Regra 5 em LIVRO_DE_REGRAS.
+### BUG-console-01 — `console.error` em admin/frequencia ✅
+**Arquivo:** `frontend/app/admin/frequencia/page.tsx`
+**Causa raiz:** `loadActiveClasses` e `loadStudents` usavam `console.error(e)` violando LIVRO_DE_REGRAS §1.
+**Solução:** Substituído por blocos `catch` silenciosos com comentário explicativo.
+**Prevenção:** `console.log/error` proibido no frontend. Usar `toast.error()` para erros ao usuário.
 
 ---
 
-### BUG-MINIO-01 — Nova conexão MinIO por request [16/03/2026] ✅
-**Módulo:** `reimbursement.service.ts`
-**Sintoma:** ECONNREFUSED no MinIO com múltiplos uploads simultâneos
-**Causa:** `new Client()` a cada chamada = nova conexão TCP por request
-**Solução:** `MinioService` singleton via `@Injectable()` + `OnModuleInit`
-**Prevenção:** Nunca instanciar clients de conexão dentro de métodos. Usar DI do NestJS.
+## 🔴 BUGS ATIVOS — Pendentes de execução
+
+### BUG-03 — Configurações não salva dados (todos os portais) ✅ RESOLVIDO
+**Solução aplicada:** Model `UserPreferences` criado no schema + `db push` + `prisma generate`. Endpoints `GET/PATCH /users/me/preferences` criados em `users.service.ts` e `users.controller.ts`. Os 4 portais (admin, teacher, driver, student) agora carregam preferências no `useEffect` e salvam via `Promise.all` com nome + preferências juntos.
+**Arquivos:** `schema.prisma`, `users.service.ts`, `users.controller.ts`, `*/configuracoes/page.tsx` (4 portais).
 
 ---
 
-### BUG-CONCURRENT-01 — Race condition no enrollment [16/03/2026] ✅
-**Módulo:** `enrollments.service.ts`
-**Sintoma:** Turma excede capacidade com requests simultâneos
-**Causa:** Check de vagas + create eram operações separadas (TOCTOU)
-**Solução:** `this.prisma.$transaction(async (tx) => { /* check + create */ })`
-**Prevenção:** Operações de check-then-create SEMPRE dentro de `$transaction`.
+### BUG-05 — Cadastro de carretas: Internal Server Error ✅ RESOLVIDO
+**Causa raiz:** `trucks.service.ts` passava `lastMaintenanceDate`/`nextMaintenanceDate` como string ISO diretamente ao Prisma. O schema tem `DateTime?` — Prisma exige objeto `Date`, não string.
+**Solução:** Destruturação + conversão `new Date(str)` antes do `prisma.truck.create/update`. `console.error` removido do formulário frontend.
+**Arquivos:** `backend/src/trucks/trucks.service.ts` (create + update), `frontend/app/admin/carretas/nova/page.tsx`.
 
 ---
 
-## VULNERABILIDADES DE SEGURANÇA CORRIGIDAS
-
-### SEC-01 — Privilege Escalation via POST /auth/register [16/03/2026] ✅
-**Módulo:** `auth.service.ts`
-**Sintoma:** `POST /api/auth/register` com `{ "role": "ADMIN" }` criava conta admin
-**Causa:** Campo `role` aceito no body e passado diretamente ao Prisma
-**Solução:** `role: 'STUDENT'` hardcoded no create. Campo `role` removido da assinatura pública.
-**Prevenção:** Registro público NUNCA aceita role do body.
+### BUG-10 — NestJS versão mista: core v10 + socket/swagger v11 🟡
+**Arquivo:** `backend/package.json`
+**Causa raiz:** `@nestjs/common@^10` + `@nestjs/platform-socket.io@^11` + `@nestjs/swagger@^11`.
+Sistema funciona mas pode causar incompatibilidades em runtime.
+**Solução:** Alinhar todos para mesma versão major. **Decisão do Tech Lead.**
+Ver PROX-PASSOS.md **PASSO 0.2** (pulado no sprint por segurança).
 
 ---
 
-### SEC-02 — Maintenance Bypass (undefined === undefined) [16/03/2026] ✅
-**Módulo:** `backend/src/main.ts`
-**Sintoma:** Sem `MAINTENANCE_KEY` no .env, bypass sempre ativo
-**Causa:** `undefined === undefined = true`
-**Solução:**
-```typescript
-const bypassValid = !!maintenanceKey && maintenanceKey.length > 0 && header === maintenanceKey;
-```
-**Prevenção:** MAINTENANCE_KEY sempre definida no .env.
+### BUG-15 — Notificações: hook sem eventos + sem persistência ✅ RESOLVIDO
+**Solução aplicada:**
+- `useNotifications.ts` — fetch `GET /notifications` ao montar (histórico persistido), 4 eventos faltantes adicionados (`inscricao_rejeitada`, `imprevisto_cadastrado`, `reembolso_solicitado`, `reembolso_revisado`), mapa `buildMessage()` para mensagens PT-BR.
+- `reimbursement.service.ts` — emite `reembolso_solicitado` no `create`, `reembolso_revisado` no `approve` e `reject` (WS em try/catch separado).
+- `absences.service.ts` — emite `imprevisto_cadastrado` no `create` (WS em try/catch separado).
+- `enrollments.service.ts` — emite `inscricao_rejeitada` no `reject`.
 
 ---
 
-## ALERTAS ATIVOS
+### BUG-16 — Logout Zustand não limpa localStorage ✅ RESOLVIDO
+**Solução aplicada:** `logout()` agora remove `token`, `user`, `student`, `auth-storage` do localStorage antes de limpar o Zustand store. `console.error('Login error:', error)` também removido do mesmo arquivo.
+**Arquivo:** `frontend/stores/useAuthStore.ts`.
 
-| # | Data | Módulo | Descrição | Status |
-|---|------|--------|-----------|--------|
-| ALERTA-01 | 16/03/2026 | login/page.tsx | Credenciais admin visíveis em tela | ⚠️ Remover antes do deploy |
-| ALERTA-02 | 16/03/2026 | certificate.controller.ts | SUPER_ADMIN no RolesGuard (não existe no enum) | ⚠️ Inofensivo — limpar em refatoração |
-| GAP-01 | 18/03/2026 | student/dashboard | Frequência hardcoded 87% (mock) | 🔴 EXEC-04 |
-| GAP-02 | 18/03/2026 | reimbursement.controller | GET /reimbursements/my retorna 404 para DRIVER | 🔴 Pendência P-01 |
+### BUG-NOVO-01 — `SUPER_ADMIN` em 4 controllers — role inexistente 🔴
+**Arquivos:** `certificates/certificate.controller.ts` (3x), `employees/employees.controller.ts` (1x), `employees/payroll.controller.ts` (1x), `settings/settings.controller.ts` (3x)
+**Causa raiz:** `SUPER_ADMIN` não existe no enum `UserRole`. `RolesGuard` nunca encontra match → rota se comporta como se ninguém tivesse acesso (lança 403 para todos) ou, dependendo da implementação do guard, trata como sem restrição.
+**Solução:** Substituir por roles válidas: `ADMIN | COORDINATOR | FINANCIAL | TEACHER | STUDENT | DRIVER`.
+**Ver BLOCO B.**
+
+### BUG-NOVO-02 — `console.warn` em `acoes.service.ts` 🟡
+**Arquivo:** `backend/src/acoes/acoes.service.ts` linha 409
+**Causa raiz:** `console.warn(...)` viola LIVRO_DE_REGRAS §2 (usar `Logger` no backend).
+**Ver BLOCO C.**
+
+### BUG-NOVO-03 — `console.error` em `audit-log.service.ts` 🟡
+**Arquivo:** `backend/src/audit-log/audit-log.service.ts` linha 41
+**Causa raiz:** `console.error(...)` viola LIVRO_DE_REGRAS §2.
+**Ver BLOCO C.**
+
+### BUG-NOVO-04 — `req.user?.sub` em `settings.controller.ts` 🟡
+**Arquivo:** `backend/src/settings/settings.controller.ts` linha 40
+**Causa raiz:** `req.user?.sub ?? 'admin'` — `sub` não existe após JwtStrategy. Retorna `'admin'` string literal como fallback.
+**Solução:** `req.user.id`. **Ver BLOCO B.**
+
+| Bug | Data | Solução |
+|-----|------|---------|
+| BUG-PUPPETEER-01 | 19/03/2026 | `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true` + `npx puppeteer browsers install chrome` |
+| BUG-ENV-01 | 12/03/2026 | `NEXT_PUBLIC_API_URL` já inclui `/api` — Axios não concatena novamente |
+| BUG-DOCKER-01 | 12/03/2026 | `docker pull` manual. Desativar proxy temporariamente |
+| BUG-PORT-01 | 12/03/2026 | `Remove-Item Env:PORT` antes de `npm run start:dev` |
+| BUG-DB-01 | 13/03/2026 | `POSTGRES_INITDB_ARGS: "--locale=pt_BR.UTF-8 --encoding=UTF8"` no docker-compose |
+| BUG-TS-01 | 13/03/2026 | `npx prisma generate` + "TypeScript: Restart TS Server" no VS Code |
+| BUG-WS-01 | 16/03/2026 | NotificationsModule é `@Global` — não precisa declarar em `imports[]` |
+| BUG-AUTH-01 | 16/03/2026 | `return response` explícito no path sem 2FA no `auth.service.ts` |
+| BUG-REIMB-01 | 16/03/2026 | `type: 'FOOD'` em vez de `category: 'ALIMENTACAO'` no DTO |
+| BUG-SUB-01 | 16/03/2026 | `req.user.id` em vez de `req.user.sub` em todos os controllers |
+| BUG-MINIO-01 | 16/03/2026 | `MinioService` singleton com `@Injectable()` + `OnModuleInit` |
+| BUG-CONCURRENT-01 | 16/03/2026 | Check de vagas + create dentro de `$transaction` |
+| EXEC-08 | 18/03/2026 | `@Get('my')` movido para antes de `@Get(':id')` no enrollments controller |
+| SEC-01 | 16/03/2026 | `role: 'STUDENT'` hardcoded no `auth.service.ts` — registro público nunca aceita role do body |
+| SEC-02 | 16/03/2026 | `!!maintenanceKey && maintenanceKey.length > 0` — bypass não ativa sem chave |
 
 ---
 
-*Sistema Upgrade | RR Tecnol | v3.1 | 19/03/2026*
+## ⚠️ ALERTAS ATIVOS
+
+| # | Módulo | Descrição | Ação |
+|---|--------|-----------|------|
+| ALERTA-01 | `login/page.tsx` | Credenciais admin visíveis em tela | ⚠️ Remover antes do deploy |
+| ALERTA-02 | 4 controllers | `SUPER_ADMIN` em `@Roles()` em 4 lugares — role inexistente, guard sempre falha | 🔴 BLOCO B |
+| ALERTA-03 | `admin/frequencia` | Triple-click — ✅ RESOLVIDO PASSO 3.11 | ✅ |
+| ALERTA-04 | `student/layout.tsx` | Hamburger no desktop — ✅ RESOLVIDO PASSO 2.5 | ✅ |
+| ALERTA-05 | Vários modais | Confirmar se `modal-overlay` do globals.css usa `position:fixed` | Verificar antes de corrigir |
+| ALERTA-06 | `ContaPagar` | ✅ RESOLVIDO PASSO 3.9 — campo `active` adicionado + soft delete + aba Excluídos | ✅ |
+| ALERTA-07 | `docker-compose.yml` | Redis sem senha → inseguro em produção | PASSO 3.15 |
+
+---
+
+*Sistema Upgrade | RR Tecnol | v5.1 | 23/03/2026 — Limpo e sem duplicatas*
