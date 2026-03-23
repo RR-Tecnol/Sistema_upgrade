@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
+import { useAuthStore } from '@/stores/useAuthStore';
 import {
     CalendarDaysIcon, CheckCircleIcon, XCircleIcon, ClockIcon,
     UserGroupIcon, AcademicCapIcon, ClipboardDocumentCheckIcon,
@@ -88,13 +89,11 @@ export default function TeacherHistorico() {
     const [loading, setLoading] = useState(true);
     const [totalPresent, setTotalPresent] = useState(0);
     const [totalAbsent, setTotalAbsent] = useState(0);
-    const [user, setUser] = useState<any>(null);
+    const { user } = useAuthStore();
 
     const loadAll = useCallback(async () => {
         setLoading(true);
         try {
-            const u = localStorage.getItem('user');
-            if (u) setUser(JSON.parse(u));
 
             const [attRes, classRes] = await Promise.allSettled([
                 api.get('/classes/teacher/history'),

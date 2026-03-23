@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { CameraIcon } from '@heroicons/react/24/outline';
 import api from '@/lib/api/client';
+import { useAuthStore } from '@/stores/useAuthStore';
 import {
     Cog6ToothIcon,
     BellIcon,
@@ -106,6 +107,7 @@ const TABS = [
 ];
 
 export default function ConfiguracoesPage() {
+    const { user: authUser, token, setUser: setAuthUser } = useAuthStore();
     const [tab, setTab] = useState('geral');
     const [saved, setSaved] = useState(false);
     const [saveError, setSaveError] = useState(false);
@@ -186,13 +188,11 @@ export default function ConfiguracoesPage() {
             const u = res.data;
             setUser(u);
             setCfg(c => ({ ...c, nomeAdmin: u.name || '', emailAdmin: u.email || '' }));
-            localStorage.setItem('user', JSON.stringify({ ...JSON.parse(localStorage.getItem('user') || '{}'), ...u }));
         }).catch(() => {
-            const u = localStorage.getItem('user');
-            if (u) {
-                const parsed = JSON.parse(u);
-                setUser(parsed);
-                setCfg(c => ({ ...c, nomeAdmin: parsed.name || '', emailAdmin: parsed.email || '' }));
+            // BUG-07: fallback usa Zustand (auth-storage), não localStorage.getItem('user') que não existe
+            if (authUser) {
+                setUser(authUser);
+                setCfg(c => ({ ...c, nomeAdmin: authUser.name || '', emailAdmin: authUser.email || '' }));
             }
         });
         // REQ-14: Carregar configurações salvas no backend
@@ -287,15 +287,13 @@ export default function ConfiguracoesPage() {
                 }),
             ]);
             setSaved(true);
-            // Atualizar nome/email do admin no localStorage para Header e Sidebar refletirem
-            const stored = localStorage.getItem('user');
-            if (stored) {
-                const userObj = JSON.parse(stored);
-                if (cfg.nomeAdmin) userObj.name = cfg.nomeAdmin;
-                if (cfg.emailAdmin) userObj.email = cfg.emailAdmin;
-                localStorage.setItem('user', JSON.stringify(userObj));
-                window.dispatchEvent(new Event('userUpdated'));
+            // BUG-07: atualiza Zustand store (fonte real de auth) — localStorage.getItem('user') não existe
+            if (authUser && token) {
+                const updated = { ...authUser };
+                if (cfg.nomeAdmin) updated.name = cfg.nomeAdmin;
+                setAuthUser(updated, token);
             }
+            window.dispatchEvent(new Event('userUpdated'));
             setTimeout(() => setSaved(false), 2800);
         } catch {
             setSaveError(true);

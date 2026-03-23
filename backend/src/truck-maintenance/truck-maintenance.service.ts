@@ -161,12 +161,9 @@ export class TruckMaintenanceService {
     }
 
     async remove(id: string) {
-        const existing = await this.findOne(id) as any;
-        // Remover ContaPagar vinculada automaticamente
-        if (existing.contaPagarId) {
-            await this.prisma.contaPagar.delete({ where: { id: existing.contaPagarId } }).catch(() => { });
-        }
-        return this.prisma.truckMaintenance.delete({ where: { id } });
+        await this.findOne(id);
+        // Soft delete via status cancelada (LIVRO_DE_REGRAS §3)
+        return this.prisma.truckMaintenance.update({ where: { id }, data: { status: 'cancelada' } });
     }
 
     // ── STATS ─────────────────────────────────────────────────────────────────

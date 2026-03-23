@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api/client';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 import { ChevronRightIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
 
@@ -15,10 +16,11 @@ export default function TeacherFrequencia() {
         loadClasses();
     }, []);
 
+    const { user: authUser } = useAuthStore();
+
     async function loadClasses() {
         try {
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
-            const res = await api.get('/classes', { params: { teacherUserId: user.id } });
+            const res = await api.get('/classes', { params: { teacherUserId: authUser?.id } });
             const list = Array.isArray(res.data) ? res.data : [];
             setClasses(list);
 

@@ -1,5 +1,5 @@
 # 🗺️ PRÓXIMOS PASSOS — Sistema Upgrade
-## Plano de Execução Detalhado | v4.0 | 23/03/2026 (Atualizado pós-sprint)
+## Plano de Execução Detalhado | v5.0 | 23/03/2026 (Atualizado — BLOCOs I→3.2 concluídos)
 
 > **Status legenda:** ✅ Concluído | 🔴 Pendente crítico | 🟡 Pendente médio | 🟢 Pendente baixo
 
@@ -38,7 +38,7 @@
 |-------|-----------|--------|
 | 2.3 | Campo valor reembolso: `type="number"` | ✅ 23/03 |
 | 2.5 | Hamburger `hamburger-btn` oculto no desktop | ✅ 23/03 |
-| 2.2 | Auditar modais `position: fixed` | 🟡 Pendente |
+| 2.2 | Auditar modais `position: fixed` | ✅ 23/03 — todos corretos |
 | 2.4 | QR Code overlay | 🟡 Pendente |
 | 2.6 | Funcionários: modal scroll | 🟡 Pendente |
 | 2.7 | Dashboard motorista (Tech Lead) | 🟡 Pendente |
@@ -55,11 +55,11 @@
 | 3.11 | Frequência: 2 botões P/F touch-friendly | ✅ 23/03 |
 | 3.12 | Frequência: estado salvo ao reabrir dia | ✅ 23/03 |
 | 3.14 | Logout limpa localStorage completo | ✅ 23/03 |
-| 3.2 | Frequência de funcionários ADM (migration) | 🔴 Pendente |
-| 3.3 | Calendário aluno interativo | 🟢 Pendente |
+| 3.2 | Frequência de funcionários ADM (migration) | ✅ 23/03 |
+| 3.3 | Calendário aluno interativo | ✅ 23/03 |
 | 3.4 | Tutorial assistido | 🟢 Pendente |
 | 3.5 | Histórico ADM paginado com filtros | 🟡 BLOCO F |
-| 3.6 | CRUD completo de imprevistos | 🟡 Pendente |
+| 3.6 | CRUD completo de imprevistos | ✅ 23/03 |
 | 3.8 | Feriado: pedir motivo ao excluir | 🟡 BLOCO G |
 | 3.9 | ContaPagar: campo `active` + aba Excluídos | 🔴 BLOCO E |
 | 3.10 | Aluno: cursos disponíveis + botão inscrição | 🟡 BLOCO H |

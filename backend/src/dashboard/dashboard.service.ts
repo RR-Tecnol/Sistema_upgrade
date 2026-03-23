@@ -298,8 +298,9 @@ export class DashboardService {
             (sum, a) => sum + a.turmas.reduce((s, t) => s + t.turma._count.enrollments, 0),
             0,
         );
+        // cidadeNome é campo direto no model Acao — sem cast
         const cidades = [...new Set(
-            acoes.map(a => (a as any).cidadeNome || a.cidade?.name).filter(Boolean),
+            acoes.map(a => a.cidadeNome || a.cidade?.name).filter(Boolean),
         )];
 
         return {
@@ -309,7 +310,7 @@ export class DashboardService {
             rotas: acoes.map(a => ({
                 id: a.id,
                 nome: a.nome,
-                cidade: (a as any).cidadeNome || a.cidade?.name,
+                cidade: a.cidadeNome || a.cidade?.name,
                 estado: a.grupo?.state,
                 status: a.status,
                 dataInicio: a.dataInicio,

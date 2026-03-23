@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { CameraIcon, UserCircleIcon, BellIcon, ShieldCheckIcon, Cog6ToothIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import api from '@/lib/api/client';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
     return (
@@ -48,6 +49,7 @@ const SECTION_TITLE: React.CSSProperties = {
 };
 
 export default function StudentConfiguracoes() {
+    const { user: authUser, token, setUser: setAuthUser } = useAuthStore();
     const [tab, setTab] = useState('perfil');
     const [user, setUser] = useState<any>(null);
     const [saved, setSaved] = useState(false);
@@ -85,7 +87,6 @@ export default function StudentConfiguracoes() {
                 ...c,
                 nome: p.name || '',
                 email: p.email || '',
-                // Carrega preferências do banco se disponíveis
                 ...(prefRes?.data ? {
                     notifEmail: prefRes.data.notifEmail,
                     notifCertificado: prefRes.data.notifCertificado,
@@ -95,13 +96,12 @@ export default function StudentConfiguracoes() {
                     fonteGrande: prefRes.data.fonteGrande,
                 } : {}),
             }));
-            localStorage.setItem('user', JSON.stringify({ ...JSON.parse(localStorage.getItem('user') || '{}'), ...p }));
+            // BUG-07: não usar localStorage.setItem('user') — Zustand persiste em auth-storage
         }).catch(() => {
-            const stored = localStorage.getItem('user');
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                setUser(parsed);
-                setCfg(c => ({ ...c, nome: parsed.name || '', email: parsed.email || '' }));
+            // fallback: usa Zustand se o fetch falhar
+            if (authUser) {
+                setUser(authUser);
+                setCfg(c => ({ ...c, nome: authUser.name || '', email: authUser.email || '' }));
             }
         });
     }, []);
@@ -131,13 +131,11 @@ export default function StudentConfiguracoes() {
                     fonteGrande: cfg.fonteGrande,
                 }),
             ]);
-            const stored = localStorage.getItem('user');
-            if (stored) {
-                const u = JSON.parse(stored);
-                u.name = cfg.nome;
-                localStorage.setItem('user', JSON.stringify(u));
-                window.dispatchEvent(new Event('userUpdated'));
+            // BUG-07: atualiza Zustand store (fonte real de auth) em vez de localStorage.getItem('user') que não existe
+            if (authUser && token) {
+                setAuthUser({ ...authUser, name: cfg.nome }, token);
             }
+            window.dispatchEvent(new Event('userUpdated'));
             setSaved(true);
             setTimeout(() => setSaved(false), 2800);
         } catch {

@@ -9,6 +9,8 @@ import {
     ClockIcon,
     CheckCircleIcon,
     TruckIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -38,6 +40,101 @@ const STATUS_COLOR: Record<string, { bg: string; color: string; label: string }>
     FINISHED: { bg: '#F5F3FF', color: '#7C3AED', label: 'Concluída' },
     CANCELLED: { bg: '#FEF2F2', color: '#DC2626', label: 'Cancelada' },
 };
+
+// PASSO 3.3: Mini-calendário com dias de aula
+function MiniCalendario({ classes }: { classes: ClassItem[] }) {
+    const today = new Date();
+    const [calDate, setCalDate] = useState({ year: today.getFullYear(), month: today.getMonth() });
+    const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+    const firstDay = new Date(calDate.year, calDate.month, 1).getDay();
+    const daysInMonth = new Date(calDate.year, calDate.month + 1, 0).getDate();
+    const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    // Mapear quais dias têm aula (dentro do intervalo startDate..endDate de cada turma ativa)
+    const classDays: Record<string, ClassItem[]> = {};
+    classes.forEach(c => {
+        if (!c.startDate || !c.endDate) return;
+        const start = new Date(c.startDate);
+        const end = new Date(c.endDate);
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dt = new Date(calDate.year, calDate.month, d);
+            if (dt >= start && dt <= end) {
+                const key = `${calDate.year}-${String(calDate.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                if (!classDays[key]) classDays[key] = [];
+                classDays[key].push(c);
+            }
+        }
+    });
+
+    const selectedClasses = selectedDay ? (classDays[selectedDay] ?? []) : [];
+    const monthName = new Date(calDate.year, calDate.month).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+    return (
+        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <div>
+                    <div style={{ fontFamily: 'Orbitron', fontWeight: 800, fontSize: '0.7rem', letterSpacing: '0.1em', color: '#B89B00', textTransform: 'uppercase' }}>Calendário de Aulas</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', marginTop: '0.1rem', textTransform: 'capitalize' }}>{monthName}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <button onClick={() => setCalDate(d => { const nd = new Date(d.year, d.month - 1); return { year: nd.getFullYear(), month: nd.getMonth() }; })} style={{ padding: '0.35rem 0.6rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                        <ChevronLeftIcon style={{ width: 14, height: 14, color: '#6B7280' }} />
+                    </button>
+                    <button onClick={() => setCalDate(d => { const nd = new Date(d.year, d.month + 1); return { year: nd.getFullYear(), month: nd.getMonth() }; })} style={{ padding: '0.35rem 0.6rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                        <ChevronRightIcon style={{ width: 14, height: 14, color: '#6B7280' }} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Dias da semana */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
+                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+                    <div key={d} style={{ textAlign: 'center', fontSize: '0.6rem', fontWeight: 800, color: '#9CA3AF', letterSpacing: '0.06em', padding: '0.25rem 0' }}>{d}</div>
+                ))}
+            </div>
+
+            {/* Grid de dias */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px' }}>
+                {cells.map((day, idx) => {
+                    if (!day) return <div key={idx} />;
+                    const dateKey = `${calDate.year}-${String(calDate.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const hasClass = !!classDays[dateKey];
+                    const isToday = dateKey === today.toISOString().split('T')[0];
+                    const isSelected = dateKey === selectedDay;
+
+                    return (
+                        <button key={idx} onClick={() => setSelectedDay(isSelected ? null : dateKey)} style={{
+                            padding: '0.4rem 0', borderRadius: 7, border: isSelected ? '2px solid #FFD600' : '1px solid transparent',
+                            background: isSelected ? '#FFFDE7' : hasClass ? 'rgba(255,214,0,0.08)' : 'transparent',
+                            color: isToday ? '#B89B00' : hasClass ? '#111827' : '#9CA3AF',
+                            fontWeight: isToday || hasClass ? 700 : 400,
+                            fontSize: '0.78rem', cursor: hasClass || isToday ? 'pointer' : 'default',
+                            position: 'relative', transition: 'all 0.15s',
+                        }}>
+                            {day}
+                            {hasClass && <div style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: '#FFD600' }} />}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Detalhe do dia selecionado */}
+            {selectedDay && selectedClasses.length > 0 && (
+                <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: '#FFFDE7', borderRadius: 10, border: '1px solid #FEF08A' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#B89B00', marginBottom: '0.4rem' }}>
+                        {new Date(selectedDay + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </div>
+                    {selectedClasses.map(c => (
+                        <div key={c.id} style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>📚 {c.course?.name}</div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function StudentClasses() {
     const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -80,6 +177,9 @@ export default function StudentClasses() {
                     Ver Inscrições
                 </Link>
             </div>
+
+            {/* PASSO 3.3: Calendário interativo de aulas */}
+            {classes.length > 0 && <MiniCalendario classes={classes} />}
 
             {/* Cards */}
             {classes.length === 0 ? (

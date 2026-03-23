@@ -49,6 +49,21 @@ interface MapaRotasProps {
 export default function MapaRotas({ rotas }: MapaRotasProps) {
     const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
 
+    // Estado vazio — sem rotas cadastradas
+    if (!rotas || rotas.length === 0) {
+        return (
+            <div style={{ background: '#0F172A', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', padding: '3rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🗺️</div>
+                <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.12em' }}>
+                    NENHUMA ROTA CADASTRADA
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#334155', marginTop: '0.4rem' }}>
+                    Cadastre Períodos de Curso (Ações) para visualizar o mapa.
+                </div>
+            </div>
+        );
+    }
+
     // Agrupar rotas por cidade para calcular tamanho dos marcadores
     const cidadeMap = rotas.reduce<Record<string, { inscritos: number; estado: string }>>((acc, r) => {
         const key = r.cidade || 'Desconhecida';

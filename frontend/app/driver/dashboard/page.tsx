@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api/client';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 /* ─── Tipos ─── */
 interface Trip {
@@ -246,7 +247,7 @@ export default function DriverDashboard() {
     const [nextTrip,   setNextTrip]   = useState<Trip | null>(null);
     const [stats,      setStats]      = useState({ tripsMonth: 0, kmMonth: 0, pending: 0 });
     const [loading,    setLoading]    = useState(true);
-    const [user,       setUser]       = useState<any>(null);
+    const { user } = useAuthStore();
     const [kmInput,    setKmInput]    = useState('');
     const [noteInput,  setNoteInput]  = useState('');
     const [kmModal,    setKmModal]    = useState<'start'|'end'|null>(null);
@@ -282,8 +283,6 @@ export default function DriverDashboard() {
         finally { setLoading(false); }
     };
     useEffect(() => {
-        const stored = localStorage.getItem('user');
-        if (stored) setUser(JSON.parse(stored));
         load();
     }, []);
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { CameraIcon, UserCircleIcon, BellIcon, ShieldCheckIcon, Cog6ToothIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import api from '@/lib/api/client';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
     return (
@@ -33,6 +34,7 @@ const SECTION: React.CSSProperties = { background: '#fff', borderRadius: 14, bor
 const SECTION_TITLE: React.CSSProperties = { fontFamily: 'Orbitron', fontWeight: 800, fontSize: '0.7rem', letterSpacing: '0.12em', color: '#B89B00', textTransform: 'uppercase', marginBottom: '0.75rem' };
 
 export default function DriverConfiguracoes() {
+    const { user: authUser, token, setUser: setAuthUser } = useAuthStore();
     const [tab, setTab] = useState('perfil');
     const [user, setUser] = useState<any>(null);
     const [saved, setSaved] = useState(false);
@@ -59,10 +61,9 @@ export default function DriverConfiguracoes() {
             const p = res.data;
             setUser(p);
             setCfg(c => ({ ...c, nome: p.name || '', email: p.email || '' }));
-            localStorage.setItem('user', JSON.stringify({ ...JSON.parse(localStorage.getItem('user') || '{}'), ...p }));
+            // BUG-07: não usar localStorage.setItem('user') — Zustand persiste em auth-storage
         }).catch(() => {
-            const stored = localStorage.getItem('user');
-            if (stored) { const p = JSON.parse(stored); setUser(p); setCfg(c => ({ ...c, nome: p.name || '', email: p.email || '' })); }
+            if (authUser) { setUser(authUser); setCfg(c => ({ ...c, nome: authUser.name || '', email: authUser.email || '' })); }
         });
         // Carrega preferências separadamente
         api.get('/users/me/preferences').then(res => {
@@ -83,8 +84,8 @@ export default function DriverConfiguracoes() {
                     fonteGrande: cfg.fonteGrande,
                 }),
             ]);
-            const stored = localStorage.getItem('user');
-            if (stored) { const u = JSON.parse(stored); u.name = cfg.nome; localStorage.setItem('user', JSON.stringify(u)); window.dispatchEvent(new Event('userUpdated')); }
+            if (authUser && token) { setAuthUser({ ...authUser, name: cfg.nome }, token); }
+            window.dispatchEvent(new Event('userUpdated'));
             setSaved(true); setTimeout(() => setSaved(false), 2800);
         } catch { setSaveError(true); setTimeout(() => setSaveError(false), 3500); }
     };

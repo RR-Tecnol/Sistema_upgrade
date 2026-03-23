@@ -321,7 +321,8 @@ export class AcoesService {
 
     async delete(id: string) {
         await this.findOne(id);
-        return this.prisma.acao.delete({ where: { id } });
+        // Soft delete via status CANCELADA (LIVRO_DE_REGRAS §3)
+        return this.prisma.acao.update({ where: { id }, data: { status: 'CANCELADA' } });
     }
 
     // ── Turmas ──────────────────────────────────────────────────

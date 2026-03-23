@@ -55,6 +55,7 @@ const navSections = [
         items: [
             { name: 'Períodos de Curso', href: '/admin/acoes', icon: BoltIcon },
             { name: 'Funcionários', href: '/admin/funcionarios', icon: BriefcaseIcon },
+            { name: 'Freq. Funcionarios', href: '/admin/funcionarios/frequencia', icon: ClipboardDocumentCheckIcon },
             { name: 'Feriados', href: '/admin/feriados', icon: CalendarDaysIcon },
             { name: 'Imprevistos', href: '/admin/imprevistos', icon: ExclamationTriangleIcon },
             { name: 'Reembolsos', href: '/admin/reembolsos', icon: BanknotesIcon },

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import api from '@/lib/api/client';
 import Link from 'next/link';
+import { useAuthStore } from '@/stores/useAuthStore';
 import {
     AcademicCapIcon,
     ClockIcon,
@@ -62,17 +63,13 @@ function CircularProgress({ value, size = 80, color = '#FFD600' }: { value: numb
 }
 
 export default function StudentDashboard() {
-    const [user, setUser] = useState<any>(null);
+    const { user } = useAuthStore();
     const [enrollments, setEnrollments] = useState<StudentEnrollment[]>([]);
     const [attendance, setAttendance] = useState<AttendanceSummary>({ totalClasses: 0, presentCount: 0, absentCount: 0, rate: 0 });
     const [certificates, setCertificates] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const u = localStorage.getItem('user');
-        if (u) setUser(JSON.parse(u));
-        fetchData();
-    }, []);
+    useEffect(() => { fetchData(); }, []);
 
     const fetchData = async () => {
         try {

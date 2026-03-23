@@ -681,9 +681,10 @@ function EmployeeModal({ employee, onClose, onSave }: { employee?: Employee | nu
         }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
             <div className="animate-scale-in" style={{
                 width: '100%', maxWidth: 560,
+                maxHeight: 'calc(100vh - 2rem)',
                 background: 'linear-gradient(145deg, #FFFFFF, #F9FAFB)',
                 borderRadius: 24, boxShadow: '0 32px 80px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,214,0,0.3)',
-                overflow: 'hidden',
+                overflow: 'hidden', display: 'flex', flexDirection: 'column',
             }}>
                 {/* Modal header */}
                 <div style={{
@@ -940,7 +941,7 @@ export default function FuncionariosPage() {
 
     useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
 
-    const handleEdit = (emp: Employee) => { setEditingEmployee(emp); setModalOpen(true); };
+    const handleEdit = (emp: Employee) => { setEditingEmployee(emp); setModalOpen(true); document.body.style.overflow = 'hidden'; };
 
     const handleToggleActive = async (id: string) => {
         try { await api.patch(`/employees/${id}/toggle-active`); fetchEmployees(); } catch { /* silencioso */ }
@@ -950,7 +951,7 @@ export default function FuncionariosPage() {
         try { await api.delete(`/employees/${id}`); setDeleteConfirm(null); fetchEmployees(); } catch { /* silencioso */ }
     };
 
-    const handleModalSave = () => { setModalOpen(false); setEditingEmployee(null); fetchEmployees(); };
+    const handleModalSave = () => { setModalOpen(false); setEditingEmployee(null); document.body.style.overflow = ''; fetchEmployees(); };
 
     // ── Pendentes: buscar users com active=false cadastrados via /registro
     const fetchPending = useCallback(async () => {
@@ -1337,7 +1338,7 @@ export default function FuncionariosPage() {
             {detailEmployee && (
                 <EmployeeDetailModal
                     employee={detailEmployee}
-                    onClose={() => setDetailEmployee(null)}
+                    onClose={() => { setDetailEmployee(null); document.body.style.overflow = ''; }}
                     onEdit={() => { setEditingEmployee(detailEmployee); setModalOpen(true); }}
                 />
             )}

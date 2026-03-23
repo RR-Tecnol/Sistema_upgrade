@@ -1,6 +1,6 @@
 ## Estado do Sistema — Sistema Upgrade
 ## Snapshot do Estado Real | Atualizado após cada ciclo de execução
-## Última atualização: 23/03/2026 — Sprint contínuo — Blocos A→H em execução
+## Última atualização: 23/03/2026 — Sprint contínuo — Blocos I→3.2 concluídos
 
 > **O que é este documento?**
 > Snapshot preciso do que funciona, o que está quebrado e o que está pendente.
@@ -32,8 +32,9 @@
 | `20260318162339_add_driver_role_and_employee_user_relation` | DRIVER enum + userId em Employee | ✅ |
 | `20260318173241_add_driver_user_id_to_trip` | driverUserId FK em Trip | ✅ |
 | `add_user_preferences` | Model UserPreferences — **CONCLUÍDO** | ✅ PASSO 1.3 |
-| `add_employee_attendance` | Model EmployeeAttendance — **PENDENTE** | 🔴 PASSO 3.2 |
-| `add_conta_pagar_active` | Campo active em ContaPagar — **PENDENTE** | 🟡 PASSO 3.9 |
+| `add_absence_active` | Campo `active Boolean` em Absence — **CONCLUÍDO** | ✅ BLOCO K |
+| `add_employee_attendance` | Model EmployeeAttendance — **CONCLUÍDO** | ✅ PASSO 3.2 |
+| `add_conta_pagar_active` | Campo active em ContaPagar — **CONCLUÍDO** | ✅ BLOCO E |
 
 ---
 
@@ -61,6 +62,12 @@
 | PASSO 3.12 | Frequência ADM: ao reabrir dia registrado carrega estado salvo + banner "Editando" | ✅ |
 | PASSO 2.3 | driver/reembolsos: campo valor type="number" step="0.01" min="0" | ✅ |
 | console.error | 14 ocorrências em 10 arquivos frontend removidas (auditoría completa) | ✅ |
+| BUG-07 | Configurações: `useAuthStore` corrigido nos 4 portais — nome salva corretamente | ✅ BLOCO I |
+| BLOCO J | Auditoria modais `position:fixed` — todos corretos, nenhuma correção necessária | ✅ |
+| BLOCO K | PASSO 3.6 — CRUD imprevistos: schema `active`, soft delete, create/edit/delete admin | ✅ |
+| BLOCO L | BI dashboard — cast `(a as any).cidadeNome` removido, endpoint funciona corretamente | ✅ |
+| BLOCO M | PASSO 3.3 — Calendário aluno: filtro por turma, modal detalhe, botão Hoje, dados reais | ✅ |
+| PASSO 3.2 | Frequência funcionários: schema `EmployeeAttendance`, db push, service, controller, UI | ✅ |
 | tsc | Zero erros TypeScript — validado ✅ |
 
 ---
@@ -93,13 +100,13 @@ aluno@qualifica.com              → RR@@Upgrade → STUDENT
 | Relatórios PDF | ✅ | Requer Chromium instalado |
 | XLSX Export | ✅ | Design básico — melhoria pendente |
 | Feriados | ✅ | Modal com motivo obrigatório ao excluir — PASSO 3.8 |
-| Imprevistos | ✅ | Falta CRUD completo (PASSO 3.6) |
+| Imprevistos | ✅ | CRUD completo — listar, criar, editar, excluir (soft delete), revisar — PASSO 3.6 |
 | Histórico Atividades | ✅ | Sem paginação/filtros (PASSO 3.5) |
 | Grupos / Carretas | ✅ | Bug 500 no cadastro (BUG-ACTIVE-05) |
-| Rotas BI | 🔴 | Não funciona — investigar |
+| Rotas BI | ✅ | Cast `(a as any)` corrigido — BLOCO L |
 | 2FA | ✅ | — |
-| Configurações | ✅ | Preferências salvas via UserPreferences (PASSO 1.3) |
-| Frequência funcionários | 🔴 | Não implementado (PASSO 3.2) |
+| Configurações | ✅ | Preferências salvas via UserPreferences + nome via Zustand — BLOCO I |
+| Frequência funcionários | ✅ | PASSO 3.2 — EmployeeAttendance, UI com 2 botões P/F, histórico por data |
 
 
 ### Portal do Professor
@@ -112,7 +119,7 @@ aluno@qualifica.com              → RR@@Upgrade → STUDENT
 | Histórico de frequência | ✅ | EXEC-06 |
 | Reembolsos — criar | ✅ | — |
 | Reembolsos — histórico | ✅ | PASSO 1.4 — padrão paginado correto |
-| Imprevistos | ✅ | Sem CRUD completo (PASSO 3.6) |
+| Imprevistos | ✅ | CRUD completo — PASSO 3.6 |
 | Certificados | ✅ | — |
 | Configurações | ✅ | Preferências salvas via UserPreferences (PASSO 1.3) |
 | Notificações → ADM | ✅ | PASSO 3.1 — eventos completos + histórico persistido |
@@ -124,7 +131,7 @@ aluno@qualifica.com              → RR@@Upgrade → STUDENT
 | Inscrições — listar | ✅ | — |
 | Inscrições — tabs + botão ação | ✅ | PASSO 3.10 — tabs Minhas/Disponíveis + botão Inscrever-se |
 | Inscrições — cursos disponíveis | ✅ | PASSO 3.10 — cards com vagas, datas, rota /inscricao/:id |
-| Calendário | 🟡 | Existe mas sem filtro/interatividade (PASSO 3.3) |
+| Calendário | ✅ | PASSO 3.3 — filtro turma, modal detalhe, botão Hoje, dados reais |
 | QR Code de certificado | ✅ | Fundo sem opacidade total (PASSO 2.4) |
 | Imprevistos | ✅ | Sem animações (PASSO 2.8) |
 | Configurações | ✅ | Preferências salvas via UserPreferences (PASSO 1.3) |
@@ -139,7 +146,7 @@ aluno@qualifica.com              → RR@@Upgrade → STUDENT
 | Reembolsos — criar | ✅ | — |
 | Reembolsos — histórico | ✅ | já usava padrão correto (res.data?.data) |
 | Manutenção | ✅ | UTF-8 corrompido (BUG-ACTIVE-09) |
-| Imprevistos | ✅ | Sem overlay completo + sem CRUD (PASSO 3.6) |
+| Imprevistos | ✅ | CRUD completo — PASSO 3.6 |
 | 2FA QR Code | 🟡 | Formatação inadequada (PASSO 2.4) |
 | Configurações | ✅ | Preferências salvas via UserPreferences (PASSO 1.3) |
 
@@ -149,16 +156,12 @@ aluno@qualifica.com              → RR@@Upgrade → STUDENT
 
 | # | Descrição | Impacto | Passo |
 |---|-----------|---------|-------|
-| 1 | Modais não centralizados (position fixed) — auditar antes de corrigir | 🟡 Médio | 2.2 |
-| 2 | Nome completo aluno não salva | 🟡 Médio | BUG-07 |
-| 3 | Frequência ADM para funcionários (migration EmployeeAttendance) | 🟡 Médio | 3.2 |
-| 4 | Rotas BI não funciona — investigar | 🟡 Médio | — |
-| 5 | Calendário aluno interativo | 🟢 Baixo | 3.3 |
-| 6 | Histórico ADM paginado | ✅ | 3.5 — já estava completo |
-| 7 | CRUD completo de imprevistos | 🟢 Baixo | 3.6 |
-| 8 | Tutorial assistido | 🟢 Baixo | 3.4 |
-| 9 | Persistência de formulário (sessionStorage) | 🟢 Baixo | 3.13 |
-| 10 | Redis senha para produção | 🟢 Baixo | 3.15 |
+| 1 | QR Code overlay — formatação inadequada | 🟡 Médio | 2.4 |
+| 2 | Funcionários: modal não fixo / scroll problemático | 🟡 Médio | 2.6 |
+| 3 | Persistência de formulário (sessionStorage) | 🟢 Baixo | 3.13 |
+| 4 | Tutorial assistido | 🟢 Baixo | 3.4 |
+| 5 | Redis senha para produção | 🟢 Baixo | 3.15 |
+| 6 | Dashboard motorista — decisão Tech Lead | 🟡 Médio | 2.7 |
 
 ---
 

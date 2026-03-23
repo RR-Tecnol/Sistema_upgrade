@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api/client';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 import {
     ClipboardDocumentCheckIcon,
@@ -12,27 +13,17 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function TeacherDashboard() {
+    const { user } = useAuthStore();
     const [classes, setClasses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [user, setUser] = useState<any>(null);
-    const [teacherName, setTeacherName] = useState('');
     const [pendingReimb, setPendingReimb] = useState(0);
 
-    useEffect(() => {
-        const stored = localStorage.getItem('user');
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            setUser(parsed);
-            if (parsed?.name) setTeacherName(parsed.name.split(' ')[0]);
-        }
-        loadData();
-    }, []);
+    useEffect(() => { loadData(); }, []);
 
     async function loadData() {
         try {
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
             const [classRes, reimRes] = await Promise.all([
-                api.get('/classes', { params: { status: 'IN_PROGRESS', teacherUserId: user.id } }).catch(() => ({ data: [] })),
+                api.get('/classes', { params: { status: 'IN_PROGRESS', teacherUserId: user?.id } }).catch(() => ({ data: [] })),
                 api.get('/reimbursements', { params: { status: 'PENDING' } }).catch(() => ({ data: [] })),
             ]);
             setClasses(Array.isArray(classRes.data) ? classRes.data : []);

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AbsencesService } from './absences.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -58,5 +58,32 @@ export class AdminAbsencesController {
         @Body() body: { status: 'VALIDATED' | 'REJECTED' | 'PENALIZED'; adminNote?: string; penalty?: number },
     ) {
         return this.absencesService.review(id, req.user.id, body);
+    }
+
+    // PASSO 3.6: Criar imprevisto manualmente pelo admin
+    @Post()
+    @ApiOperation({ summary: '[Admin] Cria imprevisto manualmente para um usuário (PASSO 3.6)' })
+    async createByAdmin(
+        @Body() body: { userId: string; type: string; date: string; description: string; documentUrl?: string },
+    ) {
+        return this.absencesService.createByAdmin(body.userId, body);
+    }
+
+    // PASSO 3.6: Editar dados de um imprevisto
+    @Patch(':id')
+    @ApiOperation({ summary: '[Admin] Editar tipo/data/descrição de um imprevisto (PASSO 3.6)' })
+    async update(
+        @Param('id') id: string,
+        @Body() body: { type?: string; date?: string; description?: string },
+    ) {
+        return this.absencesService.update(id, body);
+    }
+
+    // PASSO 3.6: Soft delete
+    @Delete(':id')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: '[Admin] Soft delete de um imprevisto (PASSO 3.6)' })
+    async remove(@Param('id') id: string) {
+        return this.absencesService.remove(id);
     }
 }

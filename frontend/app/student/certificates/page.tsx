@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useAuthStore } from '@/stores/useAuthStore';
 import api from '@/lib/api/client';
 import dynamic from 'next/dynamic';
 
@@ -23,13 +24,9 @@ export default function StudentCertificatesPage() {
     const [certs, setCerts] = useState<Certificate[]>([]);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<Certificate | null>(null);
-    const [user, setUser] = useState<any>(null);
+    const { user } = useAuthStore();
 
-    useEffect(() => {
-        const u = localStorage.getItem('user');
-        if (u) setUser(JSON.parse(u));
-        fetchCerts();
-    }, []);
+    useEffect(() => { fetchCerts(); }, []);
 
     const fetchCerts = async () => {
         try {
@@ -82,7 +79,7 @@ export default function StudentCertificatesPage() {
                                 cursor: 'pointer',
                                 transition: 'all 0.25s',
                             }}
-                            onClick={() => setSelected(cert)}
+                            onClick={() => { setSelected(cert); document.body.style.overflow = 'hidden'; }}
                             onMouseEnter={e => {
                                 (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)';
                                 (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(255,214,0,0.2)';
@@ -137,7 +134,7 @@ export default function StudentCertificatesPage() {
 
             {/* QR Modal */}
             {selected && (
-                <div className="modal-overlay" onClick={() => setSelected(null)}>
+                <div className="modal-overlay" onClick={() => { setSelected(null); document.body.style.overflow = ''; }}>
                     <div className="modal-content" style={{ maxWidth: 400, textAlign: 'center' as const }} onClick={e => e.stopPropagation()}>
                         <button onClick={() => setSelected(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#9CA3AF' }}>✕</button>
 

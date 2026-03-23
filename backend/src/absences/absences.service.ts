@@ -44,9 +44,9 @@ export class AbsencesService {
         });
     }
 
-    // Admin: lista todas as ausências com filtros
+    // Admin: lista todas as ausências com filtros (apenas activas por padrão)
     async findAll(status?: string, userId?: string) {
-        const where: any = {};
+        const where: any = { active: true };
         if (status) where.status = status;
         if (userId) where.userId = userId;
 
@@ -59,7 +59,55 @@ export class AbsencesService {
         });
     }
 
-    // Admin: valida ou rejeita imprevisto
+    // Admin: cria imprevisto manualmente (PASSO 3.6)
+    async createByAdmin(
+        targetUserId: string,
+        data: { type: string; date: string; description: string; documentUrl?: string },
+    ) {
+        return this.prisma.absence.create({
+            data: {
+                userId: targetUserId,
+                type: data.type as AbsenceType,
+                date: new Date(data.date),
+                description: data.description,
+                documentUrl: data.documentUrl ?? null,
+                status: AbsenceStatus.PENDING,
+            },
+            include: {
+                user: { select: { id: true, name: true, role: true, email: true } },
+            },
+        });
+    }
+
+    // Admin: edita dados de um imprevisto (PASSO 3.6)
+    async update(
+        id: string,
+        data: { type?: string; date?: string; description?: string },
+    ) {
+        const absence = await this.prisma.absence.findUnique({ where: { id } });
+        if (!absence) throw new NotFoundException('Imprevisto não encontrado');
+        return this.prisma.absence.update({
+            where: { id },
+            data: {
+                ...(data.type && { type: data.type as AbsenceType }),
+                ...(data.date && { date: new Date(data.date) }),
+                ...(data.description && { description: data.description }),
+            },
+            include: {
+                user: { select: { id: true, name: true, role: true, email: true } },
+            },
+        });
+    }
+
+    // Admin: soft delete (PASSO 3.6 + LIVRO_DE_REGRAS §3)
+    async remove(id: string) {
+        const absence = await this.prisma.absence.findUnique({ where: { id } });
+        if (!absence) throw new NotFoundException('Imprevisto não encontrado');
+        return this.prisma.absence.update({
+            where: { id },
+            data: { active: false },
+        });
+    }
     async review(
         id: string,
         adminId: string,
