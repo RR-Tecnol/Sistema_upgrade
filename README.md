@@ -203,6 +203,7 @@ Sistema_upgrade/
 | Admin | Alunos, Frequência, Certificados | ✅ |
 | Admin | Funcionários, Carretas, Grupos | ✅ |
 | Admin | Períodos de Curso, Feriados & Imprevistos | ✅ |
+| Admin | Viagens (logística, modal auditoria, fotos hodómetro presignadas) | ✅ |
 | Admin | Reembolsos, Contas a Pagar, Relatórios | ✅ |
 | Admin | Dashboard (KPIs), Histórico (Auditoria), Configurações | ✅ |
 | Teacher | Dashboard, Frequência, Histórico | ✅ |
@@ -221,6 +222,7 @@ Sistema_upgrade/
 |---------|---------|
 | [`docs/INDEX.md`](docs/INDEX.md) | **Índice** — por onde começar (AFAZERES, research, sistema-atual) |
 | [`docs/sistema-atual/README.md`](docs/sistema-atual/README.md) | **Fonte de verdade técnica** — arquitetura, fluxos, dados, integrações, bypasses |
+| [`docs/sistema-atual/11-modulo-viagens-logistica.md`](docs/sistema-atual/11-modulo-viagens-logistica.md) | **Viagens** — API, auditoria admin, fotos MinIO |
 | [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) | Seeds, comandos e credenciais de desenvolvimento |
 | [`docs/AFAZERES/`](docs/AFAZERES/) | Backlog, correcções e planos imediatos |
 

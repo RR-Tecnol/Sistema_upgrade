@@ -4,12 +4,20 @@ import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import api from '@/lib/api/client';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { ViagensSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
+import {
+    EmployeeStyleAdminDetailShell,
+    EmployeeStylePill,
+    EmployeeStyleSectionTitle,
+} from '@/components/admin/employee-style-admin-detail';
+import { TripOdometerPhotosPreview } from '@/components/admin/TripOdometerPhotosPreview';
 import { LocationFields, type LocationFieldsValue } from '@/components/admin/LocationFields';
 import { toast } from '@/components/ui/Toast';
+import { customConfirm } from '@/components/ui/ConfirmModal';
 import { viaCepMatchesCity, type CatalogCityForCepMatch } from '@/lib/brazilCepCityMatch';
 import {
     TruckIcon,
@@ -150,10 +158,13 @@ type Trip = {
     destinationLongitude?: number | null;
     departureDate: string;
     expectedArrivalDate: string;
+    actualArrivalDate?: string | null;
     originCity?: { name: string };
     destinationCity?: { name: string };
-    truck?: { licensePlate: string };
+    truck?: { licensePlate?: string; identifier?: string };
     driverUser?: { id: string; name: string };
+    /** Legado / API — nome do motorista quando não há `driverUser` */
+    driverName?: string | null;
     origin?: string;
     destination?: string;
     originCityName?: string;
@@ -163,7 +174,65 @@ type Trip = {
     notes?: string | null;
     createdAt?: string;
     updatedAt?: string;
+    kmStart?: number | null;
+    kmEnd?: number | null;
+    gpsDistanceKm?: number | null;
+    driverDecisionAt?: string | null;
+    rejectionPenaltyAt?: string | null;
+    driverPhone?: string | null;
+    auditValidatedAt?: string | null;
+    auditValidatedBy?: { id: string; name: string } | null;
+    /** Pontos da trilha GPS (DriverLocation) associados a esta viagem */
+    locationPingCount?: number;
 };
+
+function tripAccentFromStatus(status: string): { color: string; glow: string } {
+    const map: Record<string, { color: string; glow: string }> = {
+        PLANNED: { color: '#0E7490', glow: 'rgba(14, 116, 144, 0.28)' },
+        IN_TRANSIT: { color: '#1D4ED8', glow: 'rgba(29, 78, 216, 0.28)' },
+        COMPLETED: { color: '#15803D', glow: 'rgba(21, 128, 61, 0.28)' },
+        CANCELED: { color: '#B91C1C', glow: 'rgba(185, 28, 28, 0.28)' },
+    };
+    return map[status] ?? { color: '#6366F1', glow: 'rgba(99, 102, 241, 0.28)' };
+}
+
+function tripInitialsFromRoute(origin: string, destination: string): string {
+    const o = origin.trim();
+    const d = destination.trim();
+    const a = (o[0] || 'V').toUpperCase();
+    const b = (d[0] || 'J').toUpperCase();
+    return `${a}${b}`;
+}
+
+function formatCepBr(cep: string | null | undefined): string | null {
+    const d = String(cep ?? '').replace(/\D/g, '');
+    if (d.length !== 8) return null;
+    return `${d.slice(0, 5)}-${d.slice(5)}`;
+}
+
+/** Distância em linha reta entre coordenadas cadastradas (não é o percorrido na estrada). */
+function straightLineKmBetweenTripEndpoints(t: Trip): number | null {
+    if (
+        t.originLatitude == null
+        || t.originLongitude == null
+        || t.destinationLatitude == null
+        || t.destinationLongitude == null
+    ) {
+        return null;
+    }
+    return haversineKm(
+        t.originLatitude,
+        t.originLongitude,
+        t.destinationLatitude,
+        t.destinationLongitude,
+    );
+}
+
+function odometerDeltaKm(t: Trip): number | null {
+    if (t.kmStart == null || t.kmEnd == null) return null;
+    const d = Number(t.kmEnd) - Number(t.kmStart);
+    return Number.isFinite(d) && d >= 0 ? d : null;
+}
 
 export default function AdminViagensPage() {
     const [trips, setTrips] = useState<Trip[]>([]);
@@ -176,6 +245,7 @@ export default function AdminViagensPage() {
     const [assignModal, setAssignModal] = useState<{ tripId: string; driverUserId: string; search: string } | null>(null);
     const [detailTrip, setDetailTrip] = useState<Trip | null>(null);
     const [detailTab, setDetailTab] = useState<'resumo' | 'rastreio' | 'auditoria'>('resumo');
+    const [validatingAudit, setValidatingAudit] = useState(false);
     const [collapseManualTrip, setCollapseManualTrip] = useState(false);
     const [tripsViewMode, setTripsViewMode] = usePersistedAdminViewMode('admin:viagens:list', 'card');
 
@@ -266,12 +336,14 @@ export default function AdminViagensPage() {
 
     const normalizeTrip = (raw: any): Trip => {
         const source = raw || {};
-        const originName = toText(source.originCity?.name) || toText(source.originCityName) || toText(source.origin);
-        const destinationName = toText(source.destinationCity?.name) || toText(source.destinationCityName) || toText(source.destination);
+        const { _count, ...rest } = source;
+        const originName = toText(rest.originCity?.name) || toText(rest.originCityName) || toText(rest.origin);
+        const destinationName = toText(rest.destinationCity?.name) || toText(rest.destinationCityName) || toText(rest.destination);
         return {
-            ...source,
-            originCity: source.originCity?.name ? source.originCity : { name: originName || 'Origem não informada' },
-            destinationCity: source.destinationCity?.name ? source.destinationCity : { name: destinationName || 'Destino não informado' },
+            ...rest,
+            originCity: rest.originCity?.name ? rest.originCity : { name: originName || 'Origem não informada' },
+            destinationCity: rest.destinationCity?.name ? rest.destinationCity : { name: destinationName || 'Destino não informado' },
+            locationPingCount: typeof _count?.locations === 'number' ? _count.locations : 0,
         };
     };
 
@@ -469,10 +541,32 @@ export default function AdminViagensPage() {
         return map[decision || 'PENDING'] || map.PENDING;
     };
 
-    const openPhoto = (url?: string | null) => {
-        if (!url) return;
-        window.open(url, '_blank', 'noopener,noreferrer');
+    /**
+     * Aceite mostrado na lista: combina decisão do motorista com execução real e auditoria admin.
+     * Evita «Pendente» quando a viagem já foi executada ou auditada (campo antigo PENDING no registo).
+     */
+    const driverAcceptanceBadge = (t: Trip) => {
+        if (t.driverDecision === 'REJECTED') return decisionBadge('REJECTED');
+        if (t.auditValidatedAt) {
+            return {
+                label: 'Auditado pela equipe',
+                bg: '#F0FDF4',
+                color: '#15803D',
+                border: '#BBF7D0',
+            };
+        }
+        if (t.driverDecision === 'ACCEPTED') return decisionBadge('ACCEPTED');
+        if (t.status === 'COMPLETED' || t.status === 'IN_TRANSIT') {
+            return {
+                label: t.status === 'COMPLETED' ? 'Aceito (viagem concluída)' : 'Aceito (em trânsito)',
+                bg: '#F0FDF4',
+                color: '#15803D',
+                border: '#BBF7D0',
+            };
+        }
+        return decisionBadge(t.driverDecision);
     };
+
     const fmtDateTime = (d?: string) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
     const tripDurationHours = (start?: string, end?: string) => {
         if (!start || !end) return null;
@@ -480,6 +574,38 @@ export default function AdminViagensPage() {
         if (!Number.isFinite(ms) || ms <= 0) return null;
         return (ms / 3600000);
     };
+    const fmtHoursPt = (h: number | null) => {
+        if (h == null || !Number.isFinite(h)) return '—';
+        if (h < 1) return `${Math.round(h * 60)} min`;
+        const hh = Math.floor(h);
+        const mm = Math.round((h - hh) * 60);
+        return mm > 0 ? `${hh} h ${mm} min` : `${hh} h`;
+    };
+
+    const confirmValidateTripAudit = async (tripId: string) => {
+        const ok = await customConfirm({
+            title: 'Validar esta viagem?',
+            message:
+                'Confirma que analisou os dados, fotos do hodômetro e o rastreio desta viagem e deseja registar oficialmente que foi uma viagem válida do ponto de vista operacional?',
+            confirmLabel: 'Sim, validar',
+            cancelLabel: 'Cancelar',
+        });
+        if (!ok) return;
+        setValidatingAudit(true);
+        try {
+            const { data } = await api.patch(`/admin/trips/${tripId}/validate-audit`);
+            const normalized = normalizeTrip(data);
+            setDetailTrip(normalized);
+            setTrips((prev) => prev.map((x) => (x.id === normalized.id ? normalized : x)));
+            toast.success('Validação registada. Esta viagem ficou marcada como auditada pela equipe.');
+        } catch (e: any) {
+            const msg = e?.response?.data?.message;
+            toast.error(Array.isArray(msg) ? msg.join(', ') : (msg || 'Não foi possível validar esta viagem.'));
+        } finally {
+            setValidatingAudit(false);
+        }
+    };
+
     const linkedClassFromNotes = (notes?: string | null) => {
         const m = String(notes || '').match(/turma\s+([A-Z0-9._/-]+)/i);
         return m?.[1] || null;
@@ -527,6 +653,7 @@ export default function AdminViagensPage() {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <AdminHeaderHero title="VIAGENS" subtitle="Vínculo de motorista, aceite/recusa e penalização" badge="ADMIN" />
+            <ViagensSidebarTutorial />
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '0.75rem' }}>
                 <AnimatedKpiCard label="Planejadas" value={kpis.planned} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" compact />
@@ -768,7 +895,7 @@ export default function AdminViagensPage() {
                                 {trips.map((t, idx) => {
                                     const { origin, destination } = routeFromTrip(t);
                                     const st = statusBadge(t.status);
-                                    const dec = decisionBadge(t.driverDecision);
+                                    const dec = driverAcceptanceBadge(t);
                                     return (
                                         <tr
                                             key={t.id}
@@ -787,12 +914,6 @@ export default function AdminViagensPage() {
                                             <td style={{ padding: '8px', whiteSpace: 'nowrap', color: '#334155' }}>{fmtDateTime(t.actualArrivalDate || t.expectedArrivalDate)}{t.actualArrivalDate ? '' : ' *'}</td>
                                             <td style={{ padding: '8px' }}><span style={{ padding: '.12rem .45rem', borderRadius: 999, fontSize: '.65rem', border: `1px solid ${dec.border}`, background: dec.bg, color: dec.color, fontWeight: 700 }}>{dec.label}</span></td>
                                             <td style={{ padding: '8px', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                                                {t.startOdometerPhotoUrl ? (
-                                                    <button type="button" className="btn-ghost" style={{ padding: '2px 6px', fontSize: '.65rem', marginRight: 4 }} onClick={() => openPhoto(t.startOdometerPhotoUrl)}>📷</button>
-                                                ) : null}
-                                                {t.endOdometerPhotoUrl ? (
-                                                    <button type="button" className="btn-ghost" style={{ padding: '2px 6px', fontSize: '.65rem', marginRight: 4 }} onClick={() => openPhoto(t.endOdometerPhotoUrl)}>🏁</button>
-                                                ) : null}
                                                 {t.driverDecision === 'REJECTED' ? (
                                                     <button type="button" className="btn-ghost" style={{ padding: '2px 6px', fontSize: '.65rem', marginRight: 4 }} onClick={() => applyPenalty(t.id)}>Penal.</button>
                                                 ) : null}
@@ -816,9 +937,9 @@ export default function AdminViagensPage() {
                     const cepSub = routeCepSubtitle(t);
                     const coordSub = routeCoordsSubtitle(t);
                     const st = statusBadge(t.status);
-                    const dec = decisionBadge(t.driverDecision);
+                    const dec = driverAcceptanceBadge(t);
                     const durationPlanned = tripDurationHours(t.departureDate, t.expectedArrivalDate);
-                    const durationReal = tripDurationHours(t.departureDate, t.actualArrivalDate);
+                    const durationReal = tripDurationHours(t.departureDate, t.actualArrivalDate ?? undefined);
                     const linkedClass = linkedClassFromNotes(t.notes);
                     return (
                         <div
@@ -876,17 +997,6 @@ export default function AdminViagensPage() {
                                     </div>
                                     {t.notes ? <div style={{ fontSize: '.72rem', color: '#64748B', whiteSpace: 'pre-wrap' }}><b>Notas:</b> {t.notes}</div> : null}
                                 </div>
-
-                                {(t.startOdometerPhotoUrl || t.endOdometerPhotoUrl) && (
-                                    <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                        {t.startOdometerPhotoUrl ? (
-                                            <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); openPhoto(t.startOdometerPhotoUrl); }}>📷 Foto início</button>
-                                        ) : null}
-                                        {t.endOdometerPhotoUrl ? (
-                                            <button className="btn-ghost" onClick={(e) => { e.stopPropagation(); openPhoto(t.endOdometerPhotoUrl); }}>🏁 Foto final</button>
-                                        ) : null}
-                                    </div>
-                                )}
                             </div>
 
                             <div style={{ position: 'relative', zIndex: 1, borderTop: '1px solid rgba(148,163,184,.2)', padding: '10px 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1265,104 +1375,459 @@ export default function AdminViagensPage() {
                 </ModalPortal>
             )}
 
-            {detailTrip && (
-                <ModalPortal>
-                    <div
-                        style={{
-                            position: 'fixed', inset: 0, zIndex: MODAL_PORTAL_Z_INDEX, background: 'rgba(2,6,23,.58)',
-                            backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
-                        }}
-                        onClick={(e) => { if (e.target === e.currentTarget) setDetailTrip(null); }}
-                    >
-                        <div
-                            style={{
-                                width: 'min(980px,96vw)', maxHeight: '88vh', overflow: 'auto', borderRadius: 16,
-                                border: '1px solid rgba(148,163,184,.28)', background: '#fff', boxShadow: '0 24px 64px rgba(0,0,0,.35)',
-                            }}
-                        >
-                            <div style={{ padding: '12px 14px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg,#0F172A,#1E293B)' }}>
-                                <div style={{ fontFamily: 'Orbitron', fontWeight: 900, color: '#F8FAFC', fontSize: '.95rem' }}>Rastreio Completo da Viagem #{String(detailTrip.id).slice(0, 8)}</div>
-                                <button className="btn-ghost" style={{ marginLeft: 'auto', color: '#CBD5E1' }} onClick={() => setDetailTrip(null)}>Fechar</button>
-                            </div>
-                            <div style={{ padding: '10px 14px', borderBottom: '1px solid #E2E8F0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                {[
-                                    ['resumo', 'Resumo executivo'],
-                                    ['rastreio', 'Rastreio operacional'],
-                                    ['auditoria', 'Auditoria admin'],
-                                ].map(([id, label]) => (
-                                    <button
-                                        key={id}
-                                        className={detailTab === id ? 'btn-primary' : 'btn-ghost'}
-                                        onClick={() => setDetailTab(id as typeof detailTab)}
+            {detailTrip && (() => {
+                const route = routeFromTrip(detailTrip);
+                const accent = tripAccentFromStatus(detailTrip.status);
+                const sb = statusBadge(detailTrip.status);
+                const plate = detailTrip.truck?.licensePlate?.trim();
+                const truckId = detailTrip.truck?.identifier?.trim();
+                const driverLabel = detailTrip.driverUser?.name || detailTrip.driverName || 'Sem motorista';
+                const straightKm = straightLineKmBetweenTripEndpoints(detailTrip);
+                const odoKm = odometerDeltaKm(detailTrip);
+                const pingCount = detailTrip.locationPingCount ?? 0;
+                const cepO = formatCepBr(detailTrip.originCep);
+                const cepD = formatCepBr(detailTrip.destinationCep);
+                const durPrev = fmtHoursPt(tripDurationHours(detailTrip.departureDate, detailTrip.expectedArrivalDate));
+                const durReal = fmtHoursPt(tripDurationHours(detailTrip.departureDate, detailTrip.actualArrivalDate ?? undefined));
+                const truckLabel = [truckId, plate].filter(Boolean).join(' · ') || '—';
+                const canValidateAudit = detailTrip.status === 'COMPLETED' && !detailTrip.auditValidatedAt;
+                return (
+                    <EmployeeStyleAdminDetailShell
+                        onClose={() => setDetailTrip(null)}
+                        accentColor={accent.color}
+                        accentGlow={accent.glow}
+                        initials={tripInitialsFromRoute(route.origin, route.destination)}
+                        statusBadge={(
+                            <span
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    padding: '0.28rem 0.65rem',
+                                    borderRadius: 100,
+                                    background: sb.bg,
+                                    color: sb.color,
+                                    border: `1px solid ${sb.border}`,
+                                    fontSize: '0.65rem',
+                                    fontWeight: 800,
+                                    letterSpacing: '0.06em',
+                                    textTransform: 'uppercase',
+                                }}
+                            >
+                                🚛 {sb.label}
+                            </span>
+                        )}
+                        headline={`${route.origin} → ${route.destination}`}
+                        headerTags={(
+                            <>
+                                <span
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        padding: '0.28rem 0.7rem',
+                                        borderRadius: 100,
+                                        background: 'rgba(255,255,255,0.08)',
+                                        border: '1px solid rgba(255,255,255,0.15)',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 600,
+                                        color: '#E7E5E4',
+                                        fontFamily: 'JetBrains Mono, monospace',
+                                    }}
+                                >
+                                    #{String(detailTrip.id).slice(0, 8)}
+                                </span>
+                                {plate ? (
+                                    <span
+                                        title={plate}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.3rem',
+                                            padding: '0.28rem 0.7rem',
+                                            borderRadius: 100,
+                                            background: `${accent.color}22`,
+                                            border: `1px solid ${accent.color}55`,
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            color: accent.color,
+                                            maxWidth: 160,
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                        }}
                                     >
-                                        {label}
-                                    </button>
-                                ))}
+                                        🚛 {plate}
+                                    </span>
+                                ) : null}
+                                <span
+                                    title={driverLabel}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        padding: '0.28rem 0.7rem',
+                                        borderRadius: 100,
+                                        background: 'rgba(255,255,255,0.06)',
+                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        color: '#CBD5E1',
+                                        maxWidth: 280,
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    👤 {driverLabel}
+                                </span>
+                            </>
+                        )}
+                        footer={(
+                            <div style={{ display: 'flex', gap: '0.75rem', width: '100%', flexWrap: 'wrap', alignItems: 'stretch' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setDetailTrip(null)}
+                                    style={{
+                                        flex: 1,
+                                        minWidth: 140,
+                                        padding: '0.75rem',
+                                        borderRadius: 12,
+                                        border: '1.5px solid #E2E8F0',
+                                        background: 'transparent',
+                                        color: '#6B7280',
+                                        fontWeight: 700,
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    ✕ Fechar
+                                </button>
+                                <button
+                                    type="button"
+                                    title={
+                                        detailTrip.status !== 'COMPLETED'
+                                            ? 'Só é possível validar viagens já concluídas pelo motorista.'
+                                            : detailTrip.auditValidatedAt
+                                                ? 'Esta viagem já foi validada na auditoria.'
+                                                : undefined
+                                    }
+                                    disabled={!canValidateAudit || validatingAudit}
+                                    onClick={() => confirmValidateTripAudit(detailTrip.id)}
+                                    style={{
+                                        flex: 1,
+                                        minWidth: 160,
+                                        padding: '0.75rem',
+                                        borderRadius: 12,
+                                        border: detailTrip.auditValidatedAt
+                                            ? '1.5px solid #BBF7D0'
+                                            : `2px solid ${accent.color}`,
+                                        background: detailTrip.auditValidatedAt ? '#F0FDF4' : `${accent.color}10`,
+                                        color: detailTrip.auditValidatedAt ? '#15803D' : accent.color,
+                                        fontWeight: 700,
+                                        fontSize: '0.85rem',
+                                        cursor: !canValidateAudit || validatingAudit ? 'not-allowed' : 'pointer',
+                                        opacity: !canValidateAudit && !detailTrip.auditValidatedAt ? 0.55 : 1,
+                                    }}
+                                >
+                                    {validatingAudit
+                                        ? 'A validar…'
+                                        : detailTrip.auditValidatedAt
+                                            ? '✓ Auditoria já validada'
+                                            : 'Validar viagem'}
+                                </button>
                             </div>
-                            <div style={{ padding: '14px', display: 'grid', gap: 10 }}>
-                                {detailTab === 'resumo' && (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
-                                        {[
-                                            ['Rota', `${routeFromTrip(detailTrip).origin} → ${routeFromTrip(detailTrip).destination}`],
-                                            ['Motorista', detailTrip.driverUser?.name || detailTrip.driverName || '-'],
-                                            ['Status', statusBadge(detailTrip.status).label],
-                                            ['Aceite', decisionBadge(detailTrip.driverDecision).label],
-                                            ['Saída (ida)', fmtDateTime(detailTrip.departureDate)],
-                                            ['Chegada prevista', fmtDateTime(detailTrip.expectedArrivalDate)],
-                                            ['Chegada real', fmtDateTime(detailTrip.actualArrivalDate)],
-                                            ['Penalização', detailTrip.rejectionPenalty ? `R$ ${Number(detailTrip.rejectionPenalty).toFixed(2)}` : '-'],
-                                        ].map(([k, v]) => (
-                                            <div key={String(k)} style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px', background: '#F8FAFC' }}>
-                                                <div style={{ fontSize: '.64rem', fontWeight: 800, letterSpacing: '.08em', color: '#64748B', textTransform: 'uppercase' }}>{k}</div>
-                                                <div style={{ marginTop: 3, fontWeight: 700, color: '#0F172A', lineHeight: 1.35 }}>{v}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                {detailTab === 'rastreio' && (
-                                    <div style={{ display: 'grid', gap: 10 }}>
-                                        <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px' }}>
-                                            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Fotos comprobatórias</div>
-                                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                                <button className="btn-ghost" disabled={!detailTrip.startOdometerPhotoUrl} onClick={() => openPhoto(detailTrip.startOdometerPhotoUrl)}>📷 Hodômetro ida</button>
-                                                <button className="btn-ghost" disabled={!detailTrip.endOdometerPhotoUrl} onClick={() => openPhoto(detailTrip.endOdometerPhotoUrl)}>🏁 Hodômetro volta</button>
-                                            </div>
-                                        </div>
-                                        <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px' }}>
-                                            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Métricas técnicas</div>
-                                            <div style={{ fontSize: '.84rem', color: '#334155', lineHeight: 1.55 }}>
-                                                <div><b>KM inicial:</b> {detailTrip.kmStart ?? 'n/d'}</div>
-                                                <div><b>KM final:</b> {detailTrip.kmEnd ?? 'n/d'}</div>
-                                                <div><b>Distância GPS:</b> {detailTrip.gpsDistanceKm != null ? `${Number(detailTrip.gpsDistanceKm).toFixed(2)} km` : 'n/d'}</div>
-                                                <div><b>Origem (lat,lng):</b> {detailTrip.originLatitude ?? '-'}, {detailTrip.originLongitude ?? '-'}</div>
-                                                <div><b>Destino (lat,lng):</b> {detailTrip.destinationLatitude ?? '-'}, {detailTrip.destinationLongitude ?? '-'}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                                {detailTab === 'auditoria' && (
-                                    <div style={{ display: 'grid', gap: 10 }}>
-                                        <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px' }}>
-                                            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Trilha administrativa</div>
-                                            <div style={{ fontSize: '.84rem', color: '#334155', lineHeight: 1.55 }}>
-                                                <div><b>Criada em:</b> {fmtDateTime(detailTrip.createdAt)}</div>
-                                                <div><b>Atualizada em:</b> {fmtDateTime(detailTrip.updatedAt)}</div>
-                                                <div><b>Decisão do motorista em:</b> {fmtDateTime(detailTrip.driverDecisionAt)}</div>
-                                                <div><b>Penalização aplicada em:</b> {fmtDateTime(detailTrip.rejectionPenaltyAt)}</div>
-                                                <div><b>Motivo da recusa:</b> {detailTrip.driverDecisionReason || 'não informado'}</div>
-                                            </div>
-                                        </div>
-                                        <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px' }}>
-                                            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Notas operacionais completas</div>
-                                            <div style={{ fontSize: '.82rem', color: '#475569', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{detailTrip.notes || 'Sem notas administrativas.'}</div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                        )}
+                    >
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                            {([
+                                ['resumo', 'Resumo executivo'],
+                                ['rastreio', 'Rastreio operacional'],
+                                ['auditoria', 'Auditoria admin'],
+                            ] as const).map(([id, label]) => (
+                                <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => setDetailTab(id)}
+                                    style={{
+                                        padding: '0.45rem 0.95rem',
+                                        borderRadius: 100,
+                                        border: detailTab === id ? `2px solid ${accent.color}` : '1px solid #E2E8F0',
+                                        background: detailTab === id ? `${accent.color}14` : '#FFFFFF',
+                                        color: detailTab === id ? accent.color : '#64748B',
+                                        fontWeight: detailTab === id ? 800 : 600,
+                                        fontSize: '0.78rem',
+                                        cursor: 'pointer',
+                                        transition: 'border-color 0.15s, background 0.15s',
+                                    }}
+                                >
+                                    {label}
+                                </button>
+                            ))}
                         </div>
-                    </div>
-                </ModalPortal>
-            )}
+
+                        {detailTab === 'resumo' && (
+                            <>
+                                <EmployeeStyleSectionTitle icon="📋" title="Resumo executivo" color="#B89B00" />
+                                <div
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                        gap: '0.6rem',
+                                        marginBottom: '1.25rem',
+                                    }}
+                                >
+                                    <EmployeeStylePill icon="📍" label="Origem" value={route.origin} accent="#6366F1" />
+                                    <EmployeeStylePill icon="🏁" label="Destino" value={route.destination} accent="#6366F1" />
+                                    <EmployeeStylePill
+                                        icon="👤"
+                                        label="Motorista"
+                                        value={detailTrip.driverUser?.name || detailTrip.driverName || '—'}
+                                        accent="#0D9488"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="📞"
+                                        label="Telefone do motorista"
+                                        value={detailTrip.driverPhone?.trim() || '—'}
+                                        accent="#0369A1"
+                                    />
+                                    <EmployeeStylePill icon="🚛" label="Veículo (frota)" value={truckLabel} accent="#92400E" />
+                                    <EmployeeStylePill icon="📊" label="Status" value={statusBadge(detailTrip.status).label} accent="#6366F1" />
+                                    <EmployeeStylePill
+                                        icon="✅"
+                                        label="Aceite / situação"
+                                        value={driverAcceptanceBadge(detailTrip).label}
+                                        accent="#059669"
+                                    />
+                                    <EmployeeStylePill icon="🕐" label="Saída (ida)" value={fmtDateTime(detailTrip.departureDate)} accent="#B45309" />
+                                    <EmployeeStylePill
+                                        icon="🎯"
+                                        label="Chegada prevista"
+                                        value={fmtDateTime(detailTrip.expectedArrivalDate)}
+                                        accent="#B45309"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="⏱️"
+                                        label="Chegada real"
+                                        value={fmtDateTime(detailTrip.actualArrivalDate ?? undefined)}
+                                        accent="#B45309"
+                                    />
+                                    <EmployeeStylePill icon="⏳" label="Duração prevista (agenda)" value={durPrev} accent="#7C3AED" />
+                                    <EmployeeStylePill icon="⏳" label="Duração real (saída → chegada)" value={durReal} accent="#7C3AED" />
+                                    <EmployeeStylePill
+                                        icon="💰"
+                                        label="Penalização"
+                                        value={
+                                            detailTrip.rejectionPenalty != null
+                                                ? `R$ ${Number(detailTrip.rejectionPenalty).toFixed(2)}`
+                                                : '—'
+                                        }
+                                        accent="#D97706"
+                                    />
+                                </div>
+                                <EmployeeStyleSectionTitle icon="📷" title="Fotos comprobatórias" color="#3B82F6" />
+                                <TripOdometerPhotosPreview
+                                    tripId={detailTrip.id}
+                                    startUrl={detailTrip.startOdometerPhotoUrl}
+                                    endUrl={detailTrip.endOdometerPhotoUrl}
+                                    scope="admin"
+                                />
+                            </>
+                        )}
+
+                        {detailTab === 'rastreio' && (
+                            <>
+                                <EmployeeStyleSectionTitle icon="🛣️" title="Rastreio operacional" color="#B45309" />
+                                <p style={{ fontSize: '0.78rem', color: '#64748B', lineHeight: 1.45, margin: '0 0 0.85rem 0' }}>
+                                    A <strong>distância por GPS</strong> é a enviada pelo motorista ao concluir.
+                                    A <strong>linha reta</strong> usa só as coordenadas cadastradas (referência geográfica; não substitui o percorrido na estrada).
+                                    Os <strong>pontos GPS</strong> são posições registadas durante o trajeto com esta viagem ativa.
+                                </p>
+                                <div
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                        gap: '0.6rem',
+                                    }}
+                                >
+                                    <EmployeeStylePill
+                                        icon="📮"
+                                        label="CEP origem (cadastro)"
+                                        value={cepO || '—'}
+                                        accent="#475569"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="📮"
+                                        label="CEP destino (cadastro)"
+                                        value={cepD || '—'}
+                                        accent="#475569"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="🔢"
+                                        label="KM inicial (hodômetro)"
+                                        value={detailTrip.kmStart != null ? String(detailTrip.kmStart) : '—'}
+                                        accent="#EA580C"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="🔢"
+                                        label="KM final (hodômetro)"
+                                        value={detailTrip.kmEnd != null ? String(detailTrip.kmEnd) : '—'}
+                                        accent="#EA580C"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="📏"
+                                        label="KM rodado (hodômetro)"
+                                        value={odoKm != null ? `${odoKm} km` : '—'}
+                                        accent="#EA580C"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="📡"
+                                        label="Distância registada (GPS da viagem)"
+                                        value={
+                                            detailTrip.gpsDistanceKm != null
+                                                ? `${Number(detailTrip.gpsDistanceKm).toFixed(2)} km`
+                                                : '—'
+                                        }
+                                        accent="#2563EB"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="📐"
+                                        label="Distância estimada (linha reta)"
+                                        value={
+                                            straightKm != null
+                                                ? `~${straightKm.toFixed(2)} km`
+                                                : '—'
+                                        }
+                                        accent="#0891B2"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="📍"
+                                        label="Pontos GPS na viagem"
+                                        value={pingCount > 0 ? `${pingCount} registo${pingCount === 1 ? '' : 's'}` : '—'}
+                                        accent="#059669"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="🧭"
+                                        label="Coordenadas de origem"
+                                        value={
+                                            detailTrip.originLatitude != null && detailTrip.originLongitude != null
+                                                ? `${Number(detailTrip.originLatitude).toFixed(5)}, ${Number(detailTrip.originLongitude).toFixed(5)}`
+                                                : '—'
+                                        }
+                                        accent="#6366F1"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="🧭"
+                                        label="Coordenadas de destino"
+                                        value={
+                                            detailTrip.destinationLatitude != null && detailTrip.destinationLongitude != null
+                                                ? `${Number(detailTrip.destinationLatitude).toFixed(5)}, ${Number(detailTrip.destinationLongitude).toFixed(5)}`
+                                                : '—'
+                                        }
+                                        accent="#6366F1"
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        {detailTab === 'auditoria' && (
+                            <>
+                                <EmployeeStyleSectionTitle icon="✅" title="Validação pela equipe" color="#15803D" />
+                                <div
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                        gap: '0.6rem',
+                                        marginBottom: '1.25rem',
+                                    }}
+                                >
+                                    <EmployeeStylePill
+                                        icon="✅"
+                                        label="Estado da auditoria"
+                                        value={
+                                            detailTrip.auditValidatedAt
+                                                ? `Validada em ${fmtDateTime(detailTrip.auditValidatedAt)}`
+                                                : 'Ainda não validada pela equipe. Confira as abas Resumo e Rastreio; quando estiver tudo certo, use o botão Validar viagem no rodapé.'
+                                        }
+                                        accent="#15803D"
+                                        valueWrap
+                                    />
+                                    <EmployeeStylePill
+                                        icon="👤"
+                                        label="Validada por"
+                                        value={
+                                            detailTrip.auditValidatedBy?.name?.trim()
+                                                || (detailTrip.auditValidatedAt ? 'Nome não registado no sistema' : '—')
+                                        }
+                                        accent="#15803D"
+                                    />
+                                </div>
+                                <EmployeeStyleSectionTitle icon="🗂️" title="Trilha administrativa" color="#475569" />
+                                <div
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                        gap: '0.6rem',
+                                        marginBottom: '1rem',
+                                    }}
+                                >
+                                    <EmployeeStylePill icon="📅" label="Criada em" value={fmtDateTime(detailTrip.createdAt)} accent="#64748B" />
+                                    <EmployeeStylePill icon="🔄" label="Atualizada em" value={fmtDateTime(detailTrip.updatedAt)} accent="#64748B" />
+                                    <EmployeeStylePill
+                                        icon="✋"
+                                        label="Decisão do motorista em"
+                                        value={fmtDateTime(detailTrip.driverDecisionAt ?? undefined)}
+                                        accent="#64748B"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="⚠️"
+                                        label="Penalização aplicada em"
+                                        value={fmtDateTime(detailTrip.rejectionPenaltyAt ?? undefined)}
+                                        accent="#64748B"
+                                    />
+                                    <EmployeeStylePill
+                                        icon="💬"
+                                        label="Motivo da recusa"
+                                        value={detailTrip.driverDecisionReason?.trim() || 'não informado'}
+                                        accent="#64748B"
+                                    />
+                                </div>
+                                <EmployeeStyleSectionTitle icon="📝" title="Notas operacionais" color="#0369A1" />
+                                {detailTrip.status === 'COMPLETED' && /em\s+andamento/i.test(detailTrip.notes || '') ? (
+                                    <div
+                                        style={{
+                                            borderRadius: 12,
+                                            border: '1px solid #FDE68A',
+                                            background: '#FFFBEB',
+                                            padding: '0.75rem 1rem',
+                                            fontSize: '0.82rem',
+                                            color: '#92400E',
+                                            lineHeight: 1.45,
+                                            marginBottom: '0.85rem',
+                                        }}
+                                    >
+                                        O texto das notas menciona «em andamento», mas o estado da viagem já está como concluída — pode ser uma mensagem antiga no diário; confira as datas de chegada real e de atualização.
+                                    </div>
+                                ) : null}
+                                <div
+                                    style={{
+                                        borderRadius: 14,
+                                        border: '1.5px solid #E2E8F0',
+                                        background: '#F8FAFC',
+                                        padding: '1rem 1.1rem',
+                                        fontSize: '0.84rem',
+                                        color: '#475569',
+                                        whiteSpace: 'pre-wrap',
+                                        lineHeight: 1.55,
+                                    }}
+                                >
+                                    {detailTrip.notes?.trim() || 'Sem notas administrativas.'}
+                                </div>
+                            </>
+                        )}
+                    </EmployeeStyleAdminDetailShell>
+                );
+            })()}
         </div>
     );
 }

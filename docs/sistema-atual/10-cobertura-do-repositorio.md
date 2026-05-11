@@ -13,6 +13,7 @@ Este ficheiro confirma que **cada área principal** do monorepo tem entrada na d
 | Dados | `backend/prisma/schema.prisma`, `migrations/` | [05-dados-prisma-migracoes-seeds.md](./05-dados-prisma-migracoes-seeds.md) |
 | Seeds dev | `backend/prisma/seed-desenvolvimento/` | [05](./05-dados-prisma-migracoes-seeds.md), [../SEEDS_GUIDE.md](../SEEDS_GUIDE.md) |
 | UI | `frontend/app/`, `frontend/components/` | [04-frontend-portais-e-rotas.md](./04-frontend-portais-e-rotas.md) |
+| Viagens / logística | `backend/src/trips/`, `frontend/app/admin/viagens/`, `frontend/app/driver/viagens/` | [11-modulo-viagens-logistica.md](./11-modulo-viagens-logistica.md) |
 | Auth / MFA / bypass | `backend/src/auth/`, `frontend/app/login/` | [06](./06-autenticacao-sessao-2fa-lgpd.md), [09](./09-regras-de-negocio-e-bypasses.md) |
 | Notificações, ficheiros, mapas | `notifications`, `uploads`, `reports`, `driver-location`, MinIO nos serviços | [07](./07-integracoes-notificacoes-arquivos-mapa.md) |
 | Testes automáticos | `backend/test/`, `jest` em `package.json` | [08](./08-qualidade-e-testes-automatizados.md) |

@@ -2,7 +2,7 @@
 
 **Função:** árvore de documentação técnica alinhada ao **código e ao repositório atuais**. Tudo o que aqui consta deve ser verificável em `backend/`, `frontend/` ou `docker-compose.yml`. Se o código mudar, esta pasta deve ser atualizada na mesma entrega.
 
-**Data de referência:** 2026-05-11 (capítulos 09–10: revisão alinhada ao Git).
+**Data de referência:** 2026-05-08 (capítulo 11: viagens admin/motorista; capítulos 09–10 mantidos).
 
 ---
 
@@ -20,6 +20,7 @@
 | 8 | [08-qualidade-e-testes-automatizados.md](./08-qualidade-e-testes-automatizados.md) | Jest, e2e, como validar alterações |
 | 9 | [09-regras-de-negocio-e-bypasses.md](./09-regras-de-negocio-e-bypasses.md) | Flags `.env`, bypasses MFA/demo, estado vs plano F5 |
 | 10 | [10-cobertura-do-repositorio.md](./10-cobertura-do-repositorio.md) | Mapa completo doc ↔ pastas do projeto |
+| 11 | [11-modulo-viagens-logistica.md](./11-modulo-viagens-logistica.md) | Viagens: API motorista/admin, modal auditoria, fotos presignadas, validação |
 
 ---
 

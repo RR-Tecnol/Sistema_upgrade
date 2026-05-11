@@ -29,7 +29,7 @@ Cada pasta em `backend/src/<nome>/` corresponde, em regra, a um módulo homónim
 | `GroupsModule` | Grupos |
 | `CitiesModule` | Cidades |
 | `TrucksModule` | Carretas / veículos |
-| `TripsModule` | Viagens |
+| `TripsModule` | Viagens (motorista + admin; incl. presign MinIO, `validate-audit`) — ver [11-modulo-viagens-logistica.md](./11-modulo-viagens-logistica.md) |
 | `TruckMaintenanceModule` | Manutenção |
 | `EmployeesModule` | Funcionários e fluxos associados (ex.: registo, frequência) |
 | `AcoesModule` | Períodos de curso / acções |

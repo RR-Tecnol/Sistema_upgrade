@@ -1,6 +1,6 @@
 # Índice da documentação — Sistema UPGRADE
 
-**Última reorganização:** 2026-05-11 · **Caminhos:** `docs/sistema-atual/`, `docs/mapeamentos/`, `docs/SEEDS_GUIDE.md`.
+**Última reorganização:** 2026-05-08 · **Caminhos:** `docs/sistema-atual/` (incl. **11-modulo-viagens-logistica.md**), `docs/mapeamentos/`, `docs/SEEDS_GUIDE.md`.
 
 ---
 

@@ -26,6 +26,12 @@ Lista de ficheiros `**/page.tsx` sob `frontend/app/` — cada caminho (sem `page
 
 > **Nota:** pode existir `page_corrupted.tsx` ou outros ficheiros não roteados; só `page.tsx` (e convenções Next) geram rotas.
 
+## Admin — viagens (`/admin/viagens`)
+
+Módulo de logística: listagem em cartão ou tabela, criação manual de viagem, vínculo de motorista, penalização por recusa. O detalhe da viagem abre um modal com shell partilhado (`EmployeeStyleAdminDetailShell`), separadores Resumo / Rastreio / Auditoria, pré-visualização de fotos do hodómetro com URLs presignadas e acção **Validar viagem** (auditoria operacional). **As fotos não são abertas a partir de botões nos cartões da listagem** — apenas dentro do modal. Detalhe técnico e rotas API: [11-modulo-viagens-logistica.md](./11-modulo-viagens-logistica.md).
+
+---
+
 ## Ligação ao backend
 
 - Chamadas HTTP ao API NestJS (URL base via variável de ambiente no frontend, ex. `NEXT_PUBLIC_API_URL`).
