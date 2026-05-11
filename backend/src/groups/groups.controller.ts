@@ -15,6 +15,7 @@ export class GroupsController {
     constructor(private groupsService: GroupsService) { }
 
     @Get()
+    @Roles('ADMIN', 'COORDINATOR')
     @ApiOperation({ summary: 'List all groups' })
     @ApiResponse({ status: 200, description: 'Groups retrieved successfully' })
     async findAll() {
@@ -22,6 +23,7 @@ export class GroupsController {
     }
 
     @Get(':id')
+    @Roles('ADMIN', 'COORDINATOR')
     @ApiOperation({ summary: 'Get group by ID' })
     @ApiResponse({ status: 200, description: 'Group retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Group not found' })

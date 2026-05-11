@@ -3,10 +3,11 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { studentsApi } from '@/lib/api/students';
 import Link from 'next/link';
+import { AdminCreationSuccessScreen } from '@/components/admin/AdminCreationSuccessScreen';
 
 const INIT = {
   name: '', email: '', password: '', phone: '', phoneAlt: '',
-  cpf: '', rg: '', rgIssuer: '', birthDate: '',
+  cpf: '', birthDate: '',
   gender: 'MALE', raceColor: 'BROWN', maritalStatus: 'SINGLE',
   motherName: '', fatherName: '', nationality: 'Brasileira',
   birthCity: '', birthState: 'MA', socialName: '',
@@ -100,7 +101,13 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-const maskCpf = (v: string) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').substring(0, 14);
+const maskCpf = (v: string) => {
+    const digits = v.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+};
 const maskPhone = (v: string) => v.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').substring(0, 15);
 const maskCep = (v: string) => v.replace(/\D/g, '').replace(/(\d{5})(\d)/, '$1-$2').substring(0, 9);
 
@@ -146,9 +153,7 @@ export default function NovoAlunoPage() {
     }
     if (step === 2) {
       if (form.cpf.replace(/\D/g, '').length !== 11) e.cpf = 'CPF inválido';
-      if (!form.rg.trim()) e.rg = 'RG obrigatório';
-      if (!form.rgIssuer.trim()) e.rgIssuer = 'Emissor obrigatório';
-      if (!form.birthDate) e.birthDate = 'Data obrigatória';
+      if (!form.birthDate) e.birthDate = 'Data de nascimento obrigatória';
       if (!form.motherName.trim()) e.motherName = 'Nome da mãe obrigatório';
     }
     if (step === 3) {
@@ -197,17 +202,15 @@ export default function NovoAlunoPage() {
     } finally { setLoading(false); }
   };
 
-  if (success) return (
-    <div className='na-ok-wrap'>
-      <div className='na-ok-box'>
-        <div className='na-ok-ring'><span>✓</span></div>
-        <h2>Aluno Cadastrado!</h2>
-        <p>&ldquo;{form.name}&rdquo; adicionado com sucesso ao sistema.</p>
-        <div className='na-ok-bar' />
-        <small>Redirecionando para lista de alunos...</small>
-      </div>
-    </div>
-  );
+  if (success) {
+    return (
+      <AdminCreationSuccessScreen
+        title="ALUNO CADASTRADO!"
+        secondaryLine={`\u201c${form.name}\u201d foi adicionado com sucesso ao sistema.`}
+        redirectMessage="Redirecionando para lista de alunos..."
+      />
+    );
+  }
 
   const S = STEPS[step - 1];
 
@@ -288,12 +291,6 @@ export default function NovoAlunoPage() {
               <div className='na-g3' style={{ marginBottom: '1.25rem' }}>
                 <FG label='CPF' req error={errors.cpf}>
                   <NI name='cpf' value={form.cpf} onChange={(e: React.ChangeEvent<HTMLInputElement>) => set('cpf', maskCpf(e.target.value))} placeholder='123.456.789-00' hasErr={!!errors.cpf} />
-                </FG>
-                <FG label='RG' req error={errors.rg}>
-                  <NI name='rg' value={form.rg} onChange={handle} hasErr={!!errors.rg} />
-                </FG>
-                <FG label='Órgão Emissor' req error={errors.rgIssuer}>
-                  <NI name='rgIssuer' value={form.rgIssuer} onChange={handle} placeholder='SSP/MA' hasErr={!!errors.rgIssuer} />
                 </FG>
               </div>
               <div className='na-sl'>Dados Pessoais</div>

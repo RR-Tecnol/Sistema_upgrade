@@ -7,8 +7,9 @@ export interface DashboardStats {
     };
     students: {
         total: number;
-        ma: number;
-        pi: number;
+        byState: Record<string, number>;
+        ma?: number;
+        pi?: number;
     };
     classes: {
         total: number;
@@ -17,6 +18,10 @@ export interface DashboardStats {
     enrollments: {
         total: number;
         pending: number;
+    };
+    attendance: {
+        rate: number;
+        totalRecords: number;
     };
 }
 

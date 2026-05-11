@@ -13,6 +13,7 @@ import {
     CheckCircleIcon,
     XCircleIcon,
 } from '@heroicons/react/24/outline';
+import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
     PLANNED:           { label: 'Planejada',          color: '#9CA3AF', bg: '#F9FAFB',                  border: '#E5E7EB' },
@@ -24,6 +25,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string; bor
 };
 
 const ALL_STATUSES = ['PLANNED','ENROLLMENT_OPEN','ENROLLMENT_CLOSED','IN_PROGRESS','COMPLETED','CANCELLED'];
+const EDITABLE_STATUSES = ['PLANNED','ENROLLMENT_OPEN','ENROLLMENT_CLOSED','IN_PROGRESS','COMPLETED','CANCELLED'];
 
 const PERIOD_LABEL: Record<string, string> = {
     MORNING: '🌅 Manhã', AFTERNOON: '☀ Tarde', EVENING: '🌙 Noite',
@@ -35,14 +37,35 @@ export default function TurmaDetailPage() {
     const [turma, setTurma] = useState<any>(null);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'alunos' | 'frequencia' | 'info'>('alunos');
+    const [activeTab, setActiveTab] = useState<'alunos' | 'frequencia' | 'vinculos' | 'info'>('alunos');
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [selectedStatus, setSelectedStatus] = useState('');
     const [savingStatus, setSavingStatus] = useState(false);
     const [statusError, setStatusError] = useState('');
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [savingEdit, setSavingEdit] = useState(false);
+    const [editError, setEditError] = useState('');
+    const [editForm, setEditForm] = useState<any>(null);
+    const [courses, setCourses] = useState<any[]>([]);
+    const [groups, setGroups] = useState<any[]>([]);
+    const [cities, setCities] = useState<any[]>([]);
+    const [trucks, setTrucks] = useState<any[]>([]);
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
     useEffect(() => { load(); }, [id]);
+    useEffect(() => {
+        Promise.all([
+            api.get('/courses').then(r => Array.isArray(r.data) ? r.data : r.data?.data || []),
+            api.get('/groups').then(r => Array.isArray(r.data) ? r.data : r.data?.data || []),
+            api.get('/cities').then(r => Array.isArray(r.data) ? r.data : r.data?.data || []),
+            api.get('/trucks').then(r => Array.isArray(r.data) ? r.data : r.data?.data || []),
+        ]).then(([c, g, ci, t]) => {
+            setCourses(c);
+            setGroups(g);
+            setCities(ci);
+            setTrucks(t);
+        }).catch(() => {});
+    }, []);
 
     async function load() {
         setLoading(true);
@@ -81,6 +104,51 @@ export default function TurmaDetailPage() {
         setTimeout(() => setToast(null), 3500);
     }
 
+    function openEditModal() {
+        setEditError('');
+        setEditForm({
+            classIdentifier: turma.classIdentifier || '',
+            courseId: turma.courseId || '',
+            groupId: turma.groupId || '',
+            cityId: turma.cityId || '',
+            period: turma.period || 'MORNING',
+            startTime: turma.startTime || '07:00',
+            endTime: turma.endTime || '12:00',
+            startDate: turma.startDate ? new Date(turma.startDate).toISOString().slice(0, 10) : '',
+            endDate: turma.endDate ? new Date(turma.endDate).toISOString().slice(0, 10) : '',
+            vacancies: turma.vacancies ?? 30,
+            reserveSlots: turma.reserveSlots ?? 0,
+            truckId: turma.truckId || '',
+            status: turma.status || 'PLANNED',
+            enrollmentOpenDate: turma.enrollmentOpenDate ? new Date(turma.enrollmentOpenDate).toISOString().slice(0, 10) : '',
+            enrollmentCloseDate: turma.enrollmentCloseDate ? new Date(turma.enrollmentCloseDate).toISOString().slice(0, 10) : '',
+        });
+        setShowEditModal(true);
+    }
+
+    async function handleEditSave() {
+        if (!editForm) return;
+        setSavingEdit(true);
+        setEditError('');
+        try {
+            await classesApi.update(id, {
+                ...editForm,
+                vacancies: Number(editForm.vacancies),
+                reserveSlots: Number(editForm.reserveSlots || 0),
+                truckId: editForm.truckId || undefined,
+                enrollmentOpenDate: editForm.enrollmentOpenDate || undefined,
+                enrollmentCloseDate: editForm.enrollmentCloseDate || undefined,
+            });
+            setShowEditModal(false);
+            showToast('Turma atualizada com sucesso!', 'success');
+            load();
+        } catch (e: any) {
+            setEditError(e?.response?.data?.message || 'Erro ao salvar alterações da turma.');
+        } finally {
+            setSavingEdit(false);
+        }
+    }
+
     if (loading) return (
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh' }}>
             <div style={{ textAlign:'center' }}>
@@ -100,6 +168,12 @@ export default function TurmaDetailPage() {
     const totalPresent = stats?.attendance?.present ?? 0;
     const totalAbsent = (stats?.attendance?.total ?? 0) - totalPresent;
     const avgRate = stats?.attendance?.rate ?? 0;
+    const teacherNames = Array.isArray(turma?.teachers)
+        ? turma.teachers.map((t: any) => t?.teacher?.user?.name).filter(Boolean)
+        : [];
+    const enrolledNow = enrollments.filter((e: any) => ['ENROLLED', 'APPROVED'].includes(e.status)).length;
+    const modules = Array.isArray(turma?.course?.modules) ? turma.course.modules : [];
+    const linkedActions = Array.isArray(turma?.acaoTurmas) ? turma.acaoTurmas : [];
 
     const startDate = new Date(turma.startDate);
     const endDate = new Date(turma.endDate);
@@ -154,7 +228,7 @@ export default function TurmaDetailPage() {
                 </div>
                 <div style={{ display:'flex', gap:'0.5rem' }}>
                     <button
-                        onClick={() => { setSelectedStatus(turma.status); setShowStatusModal(true); }}
+                        onClick={openEditModal}
                         style={{
                             display:'flex', alignItems:'center', gap:6,
                             padding:'0.55rem 1.1rem', borderRadius:10,
@@ -163,7 +237,7 @@ export default function TurmaDetailPage() {
                         }}
                     >
                         <PencilIcon style={{ width:14, height:14 }} />
-                        Alterar Status
+                        Editar Turma
                     </button>
                     <Link href={`/admin/turmas/${id}/estatisticas`} style={{
                         display:'flex', alignItems:'center', gap:6,
@@ -172,8 +246,19 @@ export default function TurmaDetailPage() {
                         color:'#7C3AED', fontWeight:700, fontSize:'0.8rem', textDecoration:'none',
                     }}>
                         <ChartBarIcon style={{ width:14, height:14 }} />
-                        Estatísticas
+                        Ver Mais
                     </Link>
+                    <button
+                        onClick={() => { setSelectedStatus(turma.status); setShowStatusModal(true); }}
+                        style={{
+                            display:'flex', alignItems:'center', gap:6,
+                            padding:'0.55rem 1.1rem', borderRadius:10,
+                            background:'rgba(0,245,255,0.08)', border:'1px solid rgba(0,245,255,0.3)',
+                            color:'#0E7490', fontWeight:700, fontSize:'0.8rem', cursor:'pointer',
+                        }}
+                    >
+                        Alterar Status
+                    </button>
                 </div>
             </div>
 
@@ -212,6 +297,7 @@ export default function TurmaDetailPage() {
                 {[
                     { key:'alunos', label:'👥 Alunos', count: enrollments.length },
                     { key:'frequencia', label:'📊 Frequência', count: attendanceHistory.length },
+                    { key:'vinculos', label:'🔗 Vínculos', count: modules.length + linkedActions.length },
                     { key:'info', label:'ℹ️ Informações' },
                 ].map(t => (
                     <button key={t.key} onClick={() => setActiveTab(t.key as any)}
@@ -297,6 +383,68 @@ export default function TurmaDetailPage() {
                 )
             )}
 
+            {/* Tab: Vínculos amplos */}
+            {activeTab === 'vinculos' && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+                    <div className="glass-card" style={{ padding:'1rem' }}>
+                        <h3 style={{ fontFamily:'Orbitron', fontSize:'0.72rem', letterSpacing:'0.1em', color:'#6B7280', marginBottom:'0.75rem' }}>
+                            MÓDULOS DO CURSO ({modules.length})
+                        </h3>
+                        {modules.length === 0 ? (
+                            <p style={{ color:'#9CA3AF', fontSize:'0.78rem' }}>Nenhum módulo estruturado vinculado.</p>
+                        ) : (
+                            <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem' }}>
+                                {modules.slice(0, 12).map((m: any) => (
+                                    <div key={m.id} style={{ border:'1px solid #E5E7EB', borderRadius:9, padding:'0.55rem 0.7rem' }}>
+                                        <div style={{ fontSize:'0.8rem', fontWeight:700, color:'#111827' }}>{m.order}. {m.moduleName}</div>
+                                        <div style={{ fontSize:'0.72rem', color:'#6B7280' }}>Sala {m.room} • {m.startTime} - {m.endTime}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="glass-card" style={{ padding:'1rem' }}>
+                        <h3 style={{ fontFamily:'Orbitron', fontSize:'0.72rem', letterSpacing:'0.1em', color:'#6B7280', marginBottom:'0.75rem' }}>
+                            MATERIAIS / CERTIFICAÇÃO
+                        </h3>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.6rem' }}>
+                            <div style={{ border:'1px solid #E5E7EB', borderRadius:10, padding:'0.75rem' }}>
+                                <div style={{ fontSize:'0.66rem', fontWeight:800, textTransform:'uppercase', letterSpacing:'0.08em', color:'#6B7280' }}>Materiais vinculados</div>
+                                <div style={{ fontFamily:'Orbitron', fontWeight:900, fontSize:'1.2rem', color:'#0891B2' }}>{turma?._count?.materials ?? 0}</div>
+                            </div>
+                            <div style={{ border:'1px solid #E5E7EB', borderRadius:10, padding:'0.75rem' }}>
+                                <div style={{ fontSize:'0.66rem', fontWeight:800, textTransform:'uppercase', letterSpacing:'0.08em', color:'#6B7280' }}>Certificados emitidos</div>
+                                <div style={{ fontFamily:'Orbitron', fontWeight:900, fontSize:'1.2rem', color:'#7C3AED' }}>{turma?._count?.certificates ?? 0}</div>
+                            </div>
+                        </div>
+                        <p style={{ marginTop:'0.7rem', fontSize:'0.74rem', color:'#6B7280' }}>
+                            Esse consolidado permite validar prontidão da turma para conclusão e emissão final.
+                        </p>
+                    </div>
+
+                    <div className="glass-card" style={{ padding:'1rem', gridColumn:'1 / -1' }}>
+                        <h3 style={{ fontFamily:'Orbitron', fontSize:'0.72rem', letterSpacing:'0.1em', color:'#6B7280', marginBottom:'0.75rem' }}>
+                            PERÍODOS/AÇÕES VINCULADAS ({linkedActions.length})
+                        </h3>
+                        {linkedActions.length === 0 ? (
+                            <p style={{ color:'#9CA3AF', fontSize:'0.78rem' }}>Nenhum período operacional vinculado.</p>
+                        ) : (
+                            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:'0.6rem' }}>
+                                {linkedActions.map((item: any) => (
+                                    <div key={item.id} style={{ border:'1px solid #E5E7EB', borderRadius:10, padding:'0.7rem 0.8rem' }}>
+                                        <div style={{ fontSize:'0.82rem', fontWeight:700, color:'#111827' }}>{item.acao?.nome || 'Período'}</div>
+                                        <div style={{ fontSize:'0.72rem', color:'#6B7280' }}>
+                                            {item.acao?.cidadeNome || 'Cidade n/d'} • {item.acao?.status || 'Status n/d'}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Tab: Frequência */}
             {activeTab === 'frequencia' && (
                 attendanceHistory.length === 0 ? (
@@ -347,6 +495,9 @@ export default function TurmaDetailPage() {
                             { label:'Vagas', value: `${turma.vacancies} vagas` },
                             { label:'Reservas', value: turma.reserveSlots ? `${turma.reserveSlots} reservas` : '—' },
                             { label:'Carreta', value: turma.truck?.identifier || '—' },
+                            { label:'Motorista/Veículo', value: turma.truck ? `${turma.truck.identifier}${turma.truck.licensePlate ? ` (${turma.truck.licensePlate})` : ''}` : 'Não vinculado' },
+                            { label:'Professores', value: teacherNames.length ? teacherNames.join(', ') : 'Nenhum vinculado' },
+                            { label:'Alunos ativos agora', value: `${enrolledNow} aluno(s)` },
                             { label:'Status', value: STATUS_CFG[turma.status]?.label || turma.status },
                         ].map((item, i) => (
                             <div key={i}>
@@ -364,7 +515,8 @@ export default function TurmaDetailPage() {
 
             {/* Modal: Alterar Status */}
             {showStatusModal && (
-                <div className="modal-overlay" onClick={() => { setShowStatusModal(false); setStatusError(''); }}>
+                <ModalPortal>
+                <div className="modal-overlay" style={{ zIndex: MODAL_PORTAL_Z_INDEX }} onClick={() => { setShowStatusModal(false); setStatusError(''); }}>
                     <div className="modal-content" style={{ maxWidth:440 }} onClick={e => e.stopPropagation()}>
                         <button onClick={() => { setShowStatusModal(false); setStatusError(''); }}
                             style={{ position:'absolute', top:'1rem', right:'1rem', background:'none', border:'none', fontSize:'1.2rem', cursor:'pointer', color:'#9CA3AF' }}>✕</button>
@@ -425,6 +577,108 @@ export default function TurmaDetailPage() {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
+            )}
+
+            {showEditModal && editForm && (
+                <ModalPortal>
+                    <div className="modal-overlay" style={{ zIndex: MODAL_PORTAL_Z_INDEX }} onClick={() => setShowEditModal(false)}>
+                        <div className="modal-content" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
+                            <h3 style={{ fontFamily:'Orbitron', fontWeight:900, fontSize:'0.95rem', marginBottom:'1rem', color:'#111827' }}>
+                                Editar Turma
+                            </h3>
+                            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Identificador</label>
+                                    <input className="form-input" value={editForm.classIdentifier} onChange={e => setEditForm((f: any) => ({ ...f, classIdentifier: e.target.value.toUpperCase() }))} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Status</label>
+                                    <select className="form-input" value={editForm.status} onChange={e => setEditForm((f: any) => ({ ...f, status: e.target.value }))}>
+                                        {EDITABLE_STATUSES.map(s => <option key={s} value={s}>{STATUS_CFG[s]?.label || s}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Curso</label>
+                                    <select className="form-input" value={editForm.courseId} onChange={e => setEditForm((f: any) => ({ ...f, courseId: e.target.value }))}>
+                                        <option value="">Selecione...</option>
+                                        {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Grupo</label>
+                                    <select className="form-input" value={editForm.groupId} onChange={e => setEditForm((f: any) => ({ ...f, groupId: e.target.value }))}>
+                                        <option value="">Selecione...</option>
+                                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Cidade</label>
+                                    <select className="form-input" value={editForm.cityId} onChange={e => setEditForm((f: any) => ({ ...f, cityId: e.target.value }))}>
+                                        <option value="">Selecione...</option>
+                                        {cities.map(c => <option key={c.id} value={c.id}>{c.name} - {c.state}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Carreta</label>
+                                    <select className="form-input" value={editForm.truckId} onChange={e => setEditForm((f: any) => ({ ...f, truckId: e.target.value }))}>
+                                        <option value="">Sem carreta</option>
+                                        {trucks.map(t => <option key={t.id} value={t.id}>{t.identifier}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Período</label>
+                                    <select className="form-input" value={editForm.period} onChange={e => setEditForm((f: any) => ({ ...f, period: e.target.value }))}>
+                                        <option value="MORNING">Manhã</option>
+                                        <option value="AFTERNOON">Tarde</option>
+                                        <option value="EVENING">Noite</option>
+                                    </select>
+                                </div>
+                                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                                    <div>
+                                        <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Início</label>
+                                        <input type="time" className="form-input" value={editForm.startTime} onChange={e => setEditForm((f: any) => ({ ...f, startTime: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Fim</label>
+                                        <input type="time" className="form-input" value={editForm.endTime} onChange={e => setEditForm((f: any) => ({ ...f, endTime: e.target.value }))} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Data início</label>
+                                    <input type="date" className="form-input" value={editForm.startDate} onChange={e => setEditForm((f: any) => ({ ...f, startDate: e.target.value }))} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Data fim</label>
+                                    <input type="date" className="form-input" value={editForm.endDate} onChange={e => setEditForm((f: any) => ({ ...f, endDate: e.target.value }))} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Vagas</label>
+                                    <input type="number" min={1} className="form-input" value={editForm.vacancies} onChange={e => setEditForm((f: any) => ({ ...f, vacancies: e.target.value }))} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Reserva</label>
+                                    <input type="number" min={0} className="form-input" value={editForm.reserveSlots} onChange={e => setEditForm((f: any) => ({ ...f, reserveSlots: e.target.value }))} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Abertura inscrições</label>
+                                    <input type="date" className="form-input" value={editForm.enrollmentOpenDate} onChange={e => setEditForm((f: any) => ({ ...f, enrollmentOpenDate: e.target.value }))} />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize:'0.68rem', fontWeight:700 }}>Fechamento inscrições</label>
+                                    <input type="date" className="form-input" value={editForm.enrollmentCloseDate} onChange={e => setEditForm((f: any) => ({ ...f, enrollmentCloseDate: e.target.value }))} />
+                                </div>
+                            </div>
+                            {editError && <div style={{ marginTop:10, fontSize:'0.8rem', color:'#DC2626' }}>{editError}</div>}
+                            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:14 }}>
+                                <button className="btn-ghost" onClick={() => setShowEditModal(false)}>Cancelar</button>
+                                <button className="btn-primary" onClick={handleEditSave} disabled={savingEdit}>
+                                    {savingEdit ? 'Salvando...' : 'Salvar alterações'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </ModalPortal>
             )}
         </div>
     );

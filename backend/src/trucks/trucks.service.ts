@@ -3,10 +3,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTruckDto } from './dto/create-truck.dto';
 import { UpdateTruckDto } from './dto/update-truck.dto';
 import { TruckStatus } from '@prisma/client';
+import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 
 @Injectable()
 export class TrucksService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private notificationsSender: NotificationsSenderService,
+    ) { }
 
     async findAll(filters?: { status?: TruckStatus; groupId?: string; type?: string; state?: string }) {
         const where: any = {};
@@ -306,12 +310,20 @@ export class TrucksService {
     async scheduleMaintenance(id: string, date: Date) {
         const truck = await this.findOne(id);
 
-        return this.prisma.truck.update({
+        const updated = await this.prisma.truck.update({
             where: { id },
             data: {
                 nextMaintenanceDate: date,
                 status: 'MAINTENANCE',
             },
         });
+
+        await this.notificationsSender.truckMaintenanceAlert(
+            truck.identifier,
+            `Manutenção agendada para ${date.toISOString().slice(0, 10)}`,
+            true // adminOnly = true (já que não temos o ID do motorista aqui)
+        ).catch(() => {});
+
+        return updated;
     }
 }

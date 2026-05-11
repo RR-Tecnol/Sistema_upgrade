@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api/client';
 import { DocumentTextIcon, AcademicCapIcon } from '@heroicons/react/24/outline';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 
 interface Enrollment {
     id: string;
@@ -79,13 +81,17 @@ export default function StudentEnrollments() {
 
     return (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div>
-                <h1 className="gradient-text" style={{ fontSize: '1.8rem', fontWeight: 900, fontFamily: 'Orbitron, sans-serif', letterSpacing: '0.08em', margin: 0 }}>
-                    INSCRIÇÕES
-                </h1>
-                <p style={{ color: '#6B7280', fontSize: '0.85rem', margin: '0.25rem 0 0' }}>
-                    Gerencie suas inscrições e explore novos cursos disponíveis
-                </p>
+            <AdminHeaderHero
+                title="INSCRIÇÕES"
+                subtitle="Gerencie suas inscrições e explore novos cursos disponíveis"
+                badge="PORTAL DO ALUNO"
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.75rem' }}>
+                <AnimatedKpiCard label="Total" value={enrollments.length} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" compact />
+                <AnimatedKpiCard label="Pendentes" value={enrollments.filter(e => e.status === 'PENDING').length} color="#B89B00" bg="#FFFDE7" border="#FEF08A" compact />
+                <AnimatedKpiCard label="Aprovadas" value={enrollments.filter(e => e.status === 'APPROVED' || e.status === 'ENROLLED').length} color="#059669" bg="#F0FDF4" border="#BBF7D0" compact />
+                <AnimatedKpiCard label="Disponíveis" value={available.length} color="#7C3AED" bg="#F5F3FF" border="#DDD6FE" compact />
             </div>
 
             {/* Tabs — PASSO 3.10 */}
@@ -126,7 +132,72 @@ export default function StudentEnrollments() {
                             <div className="spinner" style={{ margin: '0 auto 1rem', width: 36, height: 36 }} />
                             <div style={{ color: '#9CA3AF', fontSize: '0.82rem' }}>Carregando suas inscrições...</div>
                         </div>
-                    ) : filtered.length === 0 ? (
+                    ) : (
+                    <>
+                        {/* ── Missão Ativa para PENDING ── */}
+                        {(() => {
+                            const pending = enrollments.filter(e => e.status === 'PENDING');
+                            if (pending.length === 0) return null;
+                            return (
+                                <div style={{
+                                    padding: '0.85rem 1.25rem', borderRadius: 14,
+                                    background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+                                    border: '1.5px solid rgba(245,158,11,0.5)',
+                                    borderLeft: '4px solid #F59E0B',
+                                    boxShadow: '0 2px 12px rgba(245,158,11,0.12)',
+                                }} className="animate-fade-in">
+                                    <style>{`
+                                        @keyframes missionPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+                                        @keyframes progressAnim { 0%{width:15%} 50%{width:70%} 100%{width:15%} }
+                                    `}</style>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+                                        <span style={{ fontSize: '1rem', display: 'inline-block', animation: 'missionPulse 1.5s ease-in-out infinite' }}>⏳</span>
+                                        <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.7rem', color: '#92400E', letterSpacing: '0.1em' }}>⚡ MISSÃO ATIVA</span>
+                                        <span style={{
+                                            marginLeft: 'auto', padding: '0.15rem 0.6rem', borderRadius: 100,
+                                            background: '#F59E0B', border: 'none',
+                                            fontSize: '0.65rem', fontWeight: 700, color: '#FFFFFF',
+                                        }}>{pending.length} aguardando</span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                                        {pending.slice(0, 3).map(e => (
+                                            <div key={e.id} style={{
+                                                display: 'flex', alignItems: 'center', gap: '0.65rem',
+                                                padding: '0.5rem 0.75rem', borderRadius: 9,
+                                                background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(245,158,11,0.2)',
+                                            }}>
+                                                <span style={{ fontSize: '0.9rem' }}>🎓</span>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {e.class.course.name}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.62rem', color: '#6B7280', marginTop: 1 }}>
+                                                        {e.class.city.name}/{e.class.city.state} · {e.protocol}
+                                                    </div>
+                                                </div>
+                                                <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#92400E', whiteSpace: 'nowrap' }}>Em análise</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                            <span style={{ fontSize: '0.6rem', color: '#92400E', opacity: 0.8 }}>Aguardando aprovação da coordenação</span>
+                                            <span style={{ fontSize: '0.6rem', color: '#92400E', fontWeight: 700 }}>+50 XP ao ser aprovado</span>
+                                        </div>
+                                        <div style={{ height: 5, borderRadius: 3, background: 'rgba(245,158,11,0.2)', overflow: 'hidden' }}>
+                                            <div style={{
+                                                height: '100%', borderRadius: 3,
+                                                background: 'linear-gradient(90deg, #F59E0B, #FFD600)',
+                                                animation: 'progressAnim 2s ease-in-out infinite',
+                                            }} />
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* ── Lista de inscrições ── */}
+                        {filtered.length === 0 ? (
                         <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', padding: '3.5rem', textAlign: 'center' }}>
                             <DocumentTextIcon style={{ width: 48, height: 48, color: '#D1D5DB', margin: '0 auto 1rem' }} />
                             <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.72rem', letterSpacing: '0.12em', color: '#9CA3AF' }}>NENHUMA INSCRIÇÃO ENCONTRADA</div>
@@ -145,7 +216,27 @@ export default function StudentEnrollments() {
                                 const cfg = STATUS_CFG[enrollment.status] || { label: enrollment.status, color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB' };
                                 return (
                                     <div key={enrollment.id} className="animate-scale-in"
-                                        style={{ animationDelay: `${i * 50}ms`, background: '#FFFFFF', borderRadius: 14, border: `1.5px solid ${cfg.border}`, padding: '1.1rem 1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', transition: 'box-shadow 0.2s' }}
+                                        style={{
+                                            animationDelay: `${i * 50}ms`,
+                                            borderRadius: 14,
+                                            // Gradiente por status
+                                            background: (
+                                                {
+                                                    ENROLLED:         'linear-gradient(145deg,#eff6ff,#dbeafe)',
+                                                    APPROVED:         'linear-gradient(145deg,#f0fdf4,#dcfce7)',
+                                                    PENDING:          'linear-gradient(145deg,#fffdf5,#fffde7)',
+                                                    REJECTED:         'linear-gradient(145deg,#fff5f5,#fee2e2)',
+                                                    WAITLIST:         'linear-gradient(145deg,#faf5ff,#ede9fe)',
+                                                    DOCUMENT_PENDING: 'linear-gradient(145deg,#fff7ed,#ffedd5)',
+                                                    DROPOUT:          '#F9FAFB',
+                                                } as Record<string, string>
+                                            )[enrollment.status] || 'linear-gradient(145deg,#fffdf5,#fffde7)',
+                                            border: `1.5px solid ${cfg.border}`,
+                                            borderLeft: `4px solid ${cfg.color}`,
+                                            padding: '1.1rem 1.25rem',
+                                            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                                            transition: 'box-shadow 0.2s',
+                                        }}
                                         onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)')}
                                         onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)')}
                                     >
@@ -167,10 +258,34 @@ export default function StudentEnrollments() {
                                                 </div>
                                             </div>
                                         </div>
+                                        {/* Botão Ver esta turma — ENROLLED e APPROVED com link específico */}
+                                        {(enrollment.status === 'ENROLLED' || enrollment.status === 'APPROVED') && enrollment.class.id && (
+                                            <div style={{ marginTop: '0.65rem', display: 'flex', justifyContent: 'flex-end' }}>
+                                                <a
+                                                    href={`/student/classes/${enrollment.class.id}`}
+                                                    style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                                                        padding: '0.35rem 0.85rem', borderRadius: 8,
+                                                        background: enrollment.status === 'ENROLLED'
+                                                            ? 'linear-gradient(135deg,#FFD600,#F59E0B)'
+                                                            : 'linear-gradient(135deg,#dcfce7,#bbf7d0)',
+                                                        color: enrollment.status === 'ENROLLED' ? '#000' : '#059669',
+                                                        textDecoration: 'none', fontWeight: 700, fontSize: '0.72rem',
+                                                        border: enrollment.status === 'ENROLLED' ? 'none' : '1px solid rgba(16,185,129,0.3)',
+                                                        transition: 'all 0.15s',
+                                                    }}
+                                                >
+                                                    🎓 Ver esta turma →
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
                         </div>
+                        )}
+
+                    </>
                     )}
                 </>
             )}

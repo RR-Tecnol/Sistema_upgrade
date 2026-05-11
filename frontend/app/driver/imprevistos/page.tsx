@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
     ExclamationTriangleIcon,
     PlusIcon,
@@ -8,9 +9,22 @@ import {
     CheckCircleIcon,
     XCircleIcon,
     DocumentTextIcon,
+    CameraIcon,
+    XMarkIcon,
 } from '@heroicons/react/24/outline';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
+import imageCompression from 'browser-image-compression';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import {
+    EmployeeStyleAdminDetailShell,
+    EmployeeStyleAttachmentsGrid,
+    EmployeeStylePill,
+    EmployeeStyleSectionTitle,
+    portalAbsenceAttachmentDocs,
+} from '@/components/admin/employee-style-admin-detail';
+import { formatCalendarDatePtBR } from '@/lib/calendar-date-display';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 type AbsenceStatus = 'PENDING' | 'VALIDATED' | 'REJECTED' | 'PENALIZED';
@@ -25,6 +39,7 @@ interface Absence {
     adminNote?: string;
     penalty?: number;
     createdAt: string;
+    documentUrl?: string | null;
 }
 
 // ─── Config visual ───────────────────────────────────────────────────────────
@@ -36,6 +51,15 @@ const TYPE_LABELS: Record<AbsenceType, string> = {
     ACCIDENT: '🚗 Acidente',
     OTHER: '📝 Outro',
 };
+
+function absencePortalAccentGlow(status: AbsenceStatus) {
+    switch (status) {
+        case 'REJECTED': return 'rgba(220,38,38,0.25)';
+        case 'VALIDATED': return 'rgba(21,128,61,0.2)';
+        case 'PENALIZED': return 'rgba(234,88,12,0.22)';
+        default: return 'rgba(255,214,0,0.25)';
+    }
+}
 
 const STATUS_CONFIG: Record<AbsenceStatus, { label: string; color: string; bg: string; border: string; Icon: any }> = {
     PENDING:   { label: 'Aguardando',  color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A', Icon: ClockIcon },
@@ -50,6 +74,28 @@ function ModalRegistrar({
 }: { onClose: () => void; onSuccess: () => void }) {
     const [form, setForm] = useState({ type: 'ILLNESS' as AbsenceType, date: '', description: '' });
     const [loading, setLoading] = useState(false);
+    const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+    const [fotoFile, setFotoFile]       = useState<File | null>(null);
+    const [compressing, setCompressing] = useState(false);
+    const fileRef                       = useRef<HTMLInputElement>(null);
+
+    async function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setCompressing(true);
+        try {
+            const compressed = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1200, useWebWorker: true });
+            setFotoFile(compressed as unknown as File);
+            const reader = new FileReader();
+            reader.onload = ev => setFotoPreview(ev.target?.result as string);
+            reader.readAsDataURL(compressed);
+        } catch {
+            setFotoFile(file);
+            const reader = new FileReader();
+            reader.onload = ev => setFotoPreview(ev.target?.result as string);
+            reader.readAsDataURL(file);
+        } finally { setCompressing(false); }
+    }
 
     const handleSubmit = async () => {
         if (!form.date || !form.description.trim()) {
@@ -58,7 +104,23 @@ function ModalRegistrar({
         }
         try {
             setLoading(true);
-            await api.post('/driver/absences', form);
+            let documentUrl: string | undefined;
+            if (fotoFile) {
+                try {
+                    const urlRes = await api.post('/reimbursements/presigned-url', {
+                        filename: fotoFile.name, contentType: fotoFile.type,
+                    });
+                    await fetch(urlRes.data.uploadUrl, {
+                        method: 'PUT', body: fotoFile,
+                        headers: { 'Content-Type': fotoFile.type },
+                    });
+                    documentUrl = urlRes.data.fileUrl;
+                } catch { /* MinIO indisponível — continua sem URL */ }
+            }
+            await api.post('/absences', {
+                ...form,
+                ...(documentUrl ? { documentUrl } : {}),
+            });
             toast.success('Imprevisto registrado! Aguardando análise do administrador.');
             onSuccess();
             onClose();
@@ -111,6 +173,33 @@ function ModalRegistrar({
                             style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: 9, border: '1.5px solid #E5E7EB', fontSize: '0.85rem', color: '#111827', background: '#F9FAFB', resize: 'vertical', fontFamily: 'inherit' }} />
                     </div>
 
+                    {/* Upload de documento / atestado */}
+                    <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>Documento / Atestado (opcional)</label>
+                        <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: 'none' }} />
+                        <button type="button" onClick={() => fileRef.current?.click()}
+                            disabled={compressing}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.55rem 1rem', borderRadius: 9, marginBottom: fotoPreview ? '0.6rem' : 0,
+                                background: 'rgba(255,214,0,0.08)', border: '1px dashed rgba(255,214,0,0.5)',
+                                color: '#B89B00', cursor: compressing ? 'wait' : 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                                width: '100%',
+                            }}>
+                            <CameraIcon style={{ width: 16, height: 16 }} />
+                            {compressing ? 'Comprimindo...' : fotoFile ? 'Trocar documento' : 'Tirar / Selecionar foto'}
+                        </button>
+                        {fotoPreview && (
+                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                <img src={fotoPreview} alt="Preview" style={{ maxWidth: 200, maxHeight: 140, borderRadius: 8, objectFit: 'cover', border: '2px solid rgba(255,214,0,0.35)' }} />
+                                <button type="button" onClick={() => { setFotoPreview(null); setFotoFile(null); }}
+                                    style={{ position: 'absolute', top: -8, right: -8, background: '#EF4444', border: 'none', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <XMarkIcon style={{ width: 13, height: 13 }} />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
                     <p style={{ fontSize: '0.72rem', color: '#92730A', background: '#FFFDE7', padding: '0.6rem 0.85rem', borderRadius: 9, border: '1px solid #FEF08A', margin: 0 }}>
                         ⚠️ O administrador será notificado e irá analisar e validar o imprevisto. Documentos (atestados, BO) podem ser solicitados.
                     </p>
@@ -136,11 +225,15 @@ export default function DriverImprevistoPage() {
     const [absences, setAbsences] = useState<Absence[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [mounted, setMounted] = useState(false);
+    const [detailing, setDetailing] = useState<Absence | null>(null);
+
+    useEffect(() => { setMounted(true); }, []);
 
     const load = async () => {
         try {
             setLoading(true);
-            const data = await api.get('/driver/absences');
+            const data = await api.get('/absences');
             setAbsences(data?.data ?? data ?? []);
         } catch {
             setAbsences([]);
@@ -151,6 +244,12 @@ export default function DriverImprevistoPage() {
 
     useEffect(() => { load(); }, []);
 
+    useEffect(() => {
+        const modalOpen = !!(detailing || (mounted && showModal));
+        document.body.style.overflow = modalOpen ? 'hidden' : '';
+        return () => { document.body.style.overflow = ''; };
+    }, [detailing, showModal, mounted]);
+
     const counts = {
         total: absences.length,
         pending: absences.filter(a => a.status === 'PENDING').length,
@@ -158,38 +257,32 @@ export default function DriverImprevistoPage() {
         penalized: absences.filter(a => a.status === 'PENALIZED').length,
     };
 
-    const fmt = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const fmt = (d: string) => formatCalendarDatePtBR(d);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} className="animate-fade-in">
 
-            {/* HEADER */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                    <h1 style={{ fontFamily: 'Orbitron', fontSize: '1.8rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '0.25rem', background: 'linear-gradient(135deg, #B89B00, #FFD600)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                        IMPREVISTOS
-                    </h1>
-                    <p style={{ color: '#6B7280', fontSize: '0.82rem' }}>Registre e acompanhe suas ausências e imprevistos</p>
-                </div>
-                <button onClick={() => setShowModal(true)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.2rem', background: '#FFD600', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', color: '#000', boxShadow: '0 2px 8px rgba(255,214,0,0.35)' }}>
-                    <PlusIcon style={{ width: 16, height: 16 }} />
-                    Registrar Imprevisto
-                </button>
-            </div>
+            <AdminHeaderHero
+                title="IMPREVISTOS"
+                subtitle="Registre e acompanhe suas ausências e imprevistos"
+                badge="MOTORISTA"
+                rightSlot={(
+                    <button onClick={() => setShowModal(true)} className="btn-primary">
+                        <PlusIcon style={{ width: 16, height: 16 }} />
+                        Registrar Imprevisto
+                    </button>
+                )}
+            />
 
             {/* KPIS */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem' }}>
                 {[
                     { label: 'Total', value: counts.total, color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
                     { label: 'Pendentes', value: counts.pending, color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
                     { label: 'Validados', value: counts.validated, color: '#15803D', bg: '#F0FDF4', border: '#BBF7D0' },
                     { label: 'Com Penalidade', value: counts.penalized, color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
                 ].map((s, i) => (
-                    <div key={i} style={{ padding: '0.85rem 1rem', borderRadius: 12, background: s.bg, border: `1px solid ${s.border}` }}>
-                        <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: s.color, opacity: 0.7, marginBottom: 4 }}>{s.label}</div>
-                        <div style={{ fontFamily: 'Orbitron', fontSize: '1.6rem', fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
-                    </div>
+                    <AnimatedKpiCard key={i} label={s.label} value={s.value} color={s.color} bg={s.bg} border={s.border} compact />
                 ))}
             </div>
 
@@ -235,6 +328,11 @@ export default function DriverImprevistoPage() {
                                             <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#EA580C' }}>⚠️ Retenção aplicada: R$ {Number(a.penalty).toFixed(2)}</span>
                                         </div>
                                     )}
+                                    <div style={{ marginTop: 10 }}>
+                                        <button type="button" onClick={() => setDetailing(a)} style={{ padding: '0.35rem 0.7rem', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
+                                            Ver detalhes
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -242,7 +340,89 @@ export default function DriverImprevistoPage() {
                 </div>
             )}
 
-            {showModal && <ModalRegistrar onClose={() => setShowModal(false)} onSuccess={load} />}
+            {detailing && (() => {
+                const a = detailing;
+                const sc = STATUS_CONFIG[a.status];
+                const typeHead = TYPE_LABELS[a.type];
+                return (
+                    <EmployeeStyleAdminDetailShell
+                        onClose={() => setDetailing(null)}
+                        accentColor={sc.color}
+                        accentGlow={absencePortalAccentGlow(a.status)}
+                        initials={a.type.slice(0, 2).toUpperCase()}
+                        statusBadge={(
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.2rem 0.6rem', borderRadius: 100, fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, textTransform: 'uppercase' }}>
+                                {sc.label}
+                            </span>
+                        )}
+                        headline={typeHead}
+                        headerTags={(
+                            <>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.28rem 0.7rem', borderRadius: 100, background: `${sc.color}22`, border: `1px solid ${sc.border}`, fontSize: '0.72rem', fontWeight: 700, color: sc.color }}>
+                                    📅 {fmt(a.date)}
+                                </span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0.28rem 0.7rem', borderRadius: 100, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', fontSize: '0.72rem', fontWeight: 700, color: '#CBD5E1' }}>
+                                    🚗 Motorista
+                                </span>
+                            </>
+                        )}
+                        footer={(
+                            <button
+                                type="button"
+                                onClick={() => setDetailing(null)}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.75rem',
+                                    borderRadius: 12,
+                                    border: '1.5px solid #E2E8F0',
+                                    background: 'transparent',
+                                    color: '#6B7280',
+                                    fontWeight: 700,
+                                    fontSize: '0.85rem',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                ✕ Fechar
+                            </button>
+                        )}
+                    >
+                        <div>
+                            <EmployeeStyleSectionTitle icon="🪪" title="Resumo" color="#6366F1" />
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.6rem' }}>
+                                <EmployeeStylePill icon="🏷️" label="Tipo" value={typeHead} accent="#6366F1" />
+                                <EmployeeStylePill icon="📆" label="Data da ausência" value={fmt(a.date)} accent="#6366F1" />
+                                <EmployeeStylePill icon="📌" label="Situação" value={sc.label} accent={sc.color} />
+                                {a.penalty != null && a.penalty > 0 ? (
+                                    <EmployeeStylePill icon="💸" label="Penalidade" value={Number(a.penalty).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} accent="#EA580C" />
+                                ) : null}
+                            </div>
+                        </div>
+                        <div>
+                            <EmployeeStyleSectionTitle icon="🧾" title="Justificativa" color="#7C3AED" />
+                            <div style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: 12, padding: '0.85rem 1rem', fontSize: '0.88rem', color: '#374151', lineHeight: 1.65 }}>
+                                {a.description}
+                            </div>
+                        </div>
+                        {a.adminNote ? (
+                            <div>
+                                <EmployeeStyleSectionTitle icon="💬" title="Resposta da administração" color="#0891B2" />
+                                <div style={{ background: 'rgba(8,145,178,0.06)', border: '1.5px solid rgba(8,145,178,0.22)', borderRadius: 14, padding: '1rem 1.1rem', fontSize: '0.88rem', color: '#374151', lineHeight: 1.7 }}>
+                                    {a.adminNote}
+                                </div>
+                            </div>
+                        ) : null}
+                        <div>
+                            <EmployeeStyleSectionTitle icon="📁" title="Documentos anexados" color="#3B82F6" />
+                            <EmployeeStyleAttachmentsGrid docs={portalAbsenceAttachmentDocs(a.id, a.documentUrl)} />
+                        </div>
+                    </EmployeeStyleAdminDetailShell>
+                );
+            })()}
+
+            {mounted && showModal && createPortal(
+                <ModalRegistrar onClose={() => setShowModal(false)} onSuccess={load} />,
+                document.body
+            )}
         </div>
     );
 }

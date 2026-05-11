@@ -35,8 +35,9 @@ export const reimbursementsApi = {
         return res.data;
     },
 
-    reject: async (id: string, reason?: string) => {
-        const res = await api.patch(`/reimbursements/${id}/reject`, { reason });
+    /** Corpo alinhado ao DTO do Nest: `rejectionReason` (ALG-10). */
+    reject: async (id: string, rejectionReason?: string) => {
+        const res = await api.patch(`/reimbursements/${id}/reject`, { rejectionReason: rejectionReason ?? '' });
         return res.data;
     },
 

@@ -17,6 +17,7 @@ export class CoursesController {
     constructor(private coursesService: CoursesService) { }
 
     @Get()
+    @Roles('ADMIN', 'COORDINATOR', 'TEACHER', 'STUDENT')
     @ApiOperation({ summary: 'List all courses' })
     @ApiQuery({ name: 'state', required: false, description: 'Filter by state (MA or PI)' })
     @ApiQuery({ name: 'active', required: false, type: Boolean })
@@ -36,6 +37,7 @@ export class CoursesController {
     }
 
     @Get(':id')
+    @Roles('ADMIN', 'COORDINATOR', 'TEACHER', 'STUDENT')
     @ApiOperation({ summary: 'Get course by ID' })
     @ApiResponse({ status: 200, description: 'Course retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Course not found' })

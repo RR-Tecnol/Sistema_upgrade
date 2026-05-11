@@ -1,50 +1,84 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useEnrollmentStore } from '@/stores/useEnrollmentStore';
 import api from '@/lib/api/client';
-import { CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/solid';
+import { ExclamationCircleIcon } from '@heroicons/react/24/solid';
+import { EnrollmentDocumentsPreview } from '@/components/enrollment/EnrollmentDocumentsPreview';
+import { CreationSuccessScreen } from '@/components/CreationSuccessScreen';
+
+/** Nest/class-validator pode devolver message como string | string[] | objeto */
+function formatEnrollmentApiError(err: any): string {
+    const d = err?.response?.data;
+    if (d == null) return err?.message || 'Erro ao enviar inscrição. Por favor, tente novamente.';
+    const m = d.message;
+    if (typeof m === 'string') return m;
+    if (Array.isArray(m)) return m.map((x) => String(x)).join(' • ');
+    if (m && typeof m === 'object') {
+        return Object.entries(m)
+            .flatMap(([key, v]) => (Array.isArray(v) ? v.map((x) => `${key}: ${x}`) : [`${key}: ${v}`]))
+            .join(' • ');
+    }
+    if (typeof d === 'string') return d;
+    return 'Erro ao enviar inscrição. Por favor, tente novamente.';
+}
 
 export default function Step8Confirmation() {
-    const router = useRouter();
-    const { classId, formData, prevStep, reset } = useEnrollmentStore();
+    const { classId, formData, prevStep, reset, updatePersonalData } = useEnrollmentStore();
     const [submitting, setSubmitting] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [alreadyEnrolled, setAlreadyEnrolled] = useState(false);
     const [error, setError] = useState('');
     const [protocol, setProtocol] = useState('');
+    /** Resposta da API: aluno já existia (mesmo CPF) — não foi criada conta nova, só nova inscrição */
+    const [reusedExistingStudentAccount, setReusedExistingStudentAccount] = useState(false);
+    /** Quando o formulário foi retomado do armazenamento local, a senha não é persistida por segurança. */
+    const [passwordFallback, setPasswordFallback] = useState('');
 
     const handleSubmit = async () => {
-        setSubmitting(true);
         setError('');
 
+        const password =
+            String(formData.personalData?.password ?? '').trim()
+            || String(passwordFallback ?? '').trim();
+        if (password.length < 6) {
+            setError(
+                'A senha da conta é obrigatória (mínimo 6 caracteres). Se você recarregou a página durante o preenchimento, informe a senha abaixo ou volte ao passo 1.',
+            );
+            return;
+        }
+
+        setSubmitting(true);
+
+        // Strip empty string enum fields — envia undefined em vez de '' para não falhar @IsEnum
+        const clean = (v: any) => (v === '' || v === null || v === undefined) ? undefined : v;
+
         try {
-            // Prepare enrollment data
-            const enrollmentData = {
+            if (!String(formData.personalData?.password ?? '').trim() && passwordFallback) {
+                updatePersonalData({ password });
+            }
+
+            const payload: Record<string, any> = {
                 classId,
-                // Personal Data
                 fullName: formData.personalData.fullName,
                 socialName: formData.personalData.socialName,
                 cpf: formData.personalData.cpf,
-                rg: formData.personalData.rg,
-                rgIssuer: formData.personalData.rgIssuer,
                 birthDate: formData.personalData.birthDate,
-                gender: formData.personalData.gender,
-                raceColor: formData.personalData.raceColor,
-                maritalStatus: formData.personalData.maritalStatus,
+                gender: clean(formData.personalData.gender),
+                raceColor: clean(formData.personalData.raceColor),
+                maritalStatus: clean(formData.personalData.maritalStatus),
                 motherName: formData.personalData.motherName,
                 fatherName: formData.personalData.fatherName,
                 nationality: formData.personalData.nationality,
                 birthCity: formData.personalData.birthCity,
                 birthState: formData.personalData.birthState,
-                // Contact
+                password,
                 email: formData.contact.email,
                 phone: formData.contact.phone,
-                hasWhatsApp: formData.contact.hasWhatsApp,
+                hasWhatsApp: formData.contact.hasWhatsApp ?? true,
                 phoneAlt: formData.contact.phoneAlt,
-                allowWhatsAppContact: formData.contact.allowWhatsAppContact,
-                allowEmailContact: formData.contact.allowEmailContact,
-                // Address
+                allowWhatsAppContact: formData.contact.allowWhatsAppContact ?? true,
+                allowEmailContact: formData.contact.allowEmailContact ?? true,
                 cep: formData.address.cep,
                 street: formData.address.street,
                 number: formData.address.number,
@@ -52,168 +86,248 @@ export default function Step8Confirmation() {
                 neighborhood: formData.address.neighborhood,
                 city: formData.address.city,
                 state: formData.address.state,
-                zone: formData.address.zone,
-                // Socioeconomic
-                educationLevel: formData.socioeconomic.educationLevel,
-                employmentStatus: formData.socioeconomic.employmentStatus,
-                familyIncome: formData.socioeconomic.familyIncome,
-                familyMembersCount: formData.socioeconomic.familyMembersCount,
-                socialProgram: formData.socioeconomic.socialProgram,
-                hasDisability: formData.socioeconomic.hasDisability,
-                disabilityType: formData.socioeconomic.disabilityType,
+                zone: clean(formData.address.zone),
+                educationLevel: clean(formData.socioeconomic.educationLevel),
+                employmentStatus: clean(formData.socioeconomic.employmentStatus),
+                familyIncome: clean(formData.socioeconomic.familyIncome),
+                familyMembersCount: formData.socioeconomic.familyMembersCount ?? 1,
+                socialProgram: clean(formData.socioeconomic.socialProgram),
+                hasDisability: formData.socioeconomic.hasDisability ?? false,
+                disabilityType: clean(formData.socioeconomic.disabilityType),
                 disabilityAdaptation: formData.socioeconomic.disabilityAdaptation,
-                // Professional
+                publicSchoolOnly: formData.socioeconomic.publicSchoolOnly,
                 previousQualification: formData.professional.previousQualification,
                 professionalInterest: formData.professional.professionalInterest,
-                careerGoal: formData.professional.careerGoal,
+                careerGoal: clean(formData.professional.careerGoal),
                 howHeardAbout: formData.professional.howHeardAbout,
                 motivation: formData.professional.motivation,
-                // Terms
-                termsAccepted: formData.terms.termsAccepted,
-                imageUseAuthorization: formData.terms.imageUseAuthorization,
-                attendanceCommitment: formData.terms.attendanceCommitment,
-                dataProcessingConsent: formData.terms.dataProcessingConsent,
+                termsAccepted: !!formData.terms.termsAccepted,
+                imageUseAuthorization: !!formData.terms.imageUseAuthorization,
+                attendanceCommitment: !!formData.terms.attendanceCommitment,
+                dataProcessingConsent: !!formData.terms.dataProcessingConsent,
+                documents: formData.documents,
             };
 
-            // Submit enrollment
-            const response = await api.post('/enrollments/public', enrollmentData);
+            // Remove chaves undefined para não poluir o payload
+            Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
 
-            setProtocol(response.data.protocol);
+            const response = await api.post('/enrollments/public', payload);
+            setProtocol(response.data.protocol ?? '');
+            setReusedExistingStudentAccount(!!response.data.reusedExistingStudentAccount);
             setSuccess(true);
 
-            // Clear form data after successful submission
-            setTimeout(() => {
-                reset();
-            }, 1000);
-
         } catch (err: any) {
-            /* silencioso — erro tratado via setError/setStep acima */
-            setError(err.response?.data?.message || 'Erro ao enviar inscrição. Por favor, tente novamente.');
+            const status = err.response?.status;
+            const msgText = formatEnrollmentApiError(err);
+            const lower = msgText.toLowerCase();
+
+            const alreadyInClass =
+                status === 409
+                || lower.includes('já inscrito')
+                || lower.includes('já cadastrado nesta turma')
+                || lower.includes('aluno já inscrito');
+
+            if (alreadyInClass) {
+                setAlreadyEnrolled(true);
+            } else {
+                setError(msgText);
+            }
         } finally {
             setSubmitting(false);
         }
     };
 
-    if (success) {
+
+    if (alreadyEnrolled) {
         return (
-            <div className="text-center py-12">
-                <CheckCircleIcon className="w-24 h-24 text-green-500 mx-auto mb-6" />
-                <h2 className="text-3xl font-bold text-white mb-4">
-                    Inscrição Realizada com Sucesso!
+            <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+                <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.1rem', fontWeight: 900, color: '#FBBF24', marginBottom: '0.5rem' }}>
+                    VOCÊ JÁ ESTÁ INSCRITO
                 </h2>
-                <p className="text-purple-200 mb-6">
-                    Sua inscrição foi enviada e está em análise.
+                <p style={{ color: '#9CA3AF', fontSize: '0.85rem', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+                    Identificamos que seu CPF ou e-mail já está cadastrado nesta turma.<br />
+                    Acesse o portal do aluno para acompanhar sua inscrição.
                 </p>
-
-                <div className="bg-white/10 rounded-xl p-6 mb-8 max-w-md mx-auto">
-                    <p className="text-purple-200 mb-2">Número do Protocolo:</p>
-                    <p className="text-3xl font-bold text-white">{protocol}</p>
-                    <p className="text-purple-300 text-sm mt-4">
-                        Guarde este número para acompanhar o status da sua inscrição
-                    </p>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <a href="/login" onClick={() => reset()} style={{ padding: '0.75rem 1.75rem', borderRadius: 12, background: 'linear-gradient(135deg, #FBBF24, #F59E0B)', color: '#000', fontWeight: 800, fontSize: '0.88rem', textDecoration: 'none' }}>
+                        🔐 Acessar Portal do Aluno →
+                    </a>
+                    <a href="/cursos" onClick={() => reset()} style={{ padding: '0.75rem 1.5rem', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#9CA3AF', fontWeight: 600, fontSize: '0.88rem', textDecoration: 'none' }}>
+                        Ver outros cursos
+                    </a>
                 </div>
-
-                <div className="space-y-3 text-purple-200 mb-8">
-                    <p>✅ Você receberá um e-mail de confirmação em breve</p>
-                    <p>✅ Acompanhe o status da sua inscrição pelo e-mail cadastrado</p>
-                    <p>✅ Em caso de aprovação, você será notificado sobre o início das aulas</p>
-                </div>
-
-                <button
-                    onClick={() => router.push('/cursos')}
-                    className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/50"
-                >
-                    Voltar para Cursos
-                </button>
             </div>
         );
     }
 
-    return (
-        <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-white mb-6">Confirmação de Dados</h2>
+    if (success) {
+        const email = formData.contact.email || '';
+        return (
+            <CreationSuccessScreen
+                variant="dark"
+                alinhamento="center"
+                title="INSCRIÇÃO ENVIADA!"
+                secondaryLine="Sua inscrição foi recebida e está em análise."
+                protocol={protocol || undefined}
+                redirectMessage="Use os botões abaixo para acessar o portal do aluno ou explorar outros cursos."
+                minHeight="auto"
+                linksRodape={(
+                    <>
+                        <a href="/login" onClick={() => reset()} style={{ padding: '0.75rem 1.75rem', borderRadius: 12, background: 'linear-gradient(135deg, #FBBF24, #F59E0B)', color: '#000', fontWeight: 800, fontSize: '0.88rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 4px 20px rgba(251,191,36,0.35)' }}>
+                            {reusedExistingStudentAccount ? '🔐 Entrar no Portal do Aluno →' : '🔐 Fazer login no Portal do Aluno →'}
+                        </a>
+                        <a href="/cursos" onClick={() => reset()} style={{ padding: '0.75rem 1.5rem', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#9CA3AF', fontWeight: 600, fontSize: '0.88rem', textDecoration: 'none' }}>
+                            Ver outros cursos
+                        </a>
+                    </>
+                )}
+            >
+                {reusedExistingStudentAccount ? (
+                    <div style={{ padding: '1rem 1.25rem', borderRadius: 12, background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.28)', marginBottom: '1rem', textAlign: 'left' }}>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#93C5FD', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>📋 Inscrição na sua conta existente</div>
+                        <p style={{ fontSize: '0.82rem', color: '#D1D5DB', margin: '0 0 8px' }}>
+                            Você <strong style={{ color: '#E5E7EB' }}>já tinha cadastro</strong> no sistema (mesmo CPF). <strong style={{ color: '#E5E7EB' }}>Nenhuma conta nova foi criada.</strong>
+                        </p>
+                        <p style={{ fontSize: '0.78rem', color: '#9CA3AF', margin: '0 0 8px' }}>
+                            Esta inscrição foi associada ao seu perfil e aparece em <strong style={{ color: '#FBBF24' }}>Minhas inscrições</strong> no Portal do Aluno, como <strong style={{ color: '#FBBF24' }}>pendente de análise</strong>.
+                        </p>
+                        <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: 0 }}>
+                            <strong style={{ color: '#9CA3AF' }}>Conta:</strong> {email} — use seu <strong style={{ color: '#9CA3AF' }}>e-mail e senha habituais</strong> para entrar.
+                        </p>
+                    </div>
+                ) : (
+                    <div style={{ padding: '1rem 1.25rem', borderRadius: 12, background: 'rgba(5,150,105,0.06)', border: '1px solid rgba(5,150,105,0.25)', marginBottom: '1rem', textAlign: 'left' }}>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#34D399', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>🔑 Sua conta foi criada!</div>
+                        <p style={{ fontSize: '0.82rem', color: '#D1D5DB', margin: '0 0 4px' }}>
+                            <strong style={{ color: '#9CA3AF' }}>E-mail de acesso:</strong> {email}
+                        </p>
+                        <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: 0 }}>
+                            Use o e-mail acima e a senha criada para acessar o Portal do Aluno — onde você acompanha inscrição, frequência e certificados.
+                        </p>
+                    </div>
+                )}
+                <div style={{ padding: '1rem 1.25rem', borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '0.5rem', textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>📋 Próximos passos</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem', color: '#6B7280' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#34D399' }}>✓</span> Inscrição enviada e aguardando análise</div>
+                        {reusedExistingStudentAccount ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#60A5FA' }}>👤</span> Após o login, abra <strong style={{ color: '#9CA3AF' }}>Minhas inscrições</strong> para ver o status desta turma</div>
+                        ) : null}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#FBBF24' }}>⏳</span> Você será notificado sobre aprovação ou pendências</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span style={{ color: '#60A5FA' }}>📚</span> Em caso de aprovação, apresente-se no primeiro dia de aula</div>
+                    </div>
+                </div>
+            </CreationSuccessScreen>
+        );
+    }
 
-            <div className="bg-blue-500/20 border border-blue-400/50 rounded-xl p-4 mb-6">
-                <p className="text-blue-200 text-sm">
-                    📋 <strong>Revise seus dados:</strong> Confira todas as informações antes de enviar.
-                    Após o envio, não será possível alterar os dados.
+    const SummaryCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
+        <div style={{ borderRadius: 12, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', padding: '0.9rem 1.1rem' }}>
+            <p style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FBBF24', marginBottom: '0.65rem' }}>{title}</p>
+            <div style={{ fontSize: '0.82rem', color: '#9CA3AF', lineHeight: 1.6 }}>
+                {children}
+            </div>
+        </div>
+    );
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff', margin: '0 0 0.25rem' }}>Confirmação de Dados</h2>
+
+            {/* Info banner */}
+            <div style={{ padding: '0.8rem 1rem', borderRadius: 10, background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                <p style={{ fontSize: '0.8rem', color: '#93C5FD', margin: 0 }}>
+                    📋 <strong>Revise seus dados:</strong> Confira todas as informações antes de enviar. Após o envio, não será possível alterar os dados.
                 </p>
             </div>
 
-            {/* Summary Sections */}
-            <div className="space-y-4">
-                {/* Personal Data Summary */}
-                <div className="bg-white/5 rounded-xl p-4 border border-white/20">
-                    <h3 className="text-lg font-semibold text-white mb-3">Dados Pessoais</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                        <p className="text-purple-200"><strong>Nome:</strong> {formData.personalData.fullName}</p>
-                        <p className="text-purple-200"><strong>CPF:</strong> {formData.personalData.cpf}</p>
-                        <p className="text-purple-200"><strong>Data de Nascimento:</strong> {formData.personalData.birthDate}</p>
-                        <p className="text-purple-200"><strong>Gênero:</strong> {formData.personalData.gender}</p>
-                    </div>
-                </div>
-
-                {/* Contact Summary */}
-                <div className="bg-white/5 rounded-xl p-4 border border-white/20">
-                    <h3 className="text-lg font-semibold text-white mb-3">Contato</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                        <p className="text-purple-200"><strong>E-mail:</strong> {formData.contact.email}</p>
-                        <p className="text-purple-200"><strong>Telefone:</strong> {formData.contact.phone}</p>
-                    </div>
-                </div>
-
-                {/* Address Summary */}
-                <div className="bg-white/5 rounded-xl p-4 border border-white/20">
-                    <h3 className="text-lg font-semibold text-white mb-3">Endereço</h3>
-                    <p className="text-purple-200 text-sm">
-                        {formData.address.street}, {formData.address.number} - {formData.address.neighborhood}
-                        <br />
-                        {formData.address.city} - {formData.address.state}, CEP: {formData.address.cep}
+            {!String(formData.personalData?.password ?? '').trim() && (
+                <div style={{ padding: '0.85rem 1rem', borderRadius: 10, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)' }}>
+                    <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#FBBF24', margin: '0 0 0.5rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Senha da conta (não salva no navegador)
                     </p>
-                </div>
-
-                {/* Professional Summary */}
-                <div className="bg-white/5 rounded-xl p-4 border border-white/20">
-                    <h3 className="text-lg font-semibold text-white mb-3">Objetivo Profissional</h3>
-                    <p className="text-purple-200 text-sm">
-                        <strong>Meta:</strong> {formData.professional.careerGoal}
+                    <p style={{ fontSize: '0.78rem', color: '#9CA3AF', margin: '0 0 0.65rem' }}>
+                        Por segurança, a senha não é armazenada ao recarregar a página. Digite novamente a mesma senha do passo 1 para concluir a inscrição.
                     </p>
+                    <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={passwordFallback}
+                        onChange={(e) => setPasswordFallback(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        style={{
+                            width: '100%',
+                            maxWidth: 320,
+                            padding: '0.65rem 0.9rem',
+                            borderRadius: 10,
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            background: 'rgba(255,255,255,0.04)',
+                            color: '#fff',
+                            fontSize: '0.85rem',
+                            boxSizing: 'border-box',
+                        }}
+                    />
                 </div>
-            </div>
+            )}
 
+            {/* Summary sections */}
+            <SummaryCard title="Dados Pessoais">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem' }}>
+                    <p><span style={{ color: '#6B7280' }}>Nome:</span> <strong style={{ color: '#D1D5DB' }}>{formData.personalData.fullName}</strong></p>
+                    <p><span style={{ color: '#6B7280' }}>CPF:</span> <strong style={{ color: '#D1D5DB' }}>{formData.personalData.cpf}</strong></p>
+                    <p><span style={{ color: '#6B7280' }}>Nascimento:</span> <strong style={{ color: '#D1D5DB' }}>{formData.personalData.birthDate}</strong></p>
+                    <p><span style={{ color: '#6B7280' }}>Gênero:</span> <strong style={{ color: '#D1D5DB' }}>{formData.personalData.gender}</strong></p>
+                </div>
+            </SummaryCard>
+
+            <SummaryCard title="Contato">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem' }}>
+                    <p><span style={{ color: '#6B7280' }}>E-mail:</span> <strong style={{ color: '#D1D5DB' }}>{formData.contact.email}</strong></p>
+                    <p><span style={{ color: '#6B7280' }}>Telefone:</span> <strong style={{ color: '#D1D5DB' }}>{formData.contact.phone}</strong></p>
+                </div>
+            </SummaryCard>
+
+            <SummaryCard title="Endereço">
+                <p style={{ color: '#9CA3AF' }}>
+                    {formData.address.street}, {formData.address.number} — {formData.address.neighborhood}<br />
+                    {formData.address.city} / {formData.address.state} — CEP: {formData.address.cep}
+                </p>
+            </SummaryCard>
+
+            <SummaryCard title="Objetivo Profissional">
+                <p><span style={{ color: '#6B7280' }}>Meta:</span> <strong style={{ color: '#D1D5DB' }}>{formData.professional.careerGoal}</strong></p>
+            </SummaryCard>
+
+            <EnrollmentDocumentsPreview documents={formData.documents} variant="dark" />
+
+            {/* Error */}
             {error && (
-                <div className="bg-red-500/20 border border-red-400/50 rounded-xl p-4 flex items-start gap-3">
-                    <ExclamationCircleIcon className="w-6 h-6 text-red-400 flex-shrink-0" />
+                <div style={{ padding: '0.85rem 1rem', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+                    <ExclamationCircleIcon style={{ width: 20, height: 20, color: '#F87171', flexShrink: 0, marginTop: 1 }} />
                     <div>
-                        <p className="text-red-200 font-semibold">Erro ao enviar inscrição</p>
-                        <p className="text-red-300 text-sm mt-1">{error}</p>
+                        <p style={{ color: '#F87171', fontWeight: 700, fontSize: '0.85rem', margin: '0 0 3px' }}>Erro ao enviar inscrição</p>
+                        <p style={{ color: '#FCA5A5', fontSize: '0.78rem', margin: 0 }}>{error}</p>
                     </div>
                 </div>
             )}
 
-            {/* Navigation Buttons */}
-            <div className="flex justify-between pt-6">
+            {/* Nav */}
+            <div className="nav-row">
+                <button className="btn-back" onClick={prevStep} disabled={submitting}>← Voltar</button>
                 <button
-                    onClick={prevStep}
-                    disabled={submitting}
-                    className="px-8 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    ← Voltar
-                </button>
-                <button
+                    className="btn-next"
                     onClick={handleSubmit}
                     disabled={submitting}
-                    className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all duration-300 hover:shadow-lg hover:shadow-green-500/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                     {submitting ? (
                         <>
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <div style={{ width: 16, height: 16, border: '2px solid rgba(0,0,0,0.3)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
                             Enviando...
                         </>
                     ) : (
-                        <>
-                            ✓ Confirmar e Enviar Inscrição
-                        </>
+                        '✓ Confirmar e Enviar'
                     )}
                 </button>
             </div>

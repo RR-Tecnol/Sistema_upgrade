@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsBoolean, IsDecimal, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsBoolean, IsDateString, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { EmployeeRole, EmployeeDepartment } from '@prisma/client';
 
@@ -19,11 +19,6 @@ export class CreateEmployeeDto {
     @IsOptional()
     @IsString()
     cpf?: string;
-
-    @ApiPropertyOptional()
-    @IsOptional()
-    @IsString()
-    rg?: string;
 
     @ApiPropertyOptional()
     @IsOptional()
@@ -87,4 +82,9 @@ export class CreateEmployeeDto {
     @IsOptional()
     @IsString()
     confirmPassword?: string;
+
+    @ApiPropertyOptional({ description: 'Estrutura completa de cadastro (address/documents/role-data)' })
+    @IsOptional()
+    @IsObject()
+    documents?: Record<string, any>;
 }

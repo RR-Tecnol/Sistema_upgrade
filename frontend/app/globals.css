@@ -30,6 +30,8 @@
     /* Light Backgrounds */
     --bg-base: #F4F6FA;
     --bg-surface: #FFFFFF;
+    /** Alias usado em modais/componentes (evita fundo transparente se só --surface for referenciado) */
+    --surface: #FFFFFF;
     --bg-card: #FFFFFF;
     --bg-elevated: #F8F9FC;
     --bg-sidebar: #FFFFFF;
@@ -165,7 +167,7 @@
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -177,7 +179,7 @@
 
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: none;
   }
 }
 
@@ -221,6 +223,11 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 @keyframes shimmer {
@@ -279,6 +286,53 @@
   }
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: none;             opacity: 1; }
+}
+
+@keyframes xp-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes float-particle {
+  0%, 100% { transform: translateY(0) scale(1);   opacity: 0.4; }
+  50%      { transform: translateY(-6px) scale(1.3); opacity: 0.7; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.95); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes trophyBounce {
+  0%   { transform: scale(0.5) rotate(-10deg); opacity: 0; }
+  60%  { transform: scale(1.15) rotate(5deg);  opacity: 1; }
+  80%  { transform: scale(0.95) rotate(-2deg); }
+  100% { transform: scale(1)    rotate(0deg);  }
+}
+
+@keyframes trophyShine {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(255,214,0,0.4)); }
+  50%       { filter: drop-shadow(0 0 12px rgba(255,214,0,0.8)); }
+}
+
+@keyframes xpFloat {
+  0%   { transform: translateY(0);   opacity: 1; }
+  100% { transform: translateY(-24px); opacity: 0; }
+}
+
 /* Animation classes */
 .animate-fade-in {
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -317,6 +371,413 @@
   background: linear-gradient(90deg, transparent 0%, rgba(255, 214, 0, 0.15) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2.5s infinite;
+}
+
+/* ── Admin relatórios: filtro de período (Upgrade) ── */
+@keyframes relatorio-period-glow {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes relatorio-period-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.relatorio-period-shell {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  animation: fadeInUp 0.58s cubic-bezier(0.16, 1, 0.3, 1) both;
+  box-shadow:
+    0 16px 48px rgba(12, 35, 68, 0.35),
+    0 0 0 1px rgba(255, 214, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.relatorio-period-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(900px 320px at 12% -12%, rgba(255, 214, 0, 0.14), transparent 52%),
+    radial-gradient(640px 280px at 92% 108%, rgba(8, 145, 178, 0.12), transparent 48%);
+  pointer-events: none;
+  animation: relatorio-period-glow 5s ease-in-out infinite;
+}
+
+.relatorio-period-shell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: linear-gradient(180deg, #ffd600 0%, #eab308 42%, #0891b2 100%);
+  pointer-events: none;
+}
+
+.relatorio-period-inner {
+  position: relative;
+  z-index: 1;
+  padding: 1.15rem 1.35rem 1.2rem 1.55rem;
+}
+
+.relatorio-period-select {
+  cursor: pointer;
+  transition:
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    transform 0.18s ease,
+    background-color 0.2s ease;
+}
+
+.relatorio-period-select:hover {
+  border-color: rgba(255, 214, 0, 0.75) !important;
+  box-shadow: 0 8px 22px rgba(15, 39, 68, 0.2);
+  transform: translateY(-1px);
+}
+
+.relatorio-period-select:focus {
+  outline: none;
+  border-color: #ffd600 !important;
+  box-shadow: 0 0 0 3px rgba(255, 214, 0, 0.38);
+}
+
+.relatorio-period-chip {
+  animation: relatorio-period-chip-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Dropdown de período (Relatórios) — gatilho e lista no padrão Upgrade (navy / ouro / ciano) */
+.relatorio-upgrade-dd-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  width: auto;
+  max-width: 100%;
+  padding: 0.58rem 0.95rem;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: left;
+  cursor: pointer;
+  color: #f1f5f9;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.11) 0%, rgba(15, 39, 68, 0.45) 100%);
+  border: 1.5px solid rgba(255, 214, 0, 0.52);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 4px 14px rgba(8, 20, 40, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.18s ease,
+    background 0.2s ease;
+}
+
+.relatorio-upgrade-dd-trigger:hover {
+  border-color: rgba(103, 232, 249, 0.55) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 1px rgba(255, 214, 0, 0.2),
+    0 8px 22px rgba(8, 145, 178, 0.22);
+  transform: translateY(-1px);
+}
+
+.relatorio-upgrade-dd-trigger:focus {
+  outline: none;
+  border-color: #ffd600 !important;
+  box-shadow:
+    0 0 0 3px rgba(255, 214, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.relatorio-upgrade-dd-trigger-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.relatorio-upgrade-dd-chevron {
+  flex-shrink: 0;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid rgba(255, 214, 0, 0.92);
+  transition: transform 0.2s ease;
+  margin-top: 2px;
+}
+
+.relatorio-upgrade-dd-chevron--open {
+  transform: rotate(180deg);
+}
+
+.relatorio-upgrade-dd-panel {
+  position: fixed;
+  box-sizing: border-box;
+  padding: 6px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(15, 39, 68, 0.14);
+  box-shadow:
+    0 18px 40px rgba(12, 35, 68, 0.22),
+    0 0 0 1px rgba(255, 214, 0, 0.12);
+  animation: relatorio-period-chip-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.relatorio-upgrade-dd-option {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #0f172a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.relatorio-upgrade-dd-option:hover {
+  background: linear-gradient(135deg, rgba(8, 145, 178, 0.14), rgba(255, 214, 0, 0.1));
+  color: #0c2744;
+}
+
+.relatorio-upgrade-dd-option--selected,
+.relatorio-upgrade-dd-option--selected:hover {
+  background: linear-gradient(135deg, #0e7490 0%, #0a5c6f 100%);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.relatorio-upgrade-dd-option + .relatorio-upgrade-dd-option {
+  margin-top: 2px;
+}
+
+.adm-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 214, 0, 0.22);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(0, 245, 255, 0.14), transparent 55%),
+    radial-gradient(circle at 80% 80%, rgba(255, 214, 0, 0.16), transparent 45%),
+    linear-gradient(135deg, #0b1220 0%, #111827 45%, #1f2937 100%);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+}
+
+.adm-hero-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 30px 30px;
+  opacity: 0.28;
+  animation: adm-grid 8s ease-in-out infinite;
+}
+
+.adm-hero-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 214, 0, 0.9), transparent);
+  animation: adm-scan 3.4s ease-in-out infinite;
+}
+
+.adm-kpi-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border-style: solid;
+  border-width: 1px 1px 1px 4px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.adm-kpi-card:hover {
+  transform: translateY(-2px);
+}
+
+.adm-kpi-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+  animation: adm-grid 5s ease-in-out infinite;
+}
+
+.adm-kpi-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  pointer-events: none;
+  animation: adm-scan 3.6s ease-in-out infinite;
+}
+
+.adm-kpi-topline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+
+.adm-kpi-ring {
+  position: absolute;
+  top: -16px;
+  right: -16px;
+  width: 64px;
+  height: 64px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 999px;
+  pointer-events: none;
+  animation: adm-ring 11s linear infinite;
+}
+
+.adm-kpi-ring-sm {
+  top: -7px;
+  right: -7px;
+  width: 40px;
+  height: 40px;
+  animation: adm-ring 7s linear infinite reverse;
+}
+
+.adm-kpi-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  top: 12px;
+  right: 12px;
+  pointer-events: none;
+  animation: adm-pulse-dot 1.8s infinite;
+}
+
+.adm-entity-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.adm-entity-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 214, 0, 0.45);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+}
+
+.adm-entity-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.adm-fade-up {
+  animation: adm-fade-up 0.45s both;
+}
+
+.adm-scale-in {
+  animation: adm-scale-in 0.35s both;
+}
+
+@keyframes adm-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes adm-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes adm-grid {
+  0%, 100% {
+    opacity: 0.18;
+  }
+  50% {
+    opacity: 0.32;
+  }
+}
+
+@keyframes adm-scan {
+  0%, 100% {
+    top: 0;
+    opacity: 0.6;
+  }
+  50% {
+    top: calc(100% - 2px);
+    opacity: 0.2;
+  }
+}
+
+@keyframes adm-ring {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes adm-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes adm-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.35); }
 }
 
 .delay-100 {
@@ -667,15 +1128,21 @@
   }
 
   .badge-primary {
-    @apply badge-yellow;
+    background: #FFF9C4;
+    color: #92730A;
+    border: 1px solid #FFE97A;
   }
 
   .badge-accent {
-    @apply badge-cyan;
+    background: #E0F7FA;
+    color: #0369A1;
+    border: 1px solid #BAE6FD;
   }
 
   .badge-success {
-    @apply badge-green;
+    background: #DCFCE7;
+    color: #15803D;
+    border: 1px solid #BBF7D0;
   }
 
   .badge-warning {
@@ -685,7 +1152,9 @@
   }
 
   .badge-error {
-    @apply badge-red;
+    background: #FEF2F2;
+    color: #DC2626;
+    border: 1px solid #FECACA;
   }
 
   /* ── DATA TABLE ── */
@@ -1095,9 +1564,9 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(17, 24, 39, 0.35);
+    background: rgba(0, 0, 0, 0.65);
     backdrop-filter: blur(4px);
-    z-index: 100;
+    z-index: 9999;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1112,10 +1581,12 @@
     padding: 2rem;
     width: 100%;
     max-width: 560px;
+    max-height: calc(100vh - 2rem);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
     animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .modal-content::before {
@@ -1862,10 +2333,10 @@
   }
 }
 
-/* ── Modais fullscreen no mobile ── */
+/* ── Modais em folha (mobile) — opt-in por classe ──
+   Evita quebrar modais centralizados de páginas que usam inline style. */
 @media (max-width: 640px) {
-  [style*="position: fixed"][style*="align-items: center"] > div,
-  [style*="position:fixed"][style*="align-items:center"] > div {
+  .mobile-bottom-sheet {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -1875,4 +2346,83 @@
     left: 0 !important;
     right: 0 !important;
   }
+}
+
+/* ANIMACOES: preference animacoes=false desativa todas as transições */
+body.no-animations *,
+body.no-animations *::before,
+body.no-animations *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════
+   UPGRADE SOLO LEVELING — Keyframes Gamificação (Gravity v1.0)
+   Inspirado em Site-advocacia, adaptado para cores Upgrade
+════════════════════════════════════════════════════════════ */
+
+/* Brilho pulsante no badge de rank — usa currentColor */
+@keyframes rank-glow {
+  0%, 100% { box-shadow: 0 0 8px currentColor; }
+  50%       { box-shadow: 0 0 28px currentColor, 0 0 50px currentColor; }
+}
+
+/* Shimmer GPU-accelerated na barra de XP */
+@keyframes xp-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+/* Partículas flutuantes ao redor do ProgressOrb */
+@keyframes float-particle {
+  0%, 100% { transform: translate(0, 0);        opacity: 0.25; }
+  33%       { transform: translate(12px, -28px); opacity: 0.60; }
+  66%       { transform: translate(-10px, -14px);opacity: 0.35; }
+}
+
+/* Drawer lateral entrando da direita */
+@keyframes slide-right {
+  0%   { transform: translateX(100%); opacity: 0; }
+  100% { transform: translateX(0);    opacity: 1; }
+}
+
+/* Backdrop escurecendo */
+@keyframes fade-backdrop {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Pulso suave no badge de rank */
+@keyframes rank-badge-pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.06); }
+}
+
+.rank-glow        { animation: rank-glow 2s ease-in-out infinite; }
+.rank-badge-pulse { animation: rank-badge-pulse 2.5s ease-in-out infinite; }
+.slide-right      { animation: slide-right 0.28s cubic-bezier(0.16,1,0.3,1) both; }
+.fade-backdrop    { animation: fade-backdrop 0.2s ease both; }
+
+/* ── Certificate Templates Editor — Responsive 2-column layout ── */
+.cert-templates-editor-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+/* Colapsa para coluna única em viewports estreitas (tela dividida, tablet, etc.) */
+@media (max-width: 1100px) {
+  .cert-templates-editor-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Preview panel: garante que a imagem do certificado não ultrapasse 100% da coluna */
+.cert-templates-editor-grid > div:last-child {
+  min-width: 0;
+}
+.cert-templates-editor-grid > div:last-child img {
+  max-width: 100%;
+  height: auto;
 }

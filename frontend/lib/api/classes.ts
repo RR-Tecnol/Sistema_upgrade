@@ -17,6 +17,12 @@ export interface Class {
     status: 'PLANNED' | 'ENROLLMENT_OPEN' | 'ENROLLMENT_CLOSED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
     enrollmentOpenDate?: string;
     enrollmentCloseDate?: string;
+    // ── Tipo de rota (REQ-ROUTE-2026) ──
+    routeType?: 'INTERCIDADE' | 'INTRAURBANA';
+    originCityId?: string;
+    originCity?: { id: string; name: string; state: string };
+    originNeighborhood?: string;
+    destinationNeighborhood?: string;
     createdAt: string;
     updatedAt: string;
     course?: {
@@ -36,6 +42,26 @@ export interface Class {
         id: string;
         identifier: string;
     };
+    weekendPolicy?: 'FOLLOW_SCHEDULE' | 'WEEKDAYS_ONLY' | 'ALL_WEEKENDS' | 'SELECT_WEEKENDS';
+    weekendExtraDates?: string[] | null;
+    locationName?: string | null;
+    locationAddress?: string | null;
+    locationReference?: string | null;
+    locationLatitude?: number | null;
+    locationLongitude?: number | null;
+    acaoTurmas?: {
+        id: string;
+        acaoId: string;
+        turmaId: string;
+        acao?: {
+            id: string;
+            nome: string;
+            status: string;
+            dataInicio: string;
+            dataFim: string;
+            cidadeNome?: string;
+        };
+    }[];
 }
 
 export interface CreateClassDto {
@@ -54,6 +80,21 @@ export interface CreateClassDto {
     status?: 'PLANNED' | 'ENROLLMENT_OPEN' | 'ENROLLMENT_CLOSED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
     enrollmentOpenDate?: string;
     enrollmentCloseDate?: string;
+    // ── Tipo de rota (REQ-ROUTE-2026) ──
+    routeType?: 'INTERCIDADE' | 'INTRAURBANA';
+    originCityId?: string;
+    originNeighborhood?: string;
+    destinationNeighborhood?: string;
+    // ── Local físico (REQ-LOCAL-2026) — onde dentro da cidade a turma ocorre ──
+    locationName?: string;
+    locationAddress?: string;
+    locationReference?: string;
+    locationLatitude?: number;
+    locationLongitude?: number;
+    /** Política de fins de semana nos dias letivos previstos (frequência/certificado). */
+    weekendPolicy?: 'FOLLOW_SCHEDULE' | 'WEEKDAYS_ONLY' | 'ALL_WEEKENDS' | 'SELECT_WEEKENDS';
+    /** Com SELECT_WEEKENDS: datas YYYY-MM-DD (aula em fim de semana específico). */
+    weekendExtraDates?: string[];
 }
 
 export const classesApi = {

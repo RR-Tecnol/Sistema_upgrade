@@ -15,7 +15,18 @@ export interface ContaPagar {
     cidade?: string;
     acaoId?: string;
     acao?: { id: string; nome: string } | null;
+    courseFeedback?: {
+        id: string;
+        status?: string;
+        resubmittedAfterReject?: boolean;
+        rejectionReason?: string | null;
+        studentSubmitSequence?: number;
+        currentPhotoUrl?: string | null;
+        socialPostProofUrl?: string | null;
+        student?: { user?: { name?: string; email?: string } };
+    } | null;
     createdAt: string;
+    updatedAt: string;
 }
 
 export interface ContasPagarResponse {

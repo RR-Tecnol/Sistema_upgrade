@@ -18,8 +18,6 @@ export interface PersonalDataForm {
     fullName: string;
     socialName?: string;
     cpf: string;
-    rg: string;
-    rgIssuer: string;
     birthDate: string;
     gender: Gender | '';
     raceColor: RaceColor | '';
@@ -29,6 +27,9 @@ export interface PersonalDataForm {
     nationality: string;
     birthCity: string;
     birthState: string;
+    // Credenciais de acesso (criadas junto com o cadastro)
+    password: string;
+    confirmPassword: string;
 }
 
 // Step 2: Contact
@@ -75,15 +76,14 @@ export interface ProfessionalForm {
     motivation?: string;  // REQ-05: opcional
 }
 
-// Step 6: Documents
-export interface DocumentsForm {
-    photo?: File;
-    rgFront?: File;
-    rgBack?: File;
-    cpfDoc?: File;
-    addressProof?: File;
-    educationProof?: File;
-}
+// Step 6: Documents (indexável para pré-visualização / payload JSON)
+export type DocumentsForm = Partial<Record<string, string>> & {
+    photo?: string;
+    identidade?: string;
+    cpfDoc?: string;
+    addressProof?: string;
+    educationProof?: string;
+};
 
 // Step 7: Terms
 export interface TermsForm {
@@ -119,6 +119,15 @@ interface EnrollmentState {
     updateDocuments: (data: Partial<DocumentsForm>) => void;
     updateTerms: (data: Partial<TermsForm>) => void;
     reset: () => void;
+}
+
+/** Persistência: não gravar senhas no localStorage. */
+function formDataForPersist(formData: EnrollmentState['formData']): EnrollmentState['formData'] {
+    const { password: _pw, confirmPassword: _cp, ...restPersonal } = formData.personalData;
+    return {
+        ...formData,
+        personalData: { ...restPersonal },
+    };
 }
 
 const initialState = {
@@ -216,7 +225,12 @@ export const useEnrollmentStore = create<EnrollmentState>()(
             reset: () => set(initialState),
         }),
         {
-            name: 'enrollment-storage',
+            name: 'enrollment-storage-v3',
+            partialize: (state) => ({
+                classId: state.classId,
+                currentStep: state.currentStep,
+                formData: formDataForPersist(state.formData),
+            }),
         }
     )
 );

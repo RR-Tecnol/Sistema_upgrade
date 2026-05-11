@@ -9,10 +9,12 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { getFrontendCorsOrigins } from '../common/cors-origins';
+import { withNormalizedActorWsPayload } from './ws-notification-payload.contract';
 
 @WebSocketGateway({
     cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        origin: getFrontendCorsOrigins(),
         credentials: true,
     },
     namespace: '/notifications',
@@ -46,7 +48,13 @@ export class NotificationsGateway
             client.data.userId = userId;
             this.connectedUsers.set(userId, client.id);
             client.join(`user:${userId}`);
-            if (payload.role === 'ADMIN' || payload.role === 'COORDINATOR') {
+            // Sala «admins»: operações administrativas + financeiro (UX-5 — refresh listagens)
+            if (
+                payload.role === 'ADMIN' ||
+                payload.role === 'COORDINATOR' ||
+                payload.role === 'FINANCIAL' ||
+                payload.role === 'IT_ADMIN'
+            ) {
                 client.join('admins');
             }
             // BUG-13: userId mascarado nos logs — LGPD
@@ -65,17 +73,33 @@ export class NotificationsGateway
 
     // Métodos de emissão — usados por outros serviços
     notifyAdmins(event: string, data: any) {
-        this.server.to('admins').emit(event, data);
+        this.server.to('admins').emit(event, withNormalizedActorWsPayload(data));
+    }
+
+    /**
+     * UX-5: outras abas admin (Contas a pagar, Reembolsos, …) recarregam listagens.
+     * Payload mínimo + `source` para debug; nunca bloquear o chamador.
+     */
+    notifyFinanceiroListagemRefresh(extra: Record<string, unknown> = {}) {
+        this.notifyAdmins('financeiro_listagem_refresh', {
+            ts: new Date().toISOString(),
+            ...extra,
+        });
     }
 
     notifyUser(userId: string, event: string, data: any) {
-        this.server.to(`user:${userId}`).emit(event, data);
+        this.server.to(`user:${userId}`).emit(event, withNormalizedActorWsPayload(data));
     }
 
     notifyAll(event: string, data: any) {
-        this.server.emit(event, data);
+        this.server.emit(event, withNormalizedActorWsPayload(data));
     }
 
+    // Eventos registrados: nova_inscricao, inscricao_aprovada, inscricao_rejeitada,
+    // frequencia_registrada, imprevisto_cadastrado, imprevisto_cadastrado_por_admin,
+    // imprevisto_revisado, reembolso_solicitado, reembolso_revisado, custo_excessivo,
+    // financeiro_listagem_refresh (UX-5 — admins),
+    // F2.9: driver_location_update, driver_trip_started, driver_arrived, driver_alert
     @SubscribeMessage('ping')
     handlePing(@ConnectedSocket() client: Socket) {
         client.emit('pong', { ts: Date.now() });

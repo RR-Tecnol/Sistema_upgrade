@@ -3,7 +3,30 @@
 
 ---
 
+## 🔗 REFERÊNCIAS CRUZADAS
+
+> **Quando ler este documento:**
+> Sempre que for alterar qualquer arquivo dentro de `frontend/app/driver/*` ou componentes usados exclusivamente pelo portal do motorista.
+>
+> **Ler antes deste:**
+> - [`sobre-sistema.md §7.3`](./sobre-sistema.md) — fluxo completo do perfil Motorista
+> - [`sobre-sistema.md §11.8`](./sobre-sistema.md) — módulo GPS/DriverLocation
+> - [`sobre-sistema.md §16`](./sobre-sistema.md) — `useDriverTracking` hook e stores
+> - [`LIVRO_DE_REGRAS.md §1`](./LIVRO_DE_REGRAS.md) — regras gerais de UI/UX
+> - [`LIVRO_DE_REGRAS.md §8G`](./LIVRO_DE_REGRAS.md) — anti-padrões GPS e mapas
+>
+> **Arquivos impactados por estas regras:**
+> | Arquivo | Regras críticas |
+> |---------|----------------|
+> | `frontend/app/driver/layout.tsx` | Regra 1 (shell fixed), Regra 3 (sidebar transform) |
+> | `frontend/app/driver/dashboard/page.tsx` | Regra 4 (sem maxWidth), Regra 5 (grid auto-fill) |
+> | `frontend/app/driver/viagens/page.tsx` | Regra 2 (content left), Regra 8 (5 resoluções) |
+> | `frontend/components/MapaMotoristas.tsx` | Relação com `RASTREAMENTO_PRODUCAO_APRESENTACAO.md` |
+
+---
+
 ## Por que este documento existe
+
 
 Entre EXEC-02 e a sessão de 18/03/2026, o portal do motorista passou por mais de 10 tentativas
 de correção de responsividade, cada uma gerando novos problemas. O diagnóstico final revelou

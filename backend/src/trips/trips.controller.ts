@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TripStatus } from '@prisma/client';
+import { MinioService } from '../reimbursement/minio.service';
 
 // ─── Rotas do MOTORISTA ────────────────────────────────────────────────────────
 @ApiTags('driver/trips')
@@ -13,7 +14,10 @@ import { TripStatus } from '@prisma/client';
 @Roles('DRIVER')
 @ApiBearerAuth()
 export class TripsController {
-    constructor(private readonly tripsService: TripsService) {}
+    constructor(
+        private readonly tripsService: TripsService,
+        private readonly minioService: MinioService,
+    ) {}
 
     @Get()
     @ApiOperation({ summary: 'Viagens do motorista autenticado' })
@@ -36,10 +40,22 @@ export class TripsController {
     async startTrip(
         @Request() req: any,
         @Param('id') id: string,
-        @Body('kmStart') kmStart: number,
+        @Body('kmStart') kmStart?: number,
+        @Body('startOdometerPhotoUrl') startOdometerPhotoUrl?: string,
         @Body('actualDepartureDate') actualDepartureDate?: string,
     ) {
-        return this.tripsService.startTrip(id, req.user.id, kmStart, actualDepartureDate);
+        return this.tripsService.startTrip(id, req.user.id, kmStart, startOdometerPhotoUrl, actualDepartureDate);
+    }
+
+    @Patch(':id/respond')
+    @ApiOperation({ summary: 'Motorista aceita ou recusa viagem planejada' })
+    async respondTrip(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body('decision') decision: 'ACCEPTED' | 'REJECTED',
+        @Body('reason') reason?: string,
+    ) {
+        return this.tripsService.respondTrip(id, req.user.id, decision, reason);
     }
 
     @Patch(':id/complete')
@@ -47,10 +63,28 @@ export class TripsController {
     async completeTrip(
         @Request() req: any,
         @Param('id') id: string,
-        @Body('kmEnd') kmEnd: number,
+        @Body('endOdometerPhotoUrl') endOdometerPhotoUrl: string,
+        @Body('gpsDistanceKm') gpsDistanceKm?: number,
+        @Body('kmEnd') kmEnd?: number,
         @Body('actualArrivalDate') actualArrivalDate?: string,
     ) {
-        return this.tripsService.completeTrip(id, req.user.id, kmEnd, actualArrivalDate);
+        return this.tripsService.completeTrip(id, req.user.id, endOdometerPhotoUrl, gpsDistanceKm, kmEnd, actualArrivalDate);
+    }
+
+    @Post('presigned-url')
+    @ApiOperation({ summary: 'Gerar URL para upload de foto do painel (MinIO)' })
+    async getPresignedUrl(@Body('filename') filename: string, @Request() req: any) {
+        const bucket = process.env.MINIO_BUCKET_REPORTS || 'reports';
+        const fileKey = `odometer/${req.user.id}/${Date.now()}_${filename}`;
+        const uploadUrl = await this.minioService.presignedPutUrl(bucket, fileKey, 900);
+        
+        const minioEndpoint = process.env.MINIO_ENDPOINT || 'localhost';
+        const minioPort = process.env.MINIO_PORT || '9010';
+        const useSSL = process.env.MINIO_USE_SSL === 'true';
+        const protocol = useSSL ? 'https' : 'http';
+        const fileUrl = `${protocol}://${minioEndpoint}:${minioPort}/${bucket}/${fileKey}`;
+        
+        return { uploadUrl, fileKey, fileUrl };
     }
 
     @Patch(':id/notes')
@@ -82,6 +116,46 @@ export class AdminTripsController {
         @Query('driverUserId') driverUserId?: string,
     ) {
         return this.tripsService.findAllAdmin(status, driverUserId);
+    }
+
+    @Post('manual')
+    @ApiOperation({ summary: '[Admin] Criar viagem manual (cidade-cidade ou intra-cidade)' })
+    async createManual(
+        @Body()
+        body: {
+            truckId: string;
+            originCityId: string;
+            destinationCityId: string;
+            departureDate: string;
+            expectedArrivalDate: string;
+            driverUserId: string;
+            notes?: string;
+            originCep?: string;
+            destinationCep?: string;
+            originLatitude?: number;
+            originLongitude?: number;
+            destinationLatitude?: number;
+            destinationLongitude?: number;
+        },
+    ) {
+        return this.tripsService.createManualTrip(body);
+    }
+
+    @Patch(':id/assign-driver')
+    @ApiOperation({ summary: '[Admin] Vincular/revincular motorista em viagem planejada' })
+    async assignDriver(@Param('id') id: string, @Body('driverUserId') driverUserId: string) {
+        return this.tripsService.assignDriver(id, driverUserId);
+    }
+
+    @Patch(':id/rejection-penalty')
+    @ApiOperation({ summary: '[Admin] Aplicar penalização por recusa de viagem' })
+    async applyRejectionPenalty(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Body('penaltyAmount') penaltyAmount?: number,
+        @Body('adminNote') adminNote?: string,
+    ) {
+        return this.tripsService.applyRejectionPenalty(id, req.user.id, penaltyAmount, adminNote);
     }
 
     /**

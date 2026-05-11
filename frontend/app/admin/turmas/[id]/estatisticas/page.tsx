@@ -26,6 +26,17 @@ interface ClassDetail {
     course?: { name: string; workloadHours: number };
     city?: { name: string; state: string };
     group?: { name: string };
+    acaoTurmas?: {
+        id: string;
+        acao?: {
+            id: string;
+            nome: string;
+            status: string;
+            dataInicio: string;
+            dataFim: string;
+            cidadeNome?: string;
+        };
+    }[];
     _count?: { enrollments: number };
 }
 
@@ -116,7 +127,7 @@ export default function EstatisticasTurmaPage() {
                     {cls.classIdentifier}
                 </Link>
                 <span style={{ color: '#D1D5DB', fontSize: '0.78rem' }}>/</span>
-                <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 600 }}>Estatísticas</span>
+                <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 600 }}>Ver mais</span>
             </div>
 
             {/* Header */}
@@ -126,7 +137,7 @@ export default function EstatisticasTurmaPage() {
                 </div>
                 <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <h1 style={{ fontFamily: 'Orbitron', fontSize: '1.1rem', fontWeight: 900, color: '#111827', margin: 0 }}>ESTATÍSTICAS</h1>
+                            <h1 style={{ fontFamily: 'Orbitron', fontSize: '1.1rem', fontWeight: 900, color: '#111827', margin: 0 }}>VER MAIS DA TURMA</h1>
                         <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.75rem', fontWeight: 700, color: '#374151' }}>{cls.classIdentifier}</span>
                         <span style={{ padding: '0.2rem 0.65rem', borderRadius: 100, fontSize: '0.65rem', fontWeight: 700, background: st.bg, color: st.color, border: `1px solid ${st.color}44` }}>
                             {st.label}
@@ -135,6 +146,30 @@ export default function EstatisticasTurmaPage() {
                     <p style={{ margin: '0.35rem 0 0', fontSize: '0.8rem', color: '#6B7280' }}>
                         {cls.course?.name} · {cls.city?.name}/{cls.city?.state} · {fmtDate(cls.startDate)} → {fmtDate(cls.endDate)}
                     </p>
+                </div>
+            </div>
+
+            {/* Vinculações */}
+            <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E5E7EB', padding: '1rem 1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: '#6B7280', marginBottom: '0.65rem' }}>
+                    Curso e Períodos de Curso vinculados
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: '0.82rem', color: '#111827' }}>
+                        <strong>Curso:</strong> {cls.course?.name || '—'}
+                    </div>
+                    {cls.acaoTurmas && cls.acaoTurmas.length > 0 ? (
+                        cls.acaoTurmas.map(link => (
+                            <div key={link.id} style={{ padding: '0.6rem 0.75rem', border: '1px solid #E5E7EB', borderRadius: 10, background: '#FAFAFA', fontSize: '0.8rem' }}>
+                                <div style={{ fontWeight: 700, color: '#374151' }}>{link.acao?.nome || 'Período sem nome'}</div>
+                                <div style={{ color: '#6B7280', marginTop: 2 }}>
+                                    {link.acao?.cidadeNome || 'Cidade não informada'} · {link.acao?.dataInicio ? fmtDate(link.acao.dataInicio) : '—'} até {link.acao?.dataFim ? fmtDate(link.acao.dataFim) : '—'}
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div style={{ fontSize: '0.78rem', color: '#9CA3AF' }}>Esta turma ainda não está vinculada a um período de curso.</div>
+                    )}
                 </div>
             </div>
 

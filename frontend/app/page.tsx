@@ -2,10 +2,6 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
-
-// Disable SSR for ParticleCanvas to avoid hydration mismatch
-const ParticleCanvas = dynamic(() => Promise.resolve(ParticleCanvasInner), { ssr: false });
 
 // ─── Animated Particle Canvas ─────────────────────────────────────────────────
 function ParticleCanvasInner() {
@@ -88,6 +84,24 @@ function ParticleCanvasInner() {
     );
 }
 
+/** Só monta o canvas no cliente — evita hidratação e não depende de `next/dynamic` (chunks webpack em dev). */
+function ParticleCanvas() {
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+    if (!mounted) {
+        return (
+            <div
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                style={{ zIndex: 0 }}
+                aria-hidden
+            />
+        );
+    }
+    return <ParticleCanvasInner />;
+}
+
 // ─── Typewriter ───────────────────────────────────────────────────────────────
 function TypeWriter({ words }: { words: string[] }) {
     const [idx, setIdx] = useState(0);
@@ -163,7 +177,7 @@ function Counter({ end, suffix = '', label }: { end: number; suffix?: string; la
                 className="text-5xl font-black mb-2 transition-transform duration-300 group-hover:scale-110"
                 style={{ color: '#FBBF24', textShadow: '0 0 30px rgba(251,191,36,0.5)' }}
             >
-                {count.toLocaleString()}{suffix}
+                {count.toLocaleString('pt-BR')}{suffix}
             </div>
             <div className="text-gray-400 text-sm font-medium tracking-widest uppercase">{label}</div>
         </div>
@@ -244,10 +258,7 @@ export default function Home() {
     return (
         <div className="min-h-screen" style={{ background: '#080808', color: '#fff', fontFamily: '"Inter", system-ui, sans-serif' }}>
 
-            {/* ── Google Fonts ── */}
             <style suppressHydrationWarning>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
         @keyframes shimmer {
           0% { opacity: 0; transform: scaleX(0); }
           100% { opacity: 1; transform: scaleX(1); }
@@ -419,15 +430,9 @@ export default function Home() {
 
                     {/* Nav Links */}
                     <div className="hidden md:flex items-center gap-8">
-                        {['Cursos', 'Sobre', 'Inscrição'].map((item) => (
-                            <a
-                                key={item}
-                                href={`#${item.toLowerCase()}`}
-                                className="text-gray-400 text-sm font-medium hover:text-yellow-400 transition-colors duration-300 tracking-wide"
-                            >
-                                {item}
-                            </a>
-                        ))}
+                        <Link href="/cursos" className="text-gray-400 text-sm font-medium hover:text-yellow-400 transition-colors duration-300 tracking-wide">Cursos</Link>
+                        <a href="#sobre" className="text-gray-400 text-sm font-medium hover:text-yellow-400 transition-colors duration-300 tracking-wide">Sobre</a>
+                        <Link href="/cursos" className="text-gray-400 text-sm font-medium hover:text-yellow-400 transition-colors duration-300 tracking-wide">Inscrição</Link>
                     </div>
 
                     {/* CTA Buttons */}

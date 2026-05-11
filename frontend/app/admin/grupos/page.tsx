@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react';
 import { groupsApi, Group } from '@/lib/api/groups';
 import { PencilIcon, TrashIcon, PlusIcon, BuildingOfficeIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import { CreationSuccessScreen } from '@/components/CreationSuccessScreen';
+import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
 const STATE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; accent: string }> = {
     MA: { label: 'Maranhão', color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD', accent: '#0E7490' },
@@ -15,9 +19,10 @@ function ModalConfirmacao({ title, message, onConfirm, onCancel, danger = true }
     title: string; message: string; onConfirm: () => void; onCancel: () => void; danger?: boolean;
 }) {
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        <ModalPortal>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
             onClick={onCancel}>
-            <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', animation: 'slideUp 0.2s' }}
+            <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 420, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', animation: 'slideUp 0.2s' }}
                 onClick={e => e.stopPropagation()}>
                 <div style={{ padding: '18px 24px 14px', background: danger ? '#FEF2F2' : '#FFFDE7', borderBottom: `1px solid ${danger ? '#FECACA' : '#FEF08A'}`, borderRadius: '20px 20px 0 0', display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: danger ? '#DC2626' : '#FFD600', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -40,6 +45,7 @@ function ModalConfirmacao({ title, message, onConfirm, onCancel, danger = true }
             </div>
             <style>{`@keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
         </div>
+        </ModalPortal>
     );
 }
 
@@ -62,9 +68,10 @@ function ModalEdicaoGrupo({ group, onClose, onSaved }: { group: Group; onClose: 
     };
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        <ModalPortal>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
             onClick={onClose}>
-            <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', animation: 'slideUp 0.2s' }}
+            <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', animation: 'slideUp 0.2s' }}
                 onClick={e => e.stopPropagation()}>
                 <div style={{ padding: '18px 24px 14px', background: cfg.bg, borderBottom: `1px solid ${cfg.border}`, borderRadius: '20px 20px 0 0', display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -99,6 +106,7 @@ function ModalEdicaoGrupo({ group, onClose, onSaved }: { group: Group; onClose: 
             </div>
             <style>{`@keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
         </div>
+        </ModalPortal>
     );
 }
 
@@ -110,8 +118,19 @@ export default function GruposPage() {
     const [showNewGroup, setShowNewGroup] = useState(false);
     const [newGroupForm, setNewGroupForm] = useState({ name: '', state: 'MA' });
     const [newGroupSaving, setNewGroupSaving] = useState(false);
+    const [creationDone, setCreationDone] = useState<{ name: string } | null>(null);
 
     useEffect(() => { loadGroups(); }, []);
+    useEffect(() => {
+        if (!creationDone) return;
+        const t = setTimeout(() => setCreationDone(null), 2400);
+        return () => clearTimeout(t);
+    }, [creationDone]);
+    useEffect(() => {
+        const hasOpenModal = !!editGroup || !!deleteGroup || showNewGroup;
+        document.body.style.overflow = hasOpenModal ? 'hidden' : '';
+        return () => { document.body.style.overflow = ''; };
+    }, [editGroup, deleteGroup, showNewGroup]);
 
     const loadGroups = async () => {
         try {
@@ -143,11 +162,12 @@ export default function GruposPage() {
         if (!newGroupForm.name.trim()) return;
         setNewGroupSaving(true);
         try {
-            await groupsApi.create({ name: newGroupForm.name.trim(), state: newGroupForm.state });
+            const createdName = newGroupForm.name.trim();
+            await groupsApi.create({ name: createdName, state: newGroupForm.state });
             setShowNewGroup(false);
             setNewGroupForm({ name: '', state: 'MA' });
             await loadGroups();
-            toast.success('Grupo criado com sucesso!');
+            setCreationDone({ name: createdName });
         } catch (err: any) {
             toast.error(err?.response?.data?.message || 'Erro ao criar grupo.');
         } finally {
@@ -161,42 +181,36 @@ export default function GruposPage() {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }} className="animate-fade-in">
 
-            {/* HEADER */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '2rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
-                        GRUPOS
-                    </h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                        Divisões operacionais do programa Qualifica MA &amp; PI
-                    </p>
-                </div>
-                <button
-                    onClick={() => setShowNewGroup(true)}
-                    className="btn-primary"
-                >
-                    <PlusIcon style={{ width: 16, height: 16 }} />
-                    Novo Grupo
-                </button>
-            </div>
+            <AdminHeaderHero
+                title="GRUPOS"
+                subtitle="Divisões operacionais do programa Qualifica MA & PI"
+                rightSlot={(
+                    <button
+                        onClick={() => setShowNewGroup(true)}
+                        className="btn-primary"
+                    >
+                        <PlusIcon style={{ width: 16, height: 16 }} />
+                        Novo Grupo
+                    </button>
+                )}
+            />
 
             {/* STATS */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                 {[
                     { label: 'Total de Grupos', value: groups.length, color: '#FFD600', bg: '#FFFDE7', border: '#FEF08A' },
                     { label: 'Grupos Maranhão', value: maGroups.length, color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
                     { label: 'Grupos Piauí', value: piGroups.length, color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },
                 ].map((s, i) => (
-                    <div key={i} className="animate-scale-in" style={{
-                        animationDelay: `${i * 60}ms`,
-                        padding: '1.25rem 1.5rem',
-                        borderRadius: 16,
-                        background: s.bg,
-                        border: `1px solid ${s.border}`,
-                    }}>
-                        <div style={{ fontFamily: 'Orbitron', fontSize: '1.8rem', fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: s.color, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '0.35rem' }}>{s.label}</div>
-                    </div>
+                    <AnimatedKpiCard
+                        key={s.label}
+                        label={s.label}
+                        value={s.value}
+                        color={s.color}
+                        bg={s.bg}
+                        border={s.border}
+                        delayMs={i * 60}
+                    />
                 ))}
             </div>
 
@@ -358,9 +372,36 @@ export default function GruposPage() {
             )}
 
             {/* Modal: Novo Grupo */}
+            {creationDone && (
+                <ModalPortal>
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: MODAL_PORTAL_Z_INDEX,
+                        background: 'rgba(255,255,255,0.96)',
+                        backdropFilter: 'blur(6px)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1.5rem',
+                    }}
+                >
+                    <CreationSuccessScreen
+                        title="GRUPO CRIADO!"
+                        entityName={creationDone.name}
+                        redirectMessage="Atualizando a lista de grupos..."
+                        alinhamento="center"
+                        minHeight="50vh"
+                    />
+                </div>
+                </ModalPortal>
+            )}
+
             {showNewGroup && (
-                <div className="modal-overlay" onClick={() => setShowNewGroup(false)}>
-                    <div className="modal-content animate-scale-in" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+                <ModalPortal>
+                <div className="modal-overlay" style={{ zIndex: MODAL_PORTAL_Z_INDEX }} onClick={() => setShowNewGroup(false)}>
+                    <div className="modal-content animate-scale-in" style={{ maxWidth: 420, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
                         <button onClick={() => setShowNewGroup(false)}
                             style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#9CA3AF' }}>✕</button>
 
@@ -415,6 +456,7 @@ export default function GruposPage() {
                         </form>
                     </div>
                 </div>
+                </ModalPortal>
             )}
         </div>
     );

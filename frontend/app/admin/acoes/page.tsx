@@ -5,6 +5,10 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { acoesApi, Acao, AcaoStatus, AcaoEstatisticas } from '@/lib/api/acoes';
 import api from '@/lib/api/acoes'; // axios com interceptor de auth
+import { LocationFields, LocationFieldsValue } from '@/components/admin/LocationFields';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
+import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 
 // ── Utilitários ───────────────────────────────────────────────────
 
@@ -27,6 +31,14 @@ const fmtDate = (d: string) =>
 
 const fmtCurrency = (v: number) =>
     v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const addDays = (dateStr: string, days: number) => {
+    if (!dateStr || !Number.isFinite(days) || days < 1) return dateStr;
+    const base = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(base.getTime())) return dateStr;
+    base.setDate(base.getDate() + (days - 1));
+    return base.toISOString().slice(0, 10);
+};
 
 // ── CidadeAutocomplete ────────────────────────────────────────────
 
@@ -112,27 +124,360 @@ function CidadeAutocomplete({
     );
 }
 
-function ModalNovaAcao({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+// ── Modal Criar Turma vinculada à Ação ──────────────────────────────────────
+function ModalCriarTurmaParaAcao({
+    acaoId, grupoId, cidadeId, cidadeNome, dataInicio, dataFim, inheritedLocation, preferredCourseId,
+    onClose, onCreated,
+}: {
+    acaoId: string;
+    grupoId: string;
+    cidadeId?: string;
+    cidadeNome?: string;
+    dataInicio: string;
+    dataFim: string;
+    /** Local físico herdado da Acao (REQ-LOCAL-2026) — admin pode editar antes de salvar */
+    inheritedLocation?: LocationFieldsValue;
+    preferredCourseId?: string;
+    onClose: () => void;
+    onCreated: () => void;
+}) {
+    const [cursos, setCursos] = useState<any[]>([]);
+    const [cidades, setCidades] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [form, setForm] = useState({
+        courseId: preferredCourseId || '',
+        cityId: cidadeId || '',
+        period: 'MORNING',
+        startTime: '07:00',
+        endTime: '12:00',
+        vacancies: '30',
+        startDate: dataInicio,
+        endDate: dataFim,
+    });
+    // Local físico — pré-preenchido com o que a Acao definiu, mas editável
+    const [classLocation, setClassLocation] = useState<LocationFieldsValue>({
+        name: inheritedLocation?.name ?? null,
+        address: inheritedLocation?.address ?? null,
+        reference: inheritedLocation?.reference ?? null,
+        latitude: inheritedLocation?.latitude ?? null,
+        longitude: inheritedLocation?.longitude ?? null,
+    });
+    const selectedCourseMeta = cursos.find((c: any) => c.id === form.courseId);
+
+    useEffect(() => {
+        Promise.all([
+            api.get('/courses').then(r => Array.isArray(r.data) ? r.data : r.data?.data || []),
+            api.get('/cities').then(r => Array.isArray(r.data) ? r.data : r.data?.data || []),
+        ]).then(([c, ci]) => {
+            setCursos(c);
+            setCidades(ci);
+
+            if (preferredCourseId && c.some((course: any) => course.id === preferredCourseId)) {
+                setForm(prev => ({ ...prev, courseId: preferredCourseId }));
+            }
+        }).catch(() => {});
+    }, [preferredCourseId]);
+
+    useEffect(() => {
+        if (!form.courseId || !form.cityId || !form.startDate) return;
+
+        const selectedCourse = cursos.find((c: any) => c.id === form.courseId);
+        const selectedCity = cidades.find((c: any) => c.id === form.cityId);
+        if (!selectedCourse || !selectedCity) return;
+
+        const durationDays = selectedCity.state === 'PI'
+            ? Number(selectedCourse.durationDaysPI)
+            : Number(selectedCourse.durationDaysMA);
+        if (!Number.isFinite(durationDays) || durationDays < 1) return;
+
+        const calculatedEndDate = addDays(form.startDate, durationDays);
+        setForm(prev => (prev.endDate === calculatedEndDate ? prev : { ...prev, endDate: calculatedEndDate }));
+    }, [form.courseId, form.cityId, form.startDate, cursos, cidades]);
+
+    const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!form.courseId) { setError('Selecione o curso'); return; }
+        if (!form.cityId) { setError('Selecione a cidade'); return; }
+        if (!form.vacancies || Number(form.vacancies) < 1) { setError('Informe o número de vagas'); return; }
+
+        setLoading(true);
+        setError('');
+        try {
+            // Gera identificador automático
+            const curso = cursos.find(c => c.id === form.courseId);
+            const cidade = cidades.find(c => c.id === form.cityId);
+            const now = new Date();
+            const classIdentifier = `${(curso?.name || 'CURSO').slice(0, 4).toUpperCase()}-${(cidade?.state || 'XX')}-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            // 1. Criar a turma com status ENROLLMENT_OPEN
+            const classRes = await api.post('/classes', {
+                courseId: form.courseId,
+                groupId: grupoId,
+                cityId: form.cityId,
+                classIdentifier,
+                startDate: form.startDate,
+                endDate: form.endDate,
+                period: form.period,
+                startTime: form.startTime,
+                endTime: form.endTime,
+                vacancies: Number(form.vacancies),
+                reserveSlots: 4,
+                status: 'ENROLLMENT_OPEN',
+                // Local físico herdado da Acao (REQ-LOCAL-2026) — admin pode ter editado
+                locationName: classLocation.name || undefined,
+                locationAddress: classLocation.address || undefined,
+                locationReference: classLocation.reference || undefined,
+                locationLatitude: classLocation.latitude ?? undefined,
+                locationLongitude: classLocation.longitude ?? undefined,
+            });
+            const classId = classRes.data?.id;
+
+            // 2. Vincular a turma à Ação
+            if (classId) {
+                await acoesApi.addTurma(acaoId, classId);
+            }
+
+            onCreated();
+            onClose();
+        } catch (err: any) {
+            setError(err?.response?.data?.message || 'Erro ao criar turma');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const INPUT: React.CSSProperties = {
+        width: '100%', padding: '0.65rem 0.9rem', borderRadius: 9,
+        border: '1.5px solid #E5E7EB', background: '#F9FAFB',
+        fontSize: '0.85rem', color: '#111827', outline: 'none',
+    };
+    const LABEL: React.CSSProperties = {
+        display: 'block', fontSize: '0.68rem', fontWeight: 700,
+        textTransform: 'uppercase' as const, letterSpacing: '0.08em',
+        color: '#6B7280', marginBottom: '0.35rem',
+    };
+
+    const overlay = (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'slideUp 0.25s' }}>
+                {/* Header */}
+                <div style={{ padding: '20px 28px 14px', background: 'linear-gradient(135deg, #059669, #047857)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>🎓</div>
+                        <div>
+                            <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.9rem', fontWeight: 900, color: '#fff', margin: 0, letterSpacing: '0.06em' }}>CRIAR TURMA PARA ESTE PERÍODO</h2>
+                            <p style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.8)', marginTop: 4, lineHeight: 1.4 }}>
+                                ✅ Período criado com sucesso! Agora defina a turma que aparecerá publicamente com inscrições abertas.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Aviso informativo */}
+                <div style={{ padding: '12px 28px', background: '#F0FDF4', borderBottom: '1px solid #D1FAE5', fontSize: '0.78rem', color: '#065F46', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span>💡</span>
+                    <span>A turma criada aqui ficará <strong>visível no site público</strong> com o status "Inscrições Abertas". Alunos poderão se inscrever imediatamente.</span>
+                </div>
+
+                <form onSubmit={handleSubmit} style={{ padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+                    {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 9, fontSize: '0.85rem' }}>⚠️ {error}</div>}
+
+                    {preferredCourseId && selectedCourseMeta && (
+                        <div
+                            style={{
+                                padding: '10px 12px',
+                                borderRadius: 10,
+                                background: '#EFFCF6',
+                                border: '1px solid #A7F3D0',
+                                color: '#065F46',
+                                fontSize: '0.8rem',
+                                lineHeight: 1.45,
+                            }}
+                        >
+                            <strong>Curso base aplicado automaticamente:</strong> {selectedCourseMeta.name}.<br />
+                            Os dados da turma foram pre-preenchidos a partir desse curso e podem ser ajustados antes de salvar.
+                        </div>
+                    )}
+
+                    {/* Curso */}
+                    <div>
+                        <label style={LABEL}>
+                            Curso *
+                            {preferredCourseId && selectedCourseMeta && (
+                                <span style={{ marginLeft: 8, fontSize: '0.62rem', color: '#059669', fontWeight: 800 }}>
+                                    (pre-preenchido)
+                                </span>
+                            )}
+                        </label>
+                        <select
+                            style={{
+                                ...INPUT,
+                                cursor: 'pointer',
+                                borderColor: preferredCourseId && selectedCourseMeta ? '#34D399' : INPUT.border as string,
+                                background: preferredCourseId && selectedCourseMeta ? '#F0FDF4' : INPUT.background as string,
+                            }}
+                            value={form.courseId}
+                            onChange={e => set('courseId', e.target.value)}
+                            required
+                        >
+                            <option value="">Selecione o curso...</option>
+                            {cursos.map((c: any) => <option key={c.id} value={c.id}>{c.name} — {c.workloadHours}h</option>)}
+                        </select>
+                    </div>
+
+                    {/* Cidade + Período */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                            <label style={LABEL}>Cidade *</label>
+                            <select style={{ ...INPUT, cursor: 'pointer' }} value={form.cityId} onChange={e => set('cityId', e.target.value)} required>
+                                <option value="">Selecione...</option>
+                                {cidades.map((c: any) => <option key={c.id} value={c.id}>{c.name} — {c.state}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label style={LABEL}>Turno</label>
+                            <select style={{ ...INPUT, cursor: 'pointer' }} value={form.period} onChange={e => set('period', e.target.value)}>
+                                <option value="MORNING">🌅 Manhã</option>
+                                <option value="AFTERNOON">☀️ Tarde</option>
+                                <option value="EVENING">🌙 Noite</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Horários */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                        <div>
+                            <label style={LABEL}>Início</label>
+                            <input type="time" style={INPUT} value={form.startTime} onChange={e => set('startTime', e.target.value)} />
+                        </div>
+                        <div>
+                            <label style={LABEL}>Fim</label>
+                            <input type="time" style={INPUT} value={form.endTime} onChange={e => set('endTime', e.target.value)} />
+                        </div>
+                        <div>
+                            <label style={LABEL}>Vagas *</label>
+                            <input type="number" min="1" max="500" style={INPUT} value={form.vacancies} onChange={e => set('vacancies', e.target.value)} required />
+                        </div>
+                    </div>
+
+                    {/* Datas */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                            <label style={LABEL}>Data de Início *</label>
+                            <input type="date" style={INPUT} value={form.startDate} onChange={e => set('startDate', e.target.value)} required />
+                        </div>
+                        <div>
+                            <label style={LABEL}>Data de Fim *</label>
+                            <input type="date" style={INPUT} value={form.endDate} onChange={e => set('endDate', e.target.value)} required />
+                        </div>
+                    </div>
+
+                    {/* Local físico (REQ-LOCAL-2026) — herdado da Acao, mas editável */}
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                            <span style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#065F46' }}>📌 Local Físico Específico</span>
+                            {(inheritedLocation?.name || inheritedLocation?.address) && (
+                                <span style={{ fontSize: '0.62rem', color: '#059669', background: '#D1FAE5', padding: '1px 7px', borderRadius: 4, border: '1px solid #A7F3D0', fontWeight: 700 }}>
+                                    ↳ herdado do período de curso
+                                </span>
+                            )}
+                        </div>
+                        <LocationFields
+                            value={classLocation}
+                            onChange={setClassLocation}
+                            cityContext={cidadeNome ? `${cidadeNome}, Brasil` : undefined}
+                        />
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #F3F4F6', flexWrap: 'wrap' }}>
+                        <button type="button" onClick={() => { onCreated(); onClose(); }}
+                            style={{ padding: '9px 18px', background: 'transparent', border: '1px solid #E5E7EB', color: '#9CA3AF', borderRadius: 9, cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}>
+                            Criar sem turma por agora
+                        </button>
+                        <button type="submit" disabled={loading}
+                            style={{ padding: '9px 24px', background: loading ? '#E5E7EB' : 'linear-gradient(135deg, #059669, #047857)', border: 'none', color: '#fff', borderRadius: 9, cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem', boxShadow: loading ? 'none' : '0 4px 16px rgba(5,150,105,0.3)' }}>
+                            {loading ? 'Criando turma…' : '✅ Criar turma e publicar'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+
+    return createPortal(overlay, document.body);
+}
+
+function ModalNovaAcao({ onClose, onCreated }: { onClose: () => void; onCreated: (createdAcao?: Acao) => void }) {
     const [form, setForm] = useState({
         nome: '', cidadeNome: '', cidadeId: '', grupoId: '', carretaId: '',
         dataInicio: '', dataFim: '', localExecucao: '',
         distanciaKm: '', precoCombustivelL: '', autonomiaKmL: '4',
         status: 'PLANEJADA' as AcaoStatus, permitirInscricoes: true,
+        selectedCourseId: '',
+    });
+    // Detalhes adicionais do local físico (REQ-LOCAL-2026)
+    // Mapeamento: name→localExecucao, address→localEndereco, reference→localReferencia, lat→localLatitude, lng→localLongitude
+    const [acaoLocation, setAcaoLocation] = useState<LocationFieldsValue>({
+        name: null, address: null, reference: null, latitude: null, longitude: null,
     });
     const [grupos, setGrupos] = useState<any[]>([]);
     const [carretas, setCarretas] = useState<any[]>([]);
+    const [cursos, setCursos] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    // Opção B: após criar Acao com permitirInscricoes=true, mostrar modal de turma.
+    // Inclui herança do local físico (REQ-LOCAL-2026): a Class herda os campos da Acao.
+    const [pendingAcao, setPendingAcao] = useState<{
+        id: string;
+        grupoId: string;
+        cidadeId?: string;
+        cidadeNome?: string;
+        dataInicio: string;
+        dataFim: string;
+        // Local herdado da Acao para preencher a Class
+        inheritedLocation?: LocationFieldsValue;
+        preferredCourseId?: string;
+    } | null>(null);
 
     useEffect(() => {
         Promise.all([
             api.get('/groups').then(r => r.data),
             api.get('/trucks').then(r => r.data),
-        ]).then(([g, t]) => {
+            api.get('/courses').then(r => r.data),
+        ]).then(([g, t, c]) => {
             setGrupos(Array.isArray(g) ? g : g.data || []);
             setCarretas(Array.isArray(t) ? t : t.data || []);
+            setCursos(Array.isArray(c) ? c : c.data || []);
         }).catch(() => { });
     }, []);
+
+    useEffect(() => {
+        if (!form.selectedCourseId) return;
+        const selectedCourse = cursos.find((c: any) => c.id === form.selectedCourseId);
+        if (!selectedCourse) return;
+
+        setForm(prev => {
+            const updates: Partial<typeof prev> = {};
+            if (!prev.nome.trim()) {
+                updates.nome = `Período ${selectedCourse.name}`;
+            }
+            if (prev.dataInicio) {
+                const group = grupos.find((g: any) => g.id === prev.grupoId);
+                const state = group?.state || '';
+                const durationDays = state === 'PI'
+                    ? Number(selectedCourse.durationDaysPI)
+                    : Number(selectedCourse.durationDaysMA);
+                if (Number.isFinite(durationDays) && durationDays > 0) {
+                    updates.dataFim = addDays(prev.dataInicio, durationDays);
+                }
+            }
+            return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+        });
+    }, [form.selectedCourseId, form.grupoId, form.dataInicio, cursos, grupos]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -140,16 +485,45 @@ function ModalNovaAcao({ onClose, onCreated }: { onClose: () => void; onCreated:
         setLoading(true);
         setError('');
         try {
-            await acoesApi.criar({
-                ...form,
+            const { selectedCourseId, ...acaoFormData } = form;
+            const acao = await acoesApi.criar({
+                ...acaoFormData,
                 distanciaKm: form.distanciaKm ? Number(form.distanciaKm) : undefined,
                 precoCombustivelL: form.precoCombustivelL ? Number(form.precoCombustivelL) : undefined,
                 autonomiaKmL: form.autonomiaKmL ? Number(form.autonomiaKmL) : undefined,
                 carretaId: form.carretaId || undefined,
                 cidadeId: form.cidadeId || undefined,
+                // ── Detalhes do local físico (REQ-LOCAL-2026) ──
+                localExecucao: acaoLocation.name || form.localExecucao || undefined,
+                localEndereco: acaoLocation.address || undefined,
+                localReferencia: acaoLocation.reference || undefined,
+                localLatitude: acaoLocation.latitude ?? undefined,
+                localLongitude: acaoLocation.longitude ?? undefined,
             } as any);
-            onCreated();
-            onClose();
+
+            if (form.permitirInscricoes && acao?.id) {
+                // Opção B: abrir modal de criação de turma vinculada (Class herda local da Acao)
+                setPendingAcao({
+                    id: acao.id,
+                    grupoId: form.grupoId,
+                    cidadeId: form.cidadeId || undefined,
+                    cidadeNome: form.cidadeNome,
+                    dataInicio: form.dataInicio,
+                    dataFim: form.dataFim,
+                    preferredCourseId: form.selectedCourseId || undefined,
+                    // Herança do local físico: copia da Acao para a Class por padrão
+                    inheritedLocation: {
+                        name: acaoLocation.name || form.localExecucao || null,
+                        address: acaoLocation.address,
+                        reference: acaoLocation.reference,
+                        latitude: acaoLocation.latitude,
+                        longitude: acaoLocation.longitude,
+                    },
+                });
+            } else {
+                onCreated(acao);
+                onClose();
+            }
         } catch (err: any) {
             setError(err?.response?.data?.message || 'Erro ao criar ação');
         } finally {
@@ -205,8 +579,19 @@ function ModalNovaAcao({ onClose, onCreated }: { onClose: () => void; onCreated:
                                     </select>
                                 </div>
                                 <div>
-                                    <label style={LABEL}>Local de Execução</label>
-                                    <input style={INPUT} placeholder="Ex: Ginásio Municipal" value={form.localExecucao} onChange={e => setForm(f => ({ ...f, localExecucao: e.target.value }))} />
+                                    <label style={LABEL}>Curso Base (opcional)</label>
+                                    <select
+                                        style={{ ...INPUT, cursor: 'pointer' }}
+                                        value={form.selectedCourseId}
+                                        onChange={e => setForm(f => ({ ...f, selectedCourseId: e.target.value }))}
+                                    >
+                                        <option value="">Selecionar depois</option>
+                                        {cursos.map((c: any) => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.name} — {c.workloadHours}h
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: '#F9FAFB', border: '1px solid #E5E7EB' }}>
@@ -254,6 +639,22 @@ function ModalNovaAcao({ onClose, onCreated }: { onClose: () => void; onCreated:
                         </div>
                     </div>
 
+                    {/* Local físico (REQ-LOCAL-2026) — onde dentro da cidade ocorre */}
+                    {form.cidadeNome.trim() && (
+                        <div>
+                            <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B89B00', marginBottom: 12 }}>📌 Local Físico Exacto</div>
+                            <LocationFields
+                                value={acaoLocation}
+                                onChange={setAcaoLocation}
+                                cityContext={`${form.cidadeNome.trim()}, Brasil`}
+                            />
+                            <p style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 8, lineHeight: 1.5 }}>
+                                💡 Estes dados serão herdados automaticamente pelas turmas vinculadas a este período de curso.
+                                O motorista usa as coordenadas para navegação GPS.
+                            </p>
+                        </div>
+                    )}
+
                     {/* Logística */}
                     <div>
                         <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B89B00', marginBottom: 12 }}>⛽ Logística (opcional)</div>
@@ -286,10 +687,28 @@ function ModalNovaAcao({ onClose, onCreated }: { onClose: () => void; onCreated:
         </div>
     );
 
+    // Quando Acao foi criada com permitirInscricoes=true, mostra o modal de criar Turma
+    if (pendingAcao) {
+        return (
+            <ModalCriarTurmaParaAcao
+                acaoId={pendingAcao.id}
+                grupoId={pendingAcao.grupoId}
+                cidadeId={pendingAcao.cidadeId}
+                cidadeNome={pendingAcao.cidadeNome}
+                dataInicio={pendingAcao.dataInicio}
+                dataFim={pendingAcao.dataFim}
+                inheritedLocation={pendingAcao.inheritedLocation}
+                preferredCourseId={pendingAcao.preferredCourseId}
+                onCreated={onCreated}
+                onClose={onClose}
+            />
+        );
+    }
+
     return createPortal(overlay, document.body);
 }
 
-// ── CSS futurista completo (Ações KPI) ───────────────────────────────────────
+// ── CSS futurista completo ───────────────────────────────────────
 const ACOES_CSS = `
 @keyframes ac-fade-up   { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
 @keyframes ac-scan      { 0%{transform:translateY(-100%);opacity:0} 10%{opacity:.6} 90%{opacity:.6} 100%{transform:translateY(400%);opacity:0} }
@@ -334,8 +753,15 @@ function KpiCard({ label, value, icon, color, bgColor: _bg, delay }: { label: st
                 borderRadius: 18,
                 padding: '20px 22px',
                 background: '#fff',
-                border: `1px solid ${hovered ? color + '70' : color + '28'}`,
-                borderLeft: `4px solid ${color}`,
+                borderStyle: 'solid',
+                borderTopWidth: 1,
+                borderRightWidth: 1,
+                borderBottomWidth: 1,
+                borderLeftWidth: 4,
+                borderTopColor: hovered ? color + '70' : color + '28',
+                borderRightColor: hovered ? color + '70' : color + '28',
+                borderBottomColor: hovered ? color + '70' : color + '28',
+                borderLeftColor: color,
                 boxShadow: hovered
                     ? `0 0 28px ${color}22, 0 8px 28px rgba(0,0,0,.1), inset 0 1px 0 ${color}12`
                     : `0 1px 6px rgba(0,0,0,.07), inset 0 1px 0 ${color}08`,
@@ -421,8 +847,15 @@ function AcaoCard({ acao }: { acao: Acao }) {
                     position: 'relative', overflow: 'hidden',
                     borderRadius: 18, cursor: 'pointer',
                     background: '#fff',
-                    border: `1px solid ${hov ? accentColor + '60' : accentColor + '22'}`,
-                    borderLeft: `4px solid ${accentColor}`,
+                    borderStyle: 'solid',
+                    borderTopWidth: 1,
+                    borderRightWidth: 1,
+                    borderBottomWidth: 1,
+                    borderLeftWidth: 4,
+                    borderTopColor: hov ? accentColor + '60' : accentColor + '22',
+                    borderRightColor: hov ? accentColor + '60' : accentColor + '22',
+                    borderBottomColor: hov ? accentColor + '60' : accentColor + '22',
+                    borderLeftColor: accentColor,
                     boxShadow: hov
                         ? `0 0 22px ${accentColor}18, 0 8px 24px rgba(0,0,0,.1)`
                         : `0 1px 6px rgba(0,0,0,.07)`,
@@ -566,15 +999,18 @@ export default function AcoesPage() {
     const [showModal, setShowModal] = useState(false);
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
+    const [listViewMode, setListViewMode] = usePersistedAdminViewMode('admin:acoes:list', 'card');
 
     const [loadError, setLoadError] = useState('');
 
-    const load = async () => {
+    const load = async (overrides?: { search?: string; status?: string }) => {
         setLoading(true);
         setLoadError('');
         try {
+            const searchValue = overrides?.search ?? search;
+            const statusValue = overrides?.status ?? filterStatus;
             const [a, e] = await Promise.all([
-                acoesApi.listar({ search: search || undefined, status: filterStatus as AcaoStatus || undefined }),
+                acoesApi.listar({ search: searchValue || undefined, status: statusValue as AcaoStatus || undefined }),
                 acoesApi.estatisticas(),
             ]);
             setAcoes(a);
@@ -593,21 +1029,29 @@ export default function AcoesPage() {
         }
     };
 
+    const handleCreatedFromModal = async () => {
+        // Garantir visibilidade imediata do novo período criado
+        // (mesmo que o utilizador estivesse com busca/filtro ativo).
+        setSearch('');
+        setFilterStatus('');
+        setShowModal(false);
+        await load({ search: '', status: '' });
+    };
+
     useEffect(() => { load(); }, [search, filterStatus]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }} className="animate-fade-in">
             <style>{ACOES_CSS}</style>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.7rem', fontWeight: 900, letterSpacing: '0.08em', margin: 0 }}>PERÍODOS DE CURSO</h1>
-                    <p style={{ color: '#9CA3AF', fontSize: '0.82rem', margin: '4px 0 0' }}>Gerencie os períodos de curso da Upgrade em cada cidade</p>
-                </div>
-                <button className="btn-primary" onClick={() => setShowModal(true)}>
-                    ⚡ Novo Período de Curso
-                </button>
-            </div>
+            <AdminHeaderHero
+                title="PERÍODOS DE CURSO"
+                subtitle="Gerencie os períodos de curso da Upgrade em cada cidade"
+                rightSlot={(
+                    <button className="btn-primary" onClick={() => setShowModal(true)}>
+                        ⚡ Novo Período de Curso
+                    </button>
+                )}
+            />
 
             {/* KPIs */}
             {estatisticas && (
@@ -645,6 +1089,9 @@ export default function AcoesPage() {
                     <option value="CONCLUIDA">Concluídas</option>
                     <option value="CANCELADA">Canceladas</option>
                 </select>
+                <div style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+                    <AdminViewModeToggle mode={listViewMode} onChange={setListViewMode} />
+                </div>
             </div>
 
             {/* Conteúdo */}
@@ -654,11 +1101,56 @@ export default function AcoesPage() {
                         <div key={i} style={{ height: 210, background: '#fff', borderRadius: 16, border: '1px solid #F3F4F6', animation: 'shimmerBg 1.5s infinite' }} />
                     ))}
                 </div>
+            ) : loadError ? (
+                <div style={{ textAlign: 'center', padding: '44px 20px', background: '#fff', borderRadius: 16, border: '1px solid #FECACA' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: 10 }}>⚠️</div>
+                    <h3 style={{ color: '#B91C1C', fontSize: '1rem', margin: '0 0 6px', fontFamily: 'Orbitron' }}>Falha ao carregar períodos de curso</h3>
+                    <p style={{ color: '#7F1D1D', fontSize: '0.82rem', margin: 0 }}>{loadError}</p>
+                    <button className="btn-ghost" onClick={() => load({ search: '', status: '' })} style={{ marginTop: 14 }}>
+                        Tentar novamente
+                    </button>
+                </div>
             ) : acoes.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: 16, border: '1px solid #F3F4F6' }}>
                     <div style={{ fontSize: '3rem', marginBottom: 12, opacity: 0.35 }}>⚡</div>
                     <h3 style={{ color: '#374151', fontSize: '1.1rem', margin: '0 0 6px', fontFamily: 'Orbitron' }}>Nenhum período de curso encontrado</h3>
                     <p style={{ color: '#9CA3AF', fontSize: '0.85rem', margin: 0 }}>Crie o primeiro período de curso para começar a gerenciar as operações de campo.</p>
+                </div>
+            ) : listViewMode === 'table' ? (
+                <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #F3F4F6', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: 720 }}>
+                        <thead>
+                            <tr style={{ background: '#F9FAFB', borderBottom: '2px solid #E5E7EB', textAlign: 'left' }}>
+                                {['Período', 'Cidade', 'Datas', 'Status', 'Turmas', 'Equipe', 'Custos', 'Ações'].map((h, hi) => (
+                                    <th key={hi} style={{ padding: '10px 12px', fontWeight: 800, color: '#64748B', fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>{h}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {acoes.map((acao, idx) => {
+                                const cfg = statusConfig[acao.status];
+                                const dot = statusDot[acao.status];
+                                return (
+                                    <tr key={acao.id} style={{ borderBottom: '1px solid #F3F4F6', background: idx % 2 === 0 ? '#fff' : '#FAFBFC' }}>
+                                        <td style={{ padding: '10px 12px', fontWeight: 700, color: '#111827', maxWidth: 200 }}>{acao.nome}</td>
+                                        <td style={{ padding: '10px 12px', color: '#475569' }}>{acao.cidade?.name}, {acao.cidade?.state}</td>
+                                        <td style={{ padding: '10px 12px', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', color: '#64748B', whiteSpace: 'nowrap' }}>{fmtDate(acao.dataInicio)} → {fmtDate(acao.dataFim)}</td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: '0.65rem', fontWeight: 700, border: `1px solid ${cfg.border}` }}>
+                                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: dot }} />{cfg.label}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '10px 12px', fontFamily: 'Orbitron', fontWeight: 700, color: '#B89B00' }}>{acao._count?.turmas ?? 0}</td>
+                                        <td style={{ padding: '10px 12px', fontFamily: 'Orbitron', fontWeight: 700 }}>{acao._count?.equipe ?? 0}</td>
+                                        <td style={{ padding: '10px 12px', fontFamily: 'Orbitron', fontWeight: 700 }}>{acao._count?.custos ?? 0}</td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            <Link href={`/admin/acoes/${acao.id}`} style={{ padding: '6px 12px', borderRadius: 8, background: '#0F172A', color: '#FFD600', fontSize: '0.7rem', fontWeight: 800, textDecoration: 'none', display: 'inline-block' }}>Abrir</Link>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
@@ -666,7 +1158,7 @@ export default function AcoesPage() {
                 </div>
             )}
 
-            {showModal && <ModalNovaAcao onClose={() => setShowModal(false)} onCreated={load} />}
+            {showModal && <ModalNovaAcao onClose={() => setShowModal(false)} onCreated={handleCreatedFromModal} />}
             <style>{`@keyframes shimmerBg { 0%,100% { opacity:0.7; } 50% { opacity:0.4; } }`}</style>
         </div>
     );

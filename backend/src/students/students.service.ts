@@ -1,6 +1,25 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
+import {
+    MIN_CERTIFICATE_ATTENDANCE_PCT,
+    WARN_ATTENDANCE_PCT,
+    type CertificateAttendanceRisk,
+} from '../common/certificate-attendance.util';
+import type { CertificateEligibilityBreakdown } from '../common/certificate-eligibility.util';
+import { evaluateCertificateEligibilityForEnrollment } from '../common/certificate-enrollment-evaluation.helper';
+
+type CertificateProgressItem = CertificateEligibilityBreakdown & {
+    classId: string;
+    classIdentifier: string;
+    courseName: string;
+    workloadHours: number;
+    classStatus: string;
+    enrollmentStatus: string | null;
+    certificate: { id: string; issuedAt: Date; status: string } | null;
+    meetsMinimum: boolean;
+    weekendPolicy: string;
+};
 
 @Injectable()
 export class StudentsService {
@@ -25,6 +44,10 @@ export class StudentsService {
                 address: true,
                 socioeconomic: true,
                 professional: true,
+                legalConsents: {
+                    orderBy: { recordedAt: 'desc' },
+                    take: 20,
+                },
             },
         });
 
@@ -44,8 +67,15 @@ export class StudentsService {
             throw new NotFoundException('User not found');
         }
 
-        // Verify current password
-        const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        // bcrypt.compare(undefined, hash) rejeita a promise ("Illegal arguments") → 500 sem este tratamento
+        let isPasswordValid = false;
+        try {
+            isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        } catch {
+            throw new BadRequestException(
+                'Não foi possível validar a senha atual. Se o problema persistir, use redefinição de senha ou contate o suporte.',
+            );
+        }
         if (!isPasswordValid) {
             throw new BadRequestException('Current password is incorrect');
         }
@@ -97,11 +127,11 @@ export class StudentsService {
             throw new NotFoundException('Student not found');
         }
 
-        // Get enrollments with ENROLLED status
+        // Turmas com inscrição efetiva (matriculado ou aprovado aguardando confirmação de matrícula)
         const enrollments = await this.prisma.enrollment.findMany({
             where: {
                 studentId: student.id,
-                status: 'ENROLLED',
+                status: { in: ['ENROLLED', 'APPROVED'] },
             },
             include: {
                 class: {
@@ -109,6 +139,16 @@ export class StudentsService {
                         course: true,
                         city: true,
                         group: true,
+                        teachers: {
+                            take: 12,
+                            include: {
+                                teacher: {
+                                    include: {
+                                        user: { select: { name: true } },
+                                    },
+                                },
+                            },
+                        },
                     },
                 },
             },
@@ -128,6 +168,18 @@ export class StudentsService {
 
         const where: any = { studentId: student.id };
         if (classId) {
+            const allowed = await this.prisma.enrollment.findFirst({
+                where: {
+                    studentId: student.id,
+                    classId,
+                    status: { in: ['ENROLLED', 'APPROVED'] },
+                },
+            });
+            if (!allowed) {
+                throw new ForbiddenException(
+                    'Você ainda não tem acesso a frequência desta turma. Aguarde a aprovação da inscrição ou consulte Minhas inscrições.',
+                );
+            }
             where.classId = classId;
         }
 
@@ -183,5 +235,158 @@ export class StudentsService {
         ]);
         const rate = total > 0 ? Math.round((present / total) * 100) : 0;
         return { totalClasses: total, presentCount: present, absentCount: total - present, rate };
+    }
+
+    /**
+     * Progresso de frequência por turma (inscrições ativas + turmas com certificado),
+     * alinhado à regra de certificado (mín. 75% de dias efetivos / dias lançados).
+     */
+    async getCertificateAttendanceProgress(userId: string) {
+        const student = await this.prisma.student.findFirst({
+            where: { userId },
+            select: { id: true },
+        });
+        if (!student) {
+            throw new NotFoundException('Student not found');
+        }
+
+        type Agg = {
+            classId: string;
+            classIdentifier: string;
+            courseName: string;
+            workloadHours: number;
+            classStatus: string;
+            enrollmentStatus?: string;
+            certificate?: { id: string; issuedAt: Date; status: string };
+        };
+
+        const byClass = new Map<string, Agg>();
+
+        const enrollments = await this.prisma.enrollment.findMany({
+            where: {
+                studentId: student.id,
+                status: { in: ['ENROLLED', 'APPROVED'] },
+                class: { status: { not: 'CANCELLED' } },
+            },
+            include: {
+                class: {
+                    include: {
+                        course: { select: { name: true, workloadHours: true } },
+                    },
+                },
+            },
+        });
+
+        for (const e of enrollments) {
+            byClass.set(e.classId, {
+                classId: e.classId,
+                classIdentifier: e.class.classIdentifier,
+                courseName: e.class.course.name,
+                workloadHours: e.class.course.workloadHours,
+                classStatus: e.class.status,
+                enrollmentStatus: e.status,
+            });
+        }
+
+        const certificates = await this.prisma.certificate.findMany({
+            where: { studentId: student.id },
+            include: {
+                class: {
+                    include: {
+                        course: { select: { name: true, workloadHours: true } },
+                    },
+                },
+            },
+        });
+
+        for (const cert of certificates) {
+            const cid = cert.classId;
+            const prev = byClass.get(cid);
+            if (!prev) {
+                byClass.set(cid, {
+                    classId: cid,
+                    classIdentifier: cert.class.classIdentifier,
+                    courseName: cert.class.course.name,
+                    workloadHours: cert.class.course.workloadHours,
+                    classStatus: cert.class.status,
+                    certificate: { id: cert.id, issuedAt: cert.issuedAt, status: cert.status },
+                });
+            } else {
+                byClass.set(cid, {
+                    ...prev,
+                    certificate: { id: cert.id, issuedAt: cert.issuedAt, status: cert.status },
+                });
+            }
+        }
+
+        const riskOrder: Record<CertificateAttendanceRisk, number> = {
+            ok: 0,
+            watch: 1,
+            risk: 2,
+            critical: 3,
+        };
+
+        const classIds = [...byClass.keys()];
+
+        const classWeekendRows = classIds.length
+            ? await this.prisma.class.findMany({
+                where: { id: { in: classIds } },
+                select: { id: true, weekendPolicy: true },
+            })
+            : [];
+        const weekendById = new Map(classWeekendRows.map(c => [c.id, c.weekendPolicy]));
+
+        const items: CertificateProgressItem[] = [];
+        for (const agg of byClass.values()) {
+            const evaluation = await evaluateCertificateEligibilityForEnrollment(
+                this.prisma,
+                student.id,
+                agg.classId,
+            );
+            if (!evaluation) continue;
+
+            const meetsMinimum =
+                evaluation.certificateEligible ||
+                evaluation.beforeCourseStart;
+
+            items.push({
+                classId: agg.classId,
+                classIdentifier: agg.classIdentifier,
+                courseName: agg.courseName,
+                workloadHours: agg.workloadHours,
+                classStatus: agg.classStatus,
+                enrollmentStatus: agg.enrollmentStatus ?? null,
+                certificate: agg.certificate
+                    ? {
+                        id: agg.certificate.id,
+                        issuedAt: agg.certificate.issuedAt,
+                        status: agg.certificate.status,
+                    }
+                    : null,
+                weekendPolicy: weekendById.get(agg.classId) ?? 'FOLLOW_SCHEDULE',
+                ...evaluation,
+                meetsMinimum,
+            });
+        }
+
+        items.sort((a, b) => {
+            const dr = riskOrder[b.riskLevelAfterPenalty] - riskOrder[a.riskLevelAfterPenalty];
+            if (dr !== 0) return dr;
+            return (a.courseName || '').localeCompare(b.courseName || '', 'pt-BR');
+        });
+
+        let worstRisk: CertificateAttendanceRisk = 'ok';
+        for (const it of items) {
+            if (riskOrder[it.riskLevelAfterPenalty] > riskOrder[worstRisk]) {
+                worstRisk = it.riskLevelAfterPenalty;
+            }
+        }
+
+        return {
+            minCertificateAttendancePct: MIN_CERTIFICATE_ATTENDANCE_PCT,
+            warnAttendancePct: WARN_ATTENDANCE_PCT,
+            worstRisk,
+            items,
+        };
     }
 }

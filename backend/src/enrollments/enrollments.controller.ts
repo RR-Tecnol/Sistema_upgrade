@@ -8,6 +8,9 @@ import {
     Query,
     UseGuards,
     Request,
+    BadRequestException,
+    Ip,
+    Headers,
 } from '@nestjs/common';
 import { EnrollmentsService } from './enrollments.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -18,6 +21,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('enrollments')
 @Controller('enrollments')
@@ -29,12 +33,21 @@ export class EnrollmentsController {
 
     @Post('public')
     @Public()
+    @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 inscrições/min por IP — evita spam
     @ApiOperation({ summary: 'Criar nova inscrição (público)' })
     @ApiResponse({ status: 201, description: 'Inscrição criada com sucesso' })
     @ApiResponse({ status: 400, description: 'Dados inválidos ou turma sem vagas' })
     @ApiResponse({ status: 409, description: 'CPF já cadastrado nesta turma' })
-    async create(@Body() createEnrollmentDto: CreateEnrollmentDto) {
-        return this.enrollmentsService.create(createEnrollmentDto);
+    @ApiResponse({ status: 429, description: 'Muitas tentativas — aguarde 1 minuto' })
+    async create(
+        @Body() createEnrollmentDto: CreateEnrollmentDto,
+        @Ip() ip: string,
+        @Headers('user-agent') userAgent?: string,
+    ) {
+        return this.enrollmentsService.create(createEnrollmentDto, {
+            ipAddress: ip || undefined,
+            userAgent: userAgent || undefined,
+        });
     }
 
     @Post('admin')
@@ -80,11 +93,12 @@ export class EnrollmentsController {
     @Get(':id')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Buscar inscrição por ID' })
+    @ApiOperation({ summary: 'Buscar inscrição por ID (dono ou admin/coordinator)' })
     @ApiResponse({ status: 200, description: 'Detalhes da inscrição' })
+    @ApiResponse({ status: 403, description: 'Sem permissão para ver esta inscrição' })
     @ApiResponse({ status: 404, description: 'Inscrição não encontrada' })
-    async findOne(@Param('id') id: string) {
-        return this.enrollmentsService.findOne(id);
+    async findOne(@Param('id') id: string, @Request() req: any) {
+        return this.enrollmentsService.findOne(id, req.user.id, req.user.role);
     }
 
     @Patch(':id/approve')
@@ -176,6 +190,10 @@ export class EnrollmentsController {
     ) {
         let result: any;
         switch (dto.status) {
+            case 'ENROLLED':
+                result = await this.enrollmentsService.confirmEnrollment(id, req.user.id);
+                this.auditLog.log({ userId: req.user.id, action: 'CONFIRM_ENROLLMENT', tableName: 'enrollments', recordId: id });
+                break;
             case 'APPROVED':
                 result = await this.enrollmentsService.approve(id, req.user.id, dto.notes);
                 this.auditLog.log({ userId: req.user.id, action: 'APPROVE_ENROLLMENT', tableName: 'enrollments', recordId: id });
@@ -187,8 +205,14 @@ export class EnrollmentsController {
             case 'WAITLIST':
                 result = await this.enrollmentsService.moveToWaitlist(id, req.user.id, dto.notes);
                 break;
-            default:
+            case 'DOCUMENT_PENDING':
                 result = await this.enrollmentsService.requestCorrection(id, dto.notes || '');
+                break;
+            case 'PENDING':
+                result = await this.enrollmentsService.moveToPending(id, req.user.id, dto.notes);
+                break;
+            default:
+                throw new BadRequestException(`Transição para status '${dto.status}' não suportada`);
         }
         return result;
     }

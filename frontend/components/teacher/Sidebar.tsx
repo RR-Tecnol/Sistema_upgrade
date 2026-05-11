@@ -60,11 +60,12 @@ export default function TeacherSidebar({ open = true, onClose }: Props) {
     return (
         <>
             {/* Overlay mobile */}
-            <div
-                className="sidebar-overlay"
-                style={{ display: open ? 'block' : 'none' }}
-                onClick={onClose}
-            />
+            {open && (
+                <div
+                    className="sidebar-overlay"
+                    onClick={onClose}
+                />
+            )}
 
             <aside className={`sidebar ${open ? 'open' : ''}`}>
                 {/* Header amarelo */}
@@ -90,11 +91,36 @@ export default function TeacherSidebar({ open = true, onClose }: Props) {
                 {/* Botão fechar mobile */}
                 <button
                     onClick={onClose}
-                    className="hamburger-btn"
-                    style={{ position: 'absolute', top: '1rem', right: '0.75rem' }}
                     aria-label="Fechar menu"
+                    onMouseEnter={e => {
+                        const el = e.currentTarget as HTMLElement;
+                        el.style.transform = 'translateY(-1px) scale(1.04)';
+                        el.style.background = 'rgba(17,24,39,0.2)';
+                    }}
+                    onMouseLeave={e => {
+                        const el = e.currentTarget as HTMLElement;
+                        el.style.transform = 'translateY(0) scale(1)';
+                        el.style.background = 'rgba(17,24,39,0.12)';
+                    }}
+                    style={{
+                        position: 'absolute',
+                        top: '1rem',
+                        right: '0.75rem',
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        border: '1px solid rgba(17,24,39,0.18)',
+                        background: 'rgba(17,24,39,0.12)',
+                        color: '#0F172A',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all .18s ease',
+                        boxShadow: '0 2px 8px rgba(0,0,0,.08)',
+                    }}
                 >
-                    <XMarkIcon style={{ width: 16, height: 16 }} />
+                    <XMarkIcon style={{ width: 17, height: 17, strokeWidth: 2.3 }} />
                 </button>
 
                 {/* Nav */}

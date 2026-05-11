@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStudentDto, UpdateStudentDto } from './dto';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 
 interface StudentFilters {
     search?: string;
-    state?: 'MA' | 'PI';
+    state?: string;
     active?: boolean;
     page?: number;
     limit?: number;
@@ -65,7 +65,11 @@ export class AdminStudentsService {
                         select: {
                             city: true,
                             state: true,
+                            neighborhood: true,
                         },
+                    },
+                    contact: {
+                        select: { email: true, phone: true },
                     },
                     _count: {
                         select: { enrollments: true },
@@ -88,23 +92,25 @@ export class AdminStudentsService {
     }
 
     async getStats() {
-        const [total, totalMA, totalPI, activeEnrollments] = await Promise.all([
+        const [total, byStateRows, activeEnrollments] = await Promise.all([
             this.prisma.student.count(),
-            this.prisma.student.count({
-                where: { address: { state: 'MA' } }
-            }),
-            this.prisma.student.count({
-                where: { address: { state: 'PI' } }
+            this.prisma.studentAddress.groupBy({
+                by: ['state'],
+                _count: { _all: true },
             }),
             this.prisma.enrollment.count({ where: { status: 'APPROVED' } }),
         ]);
 
+        const byState = byStateRows.reduce<Record<string, number>>((acc, row) => {
+            const uf = (row.state || '').toUpperCase();
+            if (!uf) return acc;
+            acc[uf] = row._count._all;
+            return acc;
+        }, {});
+
         return {
             total,
-            byState: {
-                MA: totalMA,
-                PI: totalPI,
-            },
+            byState,
             activeEnrollments,
         };
     }
@@ -150,6 +156,10 @@ export class AdminStudentsService {
                     },
                     orderBy: { issuedAt: 'desc' },
                 },
+                legalConsents: {
+                    orderBy: { recordedAt: 'desc' },
+                    take: 30,
+                },
             },
         });
 
@@ -170,7 +180,7 @@ export class AdminStudentsService {
             // User fields
             name, email, password, phone,
             // Student fields
-            cpf, rg, rgIssuer, birthDate, gender, raceColor, maritalStatus,
+            cpf, birthDate, gender, raceColor, maritalStatus,
             motherName, fatherName, nationality, birthCity, birthState, socialName,
             // Address fields
             cep, street, addressNumber, complement, neighborhood, city, state, zone,
@@ -209,8 +219,6 @@ export class AdminStudentsService {
         const student = await this.prisma.student.create({
             data: {
                 cpf: cpf.replace(/\D/g, ''),
-                rg,
-                rgIssuer,
                 birthDate: new Date(birthDate),
                 gender,
                 raceColor,
@@ -311,7 +319,7 @@ export class AdminStudentsService {
             // User fields
             name, email, phone,
             // Student fields
-            cpf, rg, rgIssuer, birthDate, gender, raceColor, maritalStatus,
+            cpf, birthDate, gender, raceColor, maritalStatus,
             motherName, fatherName, nationality, birthCity, birthState, socialName,
             // Address fields
             cep, street, addressNumber, complement, neighborhood, city, state, zone,
@@ -354,8 +362,6 @@ export class AdminStudentsService {
             where: { id },
             data: {
                 ...(cpf && { cpf: cpf.replace(/\D/g, '') }),
-                ...(rg && { rg }),
-                ...(rgIssuer && { rgIssuer }),
                 ...(birthDate && { birthDate: new Date(birthDate) }),
                 ...(gender && { gender }),
                 ...(raceColor && { raceColor }),

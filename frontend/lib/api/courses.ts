@@ -17,6 +17,7 @@ export interface Course {
     createdAt: string;
     updatedAt: string;
     _count?: { classes: number };
+    stateConfig?: Record<string, { available: boolean; durationDays: number }>;
 }
 
 export interface CreateCourseDto {
@@ -30,6 +31,7 @@ export interface CreateCourseDto {
     availableInMA: boolean;
     availableInPI: boolean;
     isMulticourse: boolean;
+    stateConfig?: Record<string, { available: boolean; durationDays: number }>;
 }
 
 export const coursesApi = {
@@ -55,6 +57,11 @@ export const coursesApi = {
 
     update: async (id: string, data: Partial<CreateCourseDto>) => {
         const response = await api.patch<Course>(`/courses/${id}`, data);
+        return response.data;
+    },
+
+    setActive: async (id: string, active: boolean) => {
+        const response = await api.patch<Course>(`/courses/${id}`, { active });
         return response.data;
     },
 

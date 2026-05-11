@@ -24,6 +24,12 @@ interface ClassData {
     city: { id: string; name: string; state: string };
     group: { id: string; name: string };
     _count: { enrollments: number };
+    // Local físico (REQ-LOCAL-2026)
+    locationName?: string | null;
+    locationAddress?: string | null;
+    locationReference?: string | null;
+    locationLatitude?: number | null;
+    locationLongitude?: number | null;
 }
 
 // ─── Mini Particle Background (client-only) ───────────────────────────────────
@@ -170,6 +176,31 @@ function CourseCard({ classData, index }: { classData: ClassData; index: number 
                 <span>📅 {formatDate(classData.startDate)}</span>
             </div>
 
+            {/* Local físico — REQ-LOCAL-2026 */}
+            {(classData.locationName || classData.locationAddress) && (
+                <div
+                    className="mb-4 px-3 py-2 rounded-lg"
+                    style={{
+                        background: 'rgba(251,191,36,0.06)',
+                        border: '1px solid rgba(251,191,36,0.18)',
+                    }}
+                >
+                    <div className="text-xs font-bold mb-0.5" style={{ color: '#FBBF24' }}>
+                        📍 Local da turma
+                    </div>
+                    {classData.locationName && (
+                        <div className="text-xs font-semibold" style={{ color: '#fff' }}>
+                            {classData.locationName}
+                        </div>
+                    )}
+                    {classData.locationAddress && (
+                        <div className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
+                            {classData.locationAddress}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Vacancy Bar */}
             <div className="mb-4">
                 <div className="flex justify-between items-center mb-1.5">
@@ -297,9 +328,7 @@ export default function CursosPublicPage() {
             className="min-h-screen"
             style={{ background: '#080808', color: '#fff', fontFamily: '"Inter", system-ui, sans-serif' }}
         >
-            <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
+            <style suppressHydrationWarning>{`
                 @keyframes fadeUp {
                     from { opacity: 0; transform: translateY(30px); }
                     to   { opacity: 1; transform: translateY(0); }

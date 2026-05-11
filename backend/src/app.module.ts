@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
+import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
+import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
 import { CitiesModule } from './cities/cities.module';
 import { GroupsModule } from './groups/groups.module';
@@ -32,16 +37,30 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 // EXEC-IMPREVISTOS: Módulo de ausências/imprevistos multi-perfil
 import { AbsencesModule } from './absences/absences.module';
+// FASE 1/2: Rastreamento de motoristas em tempo real (LGPD cleanup + ETA + mapa)
+import { DriverLocationModule } from './driver-location/driver-location.module';
+// FEEDBACK-PIX: Módulo de feedback pós-curso + recompensa PIX
+import { FeedbacksModule } from './feedbacks/feedbacks.module';
+import { InstitutionsModule } from './institutions/institutions.module';
+import { HealthModule } from './health/health.module';
 
 
 @Module({
     imports: [
-        ConfigModule.forRoot({
-            isGlobal: true,
-        }),
+        ConfigModule.forRoot({ isGlobal: true }),
+        ScheduleModule.forRoot(),
+        // SEGURANÇA: rate limiting global — evita abuse de endpoints como /geocode
+        // Limites padrão: 60 req/min por IP. Endpoints sensíveis sobrescrevem via @Throttle()
+        ThrottlerModule.forRoot([{
+            name: 'default',
+            ttl: 60000,
+            limit: 60,
+        }]),
+        MailModule,
         PrismaModule,
         AuthModule,
         UsersModule,
+        UploadsModule,
         CitiesModule,
         GroupsModule,
         CoursesModule,
@@ -63,6 +82,16 @@ import { AbsencesModule } from './absences/absences.module';
         NotificationsModule, // SF-01: WebSocket real-time (@Global)
         AuditLogModule,      // SF-02: Auditoria de ações (@Global)
         AbsencesModule,      // EXEC-IMPREVISTOS: Ausências/Imprevistos multi-perfil
+        DriverLocationModule, // FASE 1/2: Rastreamento GPS motoristas em tempo real
+        FeedbacksModule,     // FEEDBACK-PIX: Feedback pós-curso + recompensa PIX
+        InstitutionsModule, // F7: multi-instituição (white-label)
+        HealthModule,         // Probes: GET /api/health, GET /api/ready
+    ],
+    providers: [
+        // ThrottlerGuard global — aplica rate limiting em TODOS os endpoints
+        // Geocode endpoint sobrescreve para limite mais restrito: @Throttle({ default: { limit: 5, ttl: 60000 } })
+        { provide: APP_GUARD, useClass: ThrottlerGuard },
     ],
 })
 export class AppModule {}
+

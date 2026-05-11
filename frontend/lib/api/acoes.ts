@@ -1,22 +1,13 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api';
 
 const api = axios.create({ baseURL: API_URL });
 
 api.interceptors.request.use((config) => {
     if (typeof window !== 'undefined') {
-        // Try direct token first, then auth-storage (Zustand persist)
-        let token = localStorage.getItem('token');
-        if (!token) {
-            try {
-                const authStorage = localStorage.getItem('auth-storage');
-                if (authStorage) {
-                    const parsed = JSON.parse(authStorage);
-                    token = parsed?.state?.token || null;
-                }
-            } catch { /* ignore */ }
-        }
+        // Lê de sessionStorage (por aba) com fallback para localStorage — idêntico a client.ts
+        const token = sessionStorage.getItem('token') || localStorage.getItem('token');
         if (token) config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -38,6 +29,17 @@ export interface Acao {
     dataInicio: string;
     dataFim: string;
     localExecucao?: string;
+    // ── Tipo de rota (REQ-ROUTE-2026) ──
+    routeType?: 'INTERCIDADE' | 'INTRAURBANA';
+    originCidadeId?: string;
+    originCidade?: { id: string; name: string; state: string };
+    originNeighborhood?: string;
+    destinationNeighborhood?: string;
+    // ── Detalhes do local físico (REQ-LOCAL-2026) ──
+    localEndereco?: string;
+    localReferencia?: string;
+    localLatitude?: number;
+    localLongitude?: number;
     distanciaKm?: number;
     precoCombustivelL?: number;
     autonomiaKmL?: number;

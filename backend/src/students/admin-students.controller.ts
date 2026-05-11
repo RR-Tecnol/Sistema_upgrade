@@ -37,14 +37,14 @@ export class AdminStudentsController {
     @Get()
     @ApiOperation({ summary: 'Get all students with filters' })
     @ApiQuery({ name: 'search', required: false, type: String })
-    @ApiQuery({ name: 'state', required: false, enum: ['MA', 'PI'] })
+    @ApiQuery({ name: 'state', required: false, description: 'Filtro por UF (dinâmico, ex.: MA, PI, AC)' })
     @ApiQuery({ name: 'active', required: false, type: Boolean })
     @ApiQuery({ name: 'page', required: false, type: Number })
     @ApiQuery({ name: 'limit', required: false, type: Number })
     @ApiResponse({ status: 200, description: 'List of students' })
     async findAll(
         @Query('search') search?: string,
-        @Query('state') state?: 'MA' | 'PI',
+        @Query('state') state?: string,
         @Query('active') active?: boolean,
         @Query('page') page?: number,
         @Query('limit') limit?: number,

@@ -13,6 +13,7 @@ import {
     CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { AdminCreationSuccessScreen } from '@/components/admin/AdminCreationSuccessScreen';
 
 type Step = 1 | 2 | 3;
 
@@ -107,7 +108,7 @@ export default function NovaCarretaPage() {
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [submitError, setSubmitError] = useState<string | null>(null);
 
-    const [form, setForm] = useState<CreateTruckDto & { notes: string; equipmentList: string; lastMaintenanceDate: string; nextMaintenanceDate: string }>({
+    const [form, setForm] = useState<CreateTruckDto & { notes: string; equipmentList: string }>({
         identifier: '',
         licensePlate: '',
         type: 'STANDARD',
@@ -119,8 +120,6 @@ export default function NovaCarretaPage() {
         modelYear: new Date().getFullYear().toString(),
         notes: '',
         equipmentList: '',
-        lastMaintenanceDate: '',
-        nextMaintenanceDate: '',
     });
 
     useEffect(() => {
@@ -171,8 +170,6 @@ export default function NovaCarretaPage() {
                 modelYear: form.modelYear || undefined,
                 notes: form.notes || undefined,
                 equipmentList: form.equipmentList || undefined,
-                lastMaintenanceDate: form.lastMaintenanceDate || undefined,
-                nextMaintenanceDate: form.nextMaintenanceDate || undefined,
             };
 
             await trucksApi.create(payload);
@@ -195,17 +192,15 @@ export default function NovaCarretaPage() {
     const selectedGroup = groups.find(g => g.id === form.groupId);
 
     /* ── SUCCESS ── */
-    if (success) return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-            <div className="animate-scale-in" style={{ textAlign: 'center', padding: '3rem' }}>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#DCFCE7', border: '2px solid #BBF7D0', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
-                    <CheckCircleIcon style={{ width: 36, height: 36, color: '#059669' }} />
-                </div>
-                <h2 style={{ fontFamily: 'Orbitron', fontSize: '1.1rem', fontWeight: 900, color: '#111827', marginBottom: '0.5rem' }}>CARRETA CADASTRADA!</h2>
-                <p style={{ fontSize: '0.82rem', color: '#9CA3AF' }}>Redirecionando para a frota...</p>
-            </div>
-        </div>
-    );
+    if (success) {
+        return (
+            <AdminCreationSuccessScreen
+                title="CARRETA CADASTRADA!"
+                entityName={form.identifier}
+                redirectMessage="Redirecionando para a frota..."
+            />
+        );
+    }
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 780, margin: '0 auto' }} className="animate-fade-in">
@@ -401,20 +396,6 @@ export default function NovaCarretaPage() {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <FormInput
-                                    label="Última Manutenção"
-                                    type="date"
-                                    value={form.lastMaintenanceDate}
-                                    onChange={e => set('lastMaintenanceDate', e.target.value)}
-                                />
-                                <FormInput
-                                    label="Próxima Manutenção"
-                                    type="date"
-                                    value={form.nextMaintenanceDate}
-                                    onChange={e => set('nextMaintenanceDate', e.target.value)}
-                                />
-                            </div>
                         </div>
                     )}
 

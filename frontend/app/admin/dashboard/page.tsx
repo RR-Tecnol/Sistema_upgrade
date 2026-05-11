@@ -1,29 +1,29 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { dashboardApi, DashboardStats, Activity, UpcomingClass } from '@/lib/api/dashboard';
-import { ClockIcon, CalendarIcon, MapPinIcon, BuildingLibraryIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { ClockIcon, CalendarIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import api from '@/lib/api/client';
+import type { DriverMarker } from '@/components/MapaMotoristas';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
-interface AnalyticsData {
-    inscricoesPorMes: { month: string; total: number; aprovados: number }[];
-    alunosPorCurso: { curso: string; alunos: number; turmas: number }[];
-    distribuicaoEstado: { name: string; value: number; color: string }[];
-    statusInscricoes: { name: string; value: number; color: string }[];
-    resumo: {
-        totalStudents: number;
-        totalCourses: number;
-        totalClasses: number;
-        totalEnrollments: number;
-        totalActions: number;
-    };
-}
-
-const MapaRotas = dynamic(() => import('@/components/MapaRotas'), { ssr: false, loading: () => (
-    <div style={{ height: 360, background: '#0F172A', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: '0.85rem' }}>Carregando mapa...</div>
-) });
+// Leaflet é browser-only — carregamento dinâmico obrigatório
+const MapaMotoristas = dynamic(() => import('@/components/MapaMotoristas'), {
+    ssr: false,
+    loading: () => (
+        <div style={{ height: 400, background: '#0F172A', borderRadius: 12,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#475569', fontSize: '.85rem' }}>
+            🗺️ Carregando mapa...
+        </div>
+    ),
+});
+const DriverDrawer = dynamic(() => import('@/components/DriverDrawer'), { ssr: false });
 
 /* ── Count-up ── */
 function useCountUp(target: number, duration = 1000) {
@@ -86,26 +86,131 @@ function KPI({ label, value, sub, color, bg, border, spark, suffix = '' }: {
 
 // Sparklines calculadas de dados reais no componente (ver sparkEnroll, sparkAprovados)
 
+interface AnalyticsData {
+    inscricoesPorMes: { month: string; total: number; aprovados: number }[];
+    alunosPorCurso: { curso: string; alunos: number; turmas: number }[];
+    distribuicaoEstado: { name: string; value: number; color: string }[];
+    statusInscricoes: { name: string; value: number; color: string }[];
+    certificadosEmitidos: number;
+    resumo: { totalStudents: number; totalCourses: number; totalClasses: number; totalEnrollments: number; totalActions: number };
+}
+
+type DrilldownKey =
+    | 'coursesActive'
+    | 'studentsTotal'
+    | 'classesActive'
+    | 'enrollmentsPending'
+    | 'statesAvailable'
+    | 'approvalRate'
+    | 'attendanceRate'
+    | 'certificatesIssued';
+
+/** Navegação contextual no painel de KPI — substitui exibição de JSON bruto. */
+function drilldownQuickAction(type: DrilldownKey, row: Record<string, unknown>): { href: string; label: string } | null {
+    switch (type) {
+        case 'coursesActive': {
+            const id = row.id as string | undefined;
+            return id ? { href: `/admin/cursos/${id}`, label: 'Abrir ficha do curso' } : null;
+        }
+        case 'studentsTotal': {
+            const id = row.id as string | undefined;
+            return id ? { href: `/admin/alunos/${id}`, label: 'Abrir ficha do aluno' } : null;
+        }
+        case 'classesActive':
+        case 'attendanceRate': {
+            const id = row.id as string | undefined;
+            return id ? { href: `/admin/turmas/${id}`, label: 'Abrir ficha da turma' } : null;
+        }
+        case 'enrollmentsPending': {
+            const id = row.id as string | undefined;
+            return id ? { href: `/admin/inscricoes?open=${encodeURIComponent(id)}`, label: 'Abrir detalhe da inscrição' } : null;
+        }
+        case 'statesAvailable':
+            return { href: '/admin/configuracoes', label: 'Configurações operacionais (cidades / UF)' };
+        case 'approvalRate':
+            return { href: '/admin/relatorios', label: 'Abrir relatórios' };
+        case 'certificatesIssued': {
+            const nestStudent = row.student as { id?: string } | undefined;
+            const sid = (row.studentId as string | undefined) ?? nestStudent?.id;
+            if (sid) return { href: `/admin/alunos/${sid}`, label: 'Abrir ficha do aluno' };
+            const nestClass = row.class as { id?: string } | undefined;
+            const cid = (row.classId as string | undefined) ?? nestClass?.id;
+            if (cid) return { href: `/admin/turmas/${cid}`, label: 'Abrir ficha da turma' };
+            return { href: '/admin/certificados', label: 'Abrir certificados' };
+        }
+        default:
+            return null;
+    }
+}
+
 export default function AdminDashboard() {
+    const router = useRouter();
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [activities, setActivities] = useState<Activity[]>([]);
     const [upcoming, setUpcoming] = useState<UpcomingClass[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastUpdate, setLastUpdate] = useState('');
-    const [rotasBiData, setRotasBiData] = useState<any>(null);
-    const [biEstado, setBiEstado] = useState('TODOS');
-    const [biAno, setBiAno] = useState(new Date().getFullYear().toString());
-    const [biLoading, setBiLoading] = useState(false);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+    const [statesAvailableCount, setStatesAvailableCount] = useState(0);
+    const [statesAvailableList, setStatesAvailableList] = useState<string[]>([]);
+    const [drilldownOpen, setDrilldownOpen] = useState(false);
+    const [drilldownType, setDrilldownType] = useState<DrilldownKey | null>(null);
+    const [drilldownLoading, setDrilldownLoading] = useState(false);
+    const [drilldownRows, setDrilldownRows] = useState<any[]>([]);
+    const [drilldownQuery, setDrilldownQuery] = useState('');
+    const [statesOperationalMeta, setStatesOperationalMeta] = useState<Array<{ uf: string; cities: number }>>([]);
+
+    // F4.3: Estado dos motoristas em tempo real
+    const [drivers, setDrivers] = useState<DriverMarker[]>([]);
+    const [driversLoading, setDriversLoading] = useState(true);
+    const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
+    const [drawerDriver, setDrawerDriver] = useState<DriverMarker | null>(null);
+    const [driverFilter, setDriverFilter] = useState<string>('TODOS');   // filtro por motorista
+    const [estadoFilter, setEstadoFilter] = useState<string>('TODOS');   // filtro por estado
+    const [routeMode, setRouteMode] = useState<'trail' | 'remaining' | 'both'>('both'); // F5.17
+    // F4.7: Alertas ativos
+    const [alerts, setAlerts] = useState<Array<{ type: string; driverName: string; message: string; timestamp: string }>>([]);
+    // Fase 6: saúde do motor de certificados
+    const [dashTab, setDashTab] = useState<'ops' | 'health'>('ops');
+    const [certHealth, setCertHealth] = useState<{
+        cache: { hits: number; misses: number; hitRate: number };
+        generationMs: { puppeteer: { count: number; avg: number }; pdfLib: { count: number; avg: number } };
+        puppeteer: { gateWaits: number; maxConcurrent: string };
+    } | null>(null);
+    const [emission, setEmission] = useState<{ byCourse: { name: string; count: number }[]; byState: { state: string; count: number }[]; total: number } | null>(null);
+    const [healthLoading, setHealthLoading] = useState(false);
 
     useEffect(() => {
         load();
-        loadRotasBi();
+        loadDrivers();
         const iv = setInterval(load, 30000);
-        return () => clearInterval(iv);
+        // F4.6: motoristas atualizados via WS — polling leve de backup a cada 30s
+        const driverIv = setInterval(loadDrivers, 30000);
+        return () => { clearInterval(iv); clearInterval(driverIv); };
     }, []);
 
-    useEffect(() => { loadRotasBi(); }, [biEstado, biAno]);
+    useEffect(() => {
+        if (dashTab !== 'health') return;
+        let ok = true;
+        setHealthLoading(true);
+        (async () => {
+            try {
+                const [h, e] = await Promise.all([
+                    api.get('/certificates/admin/stats'),
+                    api.get('/certificates/admin/emission-breakdown'),
+                ]);
+                if (ok) {
+                    setCertHealth(h.data);
+                    setEmission(e.data);
+                }
+            } catch {
+                if (ok) { setCertHealth(null); setEmission(null); }
+            } finally {
+                if (ok) setHealthLoading(false);
+            }
+        })();
+        return () => { ok = false; };
+    }, [dashTab]);
 
     const load = async () => {
         try {
@@ -119,25 +224,167 @@ export default function AdminDashboard() {
             setActivities(a);
             setUpcoming(u);
             if (analyticsRes.data) setAnalytics(analyticsRes.data);
+            const citiesRes = await api.get('/cities').catch(() => ({ data: [] as any[] }));
+            const cityRows = Array.isArray(citiesRes.data) ? citiesRes.data : (citiesRes.data?.data || []);
+            const ufs = new Set<string>((cityRows || []).map((c: any) => String(c.state || '').toUpperCase()).filter((uf: string) => /^[A-Z]{2}$/.test(uf)));
+            setStatesAvailableCount(ufs.size);
+            setStatesAvailableList(Array.from(ufs).sort((a, b) => a.localeCompare(b, 'pt-BR')));
+            const byUfCount = (cityRows || []).reduce((acc: Record<string, number>, c: any) => {
+                const uf = String(c.state || '').toUpperCase();
+                if (/^[A-Z]{2}$/.test(uf)) acc[uf] = (acc[uf] || 0) + 1;
+                return acc;
+            }, {});
+            setStatesOperationalMeta(
+                Object.entries(byUfCount)
+                    .map(([uf, cities]) => ({ uf, cities: Number(cities) || 0 }))
+                    .sort((a, b) => a.uf.localeCompare(b.uf, 'pt-BR')),
+            );
             setLastUpdate(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
-        } catch { /* noop */ } finally { setLoading(false); }
+        } catch { } finally { setLoading(false); }
     };
 
-    const loadRotasBi = async () => {
-        setBiLoading(true);
+    const openDrilldown = async (type: DrilldownKey) => {
+        setDrilldownType(type);
+        setDrilldownOpen(true);
+        setDrilldownLoading(true);
+        setDrilldownRows([]);
+        setDrilldownQuery('');
         try {
-            const res = await api.get('/dashboard/rotas-bi', {
-                params: { estado: biEstado !== 'TODOS' ? biEstado : undefined, ano: biAno }
-            });
-            setRotasBiData(res.data);
-        } catch { setRotasBiData(null); } finally { setBiLoading(false); }
+            if (type === 'coursesActive') {
+                const res = await api.get('/courses');
+                const rows = (Array.isArray(res.data) ? res.data : res.data?.data || []).filter((c: any) => c.active !== false);
+                setDrilldownRows(rows);
+                return;
+            }
+            if (type === 'studentsTotal') {
+                const res = await api.get('/admin/students', { params: { page: 1, limit: 200 } });
+                setDrilldownRows(Array.isArray(res.data?.data) ? res.data.data : []);
+                return;
+            }
+            if (type === 'classesActive') {
+                const res = await api.get('/classes');
+                const activeStatuses = new Set(['PLANNED', 'ENROLLMENT_OPEN', 'ENROLLMENT_CLOSED', 'IN_PROGRESS']);
+                const rows = (Array.isArray(res.data) ? res.data : res.data?.data || []).filter((t: any) => activeStatuses.has(String(t.status || '')));
+                setDrilldownRows(rows);
+                return;
+            }
+            if (type === 'enrollmentsPending') {
+                const res = await api.get('/enrollments?limit=300');
+                const pendingStatuses = new Set(['PENDING', 'DOCUMENT_PENDING', 'DOCUMENTS_PENDING', 'WAITLIST']);
+                const rows = (Array.isArray(res.data) ? res.data : res.data?.data || []).filter((e: any) => pendingStatuses.has(String(e.status || '')));
+                setDrilldownRows(rows);
+                return;
+            }
+            if (type === 'statesAvailable') {
+                setDrilldownRows(statesOperationalMeta.length > 0 ? statesOperationalMeta : statesAvailableList.map((uf) => ({ uf, cities: 0 })));
+                return;
+            }
+            if (type === 'approvalRate') {
+                const rows = (analytics?.inscricoesPorMes || []).map((m) => ({
+                    period: m.month,
+                    total: m.total,
+                    approved: m.aprovados,
+                    rate: m.total > 0 ? Math.round((m.aprovados / m.total) * 100) : 0,
+                }));
+                setDrilldownRows(rows);
+                return;
+            }
+            if (type === 'attendanceRate') {
+                const res = await api.get('/classes');
+                const rows = Array.isArray(res.data) ? res.data : res.data?.data || [];
+                setDrilldownRows(rows);
+                return;
+            }
+            if (type === 'certificatesIssued') {
+                const res = await api.get('/certificates');
+                setDrilldownRows(Array.isArray(res.data) ? res.data : res.data?.data || []);
+                return;
+            }
+        } catch {
+            setDrilldownRows([]);
+        } finally {
+            setDrilldownLoading(false);
+        }
     };
 
-    const maStudents = stats?.students.ma || 0;
-    const piStudents = stats?.students.pi || 0;
+    const drilldownTitle: Record<DrilldownKey, string> = {
+        coursesActive: 'Cursos ativos',
+        studentsTotal: 'Alunos cadastrados',
+        classesActive: 'Turmas ativas',
+        enrollmentsPending: 'Inscrições pendentes',
+        statesAvailable: 'Estados disponíveis',
+        approvalRate: 'Aprovação por período',
+        attendanceRate: 'Frequência por turma',
+        certificatesIssued: 'Certificados emitidos',
+    };
+
+    const drilldownAccent: Record<DrilldownKey, { color: string; bg: string; border: string }> = {
+        coursesActive: { color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
+        studentsTotal: { color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
+        classesActive: { color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },
+        enrollmentsPending: { color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' },
+        statesAvailable: { color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+        approvalRate: { color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
+        attendanceRate: { color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },
+        certificatesIssued: { color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
+    };
+
+    const filteredDrilldownRows = drilldownRows.filter((row) => {
+        if (!drilldownQuery.trim()) return true;
+        const q = drilldownQuery.trim().toLowerCase();
+        return JSON.stringify(row).toLowerCase().includes(q);
+    });
+
+    // F4.3: Carrega motoristas ativos do backend
+    const loadDrivers = useCallback(async () => {
+        setDriversLoading(true);
+        try {
+            const res = await api.get('/driver/location/active');
+            const driversData: DriverMarker[] = res.data?.drivers ?? [];
+            // Busca trilhas para cada motorista com trip ativa
+            const withTrails = await Promise.all(driversData.map(async (d) => {
+                if (!d.trip?.id) return d;
+                try {
+                    const trailRes = await api.get(`/driver/location/${d.trip.id}/trail`);
+                    return { ...d, trail: trailRes.data?.trail ?? [] };
+                } catch { return d; }
+            }));
+            setDrivers(withTrails);
+
+        } catch { setDrivers([]); } finally { setDriversLoading(false); }
+    }, []);
+
+    // F4.6: Escuta eventos WS para atualizar posição dos motoristas em tempo real
+    // useNotifications já existe e está conectado — ouvimos driver_location_update
+    useEffect(() => {
+        const handler = (event: CustomEvent) => {
+            const { driverUserId, lat, lng, speed, heading, capturedAt } = event.detail;
+            setDrivers(prev => prev.map(d => {
+                if (d.userId !== driverUserId) return d;
+                return {
+                    ...d,
+                    status: 'online' as const,
+                    lastLocation: { lat, lng, speed, heading, capturedAt },
+                    trail: [...(d.trail ?? []), { latitude: lat, longitude: lng }],
+                };
+            }));
+        };
+        const alertHandler = (event: CustomEvent) => {
+            const { driverName, message, type, timestamp } = event.detail;
+            setAlerts(prev => [{ type, driverName, message, timestamp: timestamp || new Date().toISOString() }, ...prev].slice(0, 10));
+        };
+        window.addEventListener('ws:driver_location_update', handler as EventListener);
+        window.addEventListener('ws:driver_alert', alertHandler as EventListener);
+        return () => {
+            window.removeEventListener('ws:driver_location_update', handler as EventListener);
+            window.removeEventListener('ws:driver_alert', alertHandler as EventListener);
+        };
+    }, []);
+
+    const studentsByState = stats?.students.byState || {};
+    const sortedStudentStates = Object.entries(studentsByState).sort((a, b) => b[1] - a[1]);
+    const topStatesSummary = sortedStudentStates.slice(0, 2).map(([uf, n]) => `${uf} ${n}`).join(' · ');
     const totalStudents = stats?.students.total || 0;
-    const maPct = totalStudents ? Math.round((maStudents / totalStudents) * 100) : 0;
-    const piPct = 100 - maPct;
 
     // Sparklines calculadas dos dados reais (array vazio enquanto carrega — Sparkline retorna null para < 2 pontos)
     const sparkEnroll = analytics?.inscricoesPorMes.map(m => m.total) ?? [];
@@ -148,7 +395,24 @@ export default function AdminDashboard() {
              Math.max(analytics.inscricoesPorMes.reduce((acc, m) => acc + m.total, 0), 1)) * 100
           )
         : 0;
-    const certCount = analytics?.statusInscricoes?.find(s => s.name === 'Aprovadas')?.value ?? 0;
+    // BUG-DASH-02 FIX: ler o campo real de certificados (tabela Certificate), não enrollment.status
+    const certCount = analytics?.certificadosEmitidos ?? 0;
+
+    // Extrai UF do campo "Cidade/UF" ou "Cidade/UF → Cidade/UF"
+    const extractUF = (d: DriverMarker) => {
+        const match = (d.trip.origin + ' ' + d.trip.destination).match(/\/([A-Z]{2})/g);
+        return match ? [...new Set(match.map(m => m.slice(1)))] : [];
+    };
+
+    // Estados presentes nos motoristas ativos (para o select)
+    const estadosDisponiveis = [...new Set(drivers.flatMap(d => extractUF(d)))].sort();
+
+    // Motoristas filtrados: por estado E por motorista individual
+    const driversFiltered = drivers.filter(d => {
+        const passaEstado = estadoFilter === 'TODOS' || extractUF(d).includes(estadoFilter);
+        const passaMotorista = driverFilter === 'TODOS' || d.userId === driverFilter;
+        return passaEstado && passaMotorista;
+    });
 
     if (loading) return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
@@ -162,32 +426,156 @@ export default function AdminDashboard() {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }} className="animate-fade-in">
 
-            {/* ── HEADER ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <div>
-                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '2rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '0.25rem' }}>DASHBOARD</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Visão geral · Sistema Qualifica MA &amp; PI</p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.45rem 0.9rem', borderRadius: 9, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#059669', display: 'inline-block', boxShadow: '0 0 0 2px rgba(5,150,105,0.25)' }} />
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669', fontFamily: 'JetBrains Mono', letterSpacing: '0.06em' }}>ONLINE</span>
-                    {lastUpdate && <span style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>· {lastUpdate}</span>}
-                </div>
+            <AdminHeaderHero
+                title="DASHBOARD"
+                subtitle="Visão geral inteligente do ecossistema"
+                badge={lastUpdate ? `ONLINE · ${lastUpdate}` : 'ONLINE'}
+            />
+
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {(['ops', 'health'] as const).map(tab => (
+                    <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setDashTab(tab)}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            borderRadius: 10,
+                            border: `2px solid ${dashTab === tab ? '#B89B00' : '#E5E7EB'}`,
+                            background: dashTab === tab ? 'linear-gradient(135deg, #FFFDE7, #FFFBEB)' : '#F9FAFB',
+                            fontFamily: 'Orbitron, sans-serif',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            color: dashTab === tab ? '#0F172A' : '#6B7280',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {tab === 'ops' ? 'Operacional' : 'Saúde do Sistema (certificados)'}
+                    </button>
+                ))}
             </div>
 
+            {dashTab === 'health' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {healthLoading && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>A carregar métricas…</p>}
+                {certHealth && !healthLoading && (
+                    <div className="grid-3-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
+                        <KPI
+                            label="Cache hit rate"
+                            value={Math.round((certHealth.cache.hitRate ?? 0) * 1000) / 10}
+                            suffix="%"
+                            sub={`${certHealth.cache.hits} hits / ${certHealth.cache.misses} miss`}
+                            color="#B89B00"
+                            bg="#FFFDE7"
+                            border="#FEF08A"
+                        />
+                        <KPI
+                            label="Puppeteer (média)"
+                            value={Math.round((certHealth.generationMs.puppeteer.avg ?? 0) * 10) / 10}
+                            suffix=" ms"
+                            sub={`${certHealth.generationMs.puppeteer.count} amostras`}
+                            color="#059669"
+                            bg="#F0FDF4"
+                            border="#BBF7D0"
+                        />
+                        <KPI
+                            label="pdf-lib (média)"
+                            value={Math.round((certHealth.generationMs.pdfLib.avg ?? 0) * 10) / 10}
+                            suffix=" ms"
+                            sub={`${certHealth.generationMs.pdfLib.count} amostras`}
+                            color="#0891B2"
+                            bg="#F0F9FF"
+                            border="#BAE6FD"
+                        />
+                    </div>
+                )}
+                {certHealth && !healthLoading && (
+                    <div style={{ background: 'rgba(255, 255, 255, 0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.5)', borderRadius: 20, padding: '1.5rem', boxShadow: '0 8px 32px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)', cursor: 'default' }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.01)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}>
+                        <div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#8E8E93', letterSpacing: '-0.01em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Motor Puppeteer</div>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                                <span style={{ fontSize: '2rem', fontWeight: 700, color: '#1C1C1E', letterSpacing: '-0.03em' }}>{certHealth.puppeteer.gateWaits}</span>
+                                <span style={{ fontSize: '0.9rem', color: '#8E8E93', fontWeight: 500 }}>na fila de espera</span>
+                            </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#8E8E93', letterSpacing: '-0.01em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Concorrência</div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1C1C1E', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#34C759', boxShadow: '0 0 8px rgba(52, 199, 89, 0.4)' }} />
+                                {String(certHealth.puppeteer.maxConcurrent)} workers
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {emission && !healthLoading && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <div style={{ background: 'rgba(255, 255, 255, 0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.5)', borderRadius: 20, padding: '1.5rem', boxShadow: '0 8px 32px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', transition: 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1C1C1E', letterSpacing: '-0.01em' }}>Emissões por Curso</div>
+                                <div style={{ background: '#F2F2F7', padding: '0.2rem 0.6rem', borderRadius: 12, fontSize: '0.75rem', fontWeight: 600, color: '#8E8E93' }}>{emission.total} total</div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                                {emission.byCourse.slice(0, 12).map(c => (
+                                    <div key={c.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: '0.9rem', color: '#3A3A3C', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '1rem' }}>{c.name}</span>
+                                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1C1C1E' }}>{c.count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div style={{ background: 'rgba(255, 255, 255, 0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.5)', borderRadius: 20, padding: '1.5rem', boxShadow: '0 8px 32px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', transition: 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1C1C1E', letterSpacing: '-0.01em', marginBottom: '1.25rem' }}>Distribuição por UF</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                                {emission.byState.map(s => (
+                                    <div key={s.state} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#F2F2F7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#8E8E93' }}>{s.state}</div>
+                                            <span style={{ fontSize: '0.9rem', color: '#3A3A3C', fontWeight: 500 }}>{s.state}</span>
+                                        </div>
+                                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1C1C1E' }}>{s.count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+            )}
+
+            {dashTab === 'ops' && (
+            <>
+
             {/* ── ROW 1: PRIMARY KPIs ── */}
-            <div className="grid-4-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.85rem' }}>
-                <KPI label="Cursos Ativos" value={stats?.courses.active || 0} sub={`de ${stats?.courses.total || 0} cursos`} color="#B89B00" bg="#FFFDE7" border="#FEF08A" spark={[3, 5, 4, 7, 6, 8, 7, 9, 8, 10, 9]} />
-                <KPI label="Total de Alunos" value={totalStudents} sub={`MA ${maStudents} · PI ${piStudents}`} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" spark={[10, 15, 13, 18, 16, 20, 19, 22, 24, 21, 26]} />
-                <KPI label="Turmas Ativas" value={stats?.classes.active || 0} sub={`de ${stats?.classes.total || 0} turmas`} color="#059669" bg="#F0FDF4" border="#BBF7D0" spark={[2, 3, 3, 5, 4, 6, 5, 7, 6, 8, 7]} />
-                <KPI label="Inscrições Pendentes" value={stats?.enrollments.pending || 0} sub={`${stats?.enrollments.total || 0} inscrições total`} color="#EA580C" bg="#FFF7ED" border="#FED7AA" spark={sparkEnroll} />
+            <div className="grid-4-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>
+                <AnimatedKpiCard label="Cursos Ativos" value={stats?.courses.active || 0} sub={`de ${stats?.courses.total || 0} cursos · clique para ver`} color="#B89B00" bg="#FFFDE7" border="#FEF08A" icon={<span>📚</span>} onClick={() => openDrilldown('coursesActive')} />
+                <AnimatedKpiCard label="Total de Alunos" value={totalStudents} sub={`${topStatesSummary || 'Sem distribuição por UF'} · clique para ver`} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" icon={<span>👥</span>} delayMs={60} onClick={() => openDrilldown('studentsTotal')} />
+                <AnimatedKpiCard label="Turmas Ativas" value={stats?.classes.active || 0} sub={`de ${stats?.classes.total || 0} turmas · clique para ver`} color="#059669" bg="#F0FDF4" border="#BBF7D0" icon={<span>🏫</span>} delayMs={120} onClick={() => openDrilldown('classesActive')} />
+                <AnimatedKpiCard label="Inscrições Pendentes" value={stats?.enrollments.pending || 0} sub={`${stats?.enrollments.total || 0} inscrições total · clique para ver`} color="#EA580C" bg="#FFF7ED" border="#FED7AA" icon={<span>📝</span>} delayMs={180} onClick={() => openDrilldown('enrollmentsPending')} />
+                <AnimatedKpiCard label="Estados Disponíveis" value={statesAvailableCount} sub="vindos de Configurações > Operacional · clique para ver" color="#7C3AED" bg="#F5F3FF" border="#DDD6FE" icon={<span>🗺️</span>} delayMs={240} onClick={() => openDrilldown('statesAvailable')} />
             </div>
 
             {/* ── ROW 2: SECONDARY METRICS ── */}
             <div className="grid-3-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
-                <KPI label="Taxa de Aprovação" value={taxaAprovacao} suffix="%" color="#B89B00" bg="#FFFDE7" border="#FEF08A" spark={sparkAprovados} />
-                <KPI label="Frequência Média" value={91} suffix="%" color="#059669" bg="#F0FDF4" border="#BBF7D0" spark={sparkEnroll} />
-                <KPI label="Certificados Emitidos" value={certCount} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" spark={sparkAprovados} />
+                <AnimatedKpiCard label="Taxa de Aprovação" value={taxaAprovacao} suffix="%" sub="clique para ver detalhes" color="#B89B00" bg="#FFFDE7" border="#FEF08A" icon={<span>📈</span>} onClick={() => openDrilldown('approvalRate')} />
+                <AnimatedKpiCard
+                    label="Frequência Média"
+                    value={stats?.attendance.rate || 0}
+                    suffix="%"
+                    sub={`${stats?.attendance.totalRecords || 0} presenças registradas · clique para ver`}
+                    color="#059669"
+                    bg="#F0FDF4"
+                    border="#BBF7D0"
+                    icon={<span>✅</span>}
+                    delayMs={60}
+                    onClick={() => openDrilldown('attendanceRate')}
+                />
+                <AnimatedKpiCard label="Certificados Emitidos" value={certCount} sub="clique para ver detalhes" color="#0891B2" bg="#F0F9FF" border="#BAE6FD" icon={<span>🏆</span>} delayMs={120} onClick={() => openDrilldown('certificatesIssued')} />
             </div>
 
             {/* ── ROW 3: STATES BAR ── */}
@@ -196,26 +584,28 @@ export default function AdminDashboard() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.72rem', color: '#9CA3AF', letterSpacing: '0.1em' }}>DISTRIBUIÇÃO DE ALUNOS</span>
                     </div>
-                    {[
-                        { state: 'MA', label: 'Maranhão', n: maStudents, pct: maPct, color: '#0891B2', border: '#BAE6FD', bg: '#E0F2FE' },
-                        { state: 'PI', label: 'Piauí', n: piStudents, pct: piPct, color: '#059669', border: '#BBF7D0', bg: '#DCFCE7' },
-                    ].map(s => (
-                        <div key={s.state} style={{ flex: 1, minWidth: 200 }}>
+                    {sortedStudentStates.map(([uf, n], idx) => {
+                        const pct = totalStudents ? Math.round((n / totalStudents) * 100) : 0;
+                        const color = ['#0891B2', '#059669', '#7C3AED', '#EA580C', '#DC2626'][idx % 5];
+                        const bg = ['#E0F2FE', '#DCFCE7', '#F5F3FF', '#FFF7ED', '#FEF2F2'][idx % 5];
+                        return (
+                        <div key={uf} style={{ flex: 1, minWidth: 200 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.3rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    <span style={{ padding: '0.15rem 0.5rem', borderRadius: 100, background: s.bg, color: s.color, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.08em' }}>{s.state}</span>
-                                    <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>{s.label}</span>
+                                    <span style={{ padding: '0.15rem 0.5rem', borderRadius: 100, background: bg, color: color, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.08em' }}>{uf}</span>
+                                    <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>Estado {uf}</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
-                                    <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1rem', color: s.color }}>{s.n}</span>
-                                    <span style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>{s.pct}%</span>
+                                    <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1rem', color: color }}>{n}</span>
+                                    <span style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>{pct}%</span>
                                 </div>
                             </div>
                             <div style={{ height: 5, borderRadius: 3, background: '#F3F4F6', overflow: 'hidden' }}>
-                                <div style={{ height: '100%', width: `${s.pct}%`, background: s.color, borderRadius: 3, transition: 'width 1s cubic-bezier(0.16,1,0.3,1)' }} />
+                                <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3, transition: 'width 1s cubic-bezier(0.16,1,0.3,1)' }} />
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
@@ -317,93 +707,368 @@ export default function AdminDashboard() {
                 </div>
             </div>
 
-            {/* ── ROW 6: ROTAS BI ── */}
+            {/* ── ROW 6: MOTORISTAS EM ROTA — F4.3 a F4.7 ── */}
             <div style={{ background: '#0F172A', borderRadius: 16, border: '1px solid rgba(255,214,0,0.15)', overflow: 'hidden' }}>
-                {/* Header BI */}
-                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                {/* Header */}
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '.75rem' }}>
                     <div>
-                        <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#FFD600', letterSpacing: '0.08em' }}>ROTAS & BI</h2>
-                        <p style={{ fontSize: '0.75rem', color: '#475569', marginTop: 2 }}>Análise de ações de campo por estado e ano</p>
+                        <h2 style={{ fontFamily: 'Orbitron,sans-serif', fontWeight: 900, fontSize: '.9rem', color: '#FFD600', letterSpacing: '.08em', margin: 0 }}>
+                            🚛 MOTORISTAS EM ROTA
+                        </h2>
+                        <p style={{ fontSize: '.75rem', color: '#475569', margin: '2px 0 0' }}>
+                            {drivers.filter(d => d.status === 'online').length} online ·
+                            {drivers.filter(d => d.status === 'offline' || d.status === 'stopped').length} sem sinal ·
+                            Atualizado: {lastUpdate || '--:--'}
+                        </p>
                     </div>
-                    {/* Filtros */}
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <select value={biEstado} onChange={e => setBiEstado(e.target.value)}
-                            style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0.35rem 0.75rem', color: '#F1F5F9', fontSize: '0.8rem', cursor: 'pointer', height: 36 }}>
+                    {/* Filtros: estado + motorista */}
+                    <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* Filtro por estado */}
+                        <select value={estadoFilter} onChange={e => {
+                            setEstadoFilter(e.target.value);
+                            setDriverFilter('TODOS');
+                            setSelectedDriver(null);
+                        }} style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: 8, padding: '.35rem .75rem', color: '#F1F5F9', fontSize: '.8rem',
+                            cursor: 'pointer', height: 36 }}>
                             <option value="TODOS">Todos estados</option>
-                            <option value="MA">Maranhão (MA)</option>
-                            <option value="PI">Piauí (PI)</option>
-                            <option value="AC">Acre (AC)</option>
+                            {estadosDisponiveis.map(uf => (
+                                <option key={uf} value={uf}>{uf}</option>
+                            ))}
                         </select>
-                        <select value={biAno} onChange={e => setBiAno(e.target.value)}
-                            style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0.35rem 0.75rem', color: '#F1F5F9', fontSize: '0.8rem', cursor: 'pointer', height: 36 }}>
-                            {[2024, 2025, 2026].map(y => <option key={y} value={String(y)}>{y}</option>)}
+                        {/* Filtro por motorista */}
+                        <select value={driverFilter} onChange={e => {
+                            setDriverFilter(e.target.value);
+                            setSelectedDriver(e.target.value === 'TODOS' ? null : e.target.value);
+                        }} style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: 8, padding: '.35rem .75rem', color: '#F1F5F9', fontSize: '.8rem',
+                            cursor: 'pointer', height: 36 }}>
+                            <option value="TODOS">Todos motoristas</option>
+                            {(estadoFilter === 'TODOS' ? drivers : drivers.filter(d => extractUF(d).includes(estadoFilter)))
+                                .map(d => <option key={d.userId} value={d.userId}>{d.name}</option>)}
                         </select>
+
+                        {/* F5.17: Toggle de modo de visualização de rota */}
+                        <div style={{
+                            display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden',
+                            border: '1px solid rgba(255,255,255,0.1)', height: 36,
+                        }}>
+                            {([
+                                { key: 'trail'     as const, label: '↩ Percorrido', title: 'Mostrar apenas o caminho percorrido' },
+                                { key: 'both'      as const, label: '⇌ Ambos',      title: 'Percorrido + rota restante (padrão)' },
+                                { key: 'remaining' as const, label: '↪ Falta',      title: 'Mostrar o trecho que ainda falta percorrer' },
+                            ]).map((opt, idx, arr) => (
+                                <button
+                                    key={opt.key}
+                                    title={opt.title}
+                                    onClick={() => setRouteMode(opt.key)}
+                                    style={{
+                                        background: routeMode === opt.key ? 'rgba(255,214,0,0.15)' : '#1E293B',
+                                        border: 'none',
+                                        borderRight: idx < arr.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                                        padding: '.2rem .65rem',
+                                        color: routeMode === opt.key ? '#FFD600' : '#64748B',
+                                        fontSize: '.72rem',
+                                        fontWeight: routeMode === opt.key ? 800 : 500,
+                                        cursor: 'pointer',
+                                        transition: 'all .15s',
+                                        whiteSpace: 'nowrap',
+                                        height: '100%',
+                                    }}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <button onClick={loadDrivers} style={{ background: '#1E293B',
+                            border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+                            padding: '.35rem .75rem', color: '#94A3B8', fontSize: '.8rem',
+                            cursor: 'pointer', height: 36 }} title="Atualizar">
+                            🔄
+                        </button>
                     </div>
                 </div>
 
-                {/* KPI Cards BI */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', padding: '1rem 1.25rem' }}>
-                    {[
-                        { label: 'Total de Rotas', value: biLoading ? '...' : String(rotasBiData?.totalRotas ?? 0), color: '#FFD600', icon: <MapPinIcon style={{ width: 20, height: 20 }} /> },
-                        { label: 'Cidades Beneficiadas', value: biLoading ? '...' : String(rotasBiData?.cidadesBeneficiadas ?? 0), color: '#10B981', icon: <BuildingLibraryIcon style={{ width: 20, height: 20 }} /> },
-                        { label: 'Total de Inscritos', value: biLoading ? '...' : String(rotasBiData?.totalInscritos ?? 0), color: '#0EA5E9', icon: <UsersIcon style={{ width: 20, height: 20 }} /> },
-                    ].map(item => (
-                        <div key={item.label} style={{ background: '#1E293B', borderRadius: 12, padding: '1rem', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ width: 40, height: 40, borderRadius: 10, background: `${item.color}18`, color: item.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</div>
-                            <div>
-                                <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.4rem', color: '#F1F5F9', lineHeight: 1 }}>{item.value}</div>
-                                <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</div>
-                            </div>
+                {driversLoading && drivers.length === 0 ? (
+                    <div style={{ padding: '3rem', textAlign: 'center', color: '#475569' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛰️</div>
+                        <div style={{ fontFamily: 'Orbitron,sans-serif', fontSize: '.72rem', letterSpacing: '.1em' }}>
+                            CARREGANDO MOTORISTAS...
                         </div>
-                    ))}
-                </div>
-
-                {/* Mapa interativo */}
-                <div style={{ padding: '0 1.25rem 1rem' }}>
-                    <MapaRotas rotas={rotasBiData?.rotas || []} />
-                </div>
-
-                {/* Tabela de rotas */}
-                <div style={{ margin: '0 1.25rem 1.25rem', background: '#1E293B', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                            <thead>
-                                <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                                    {['Cidade', 'Estado', 'Status', 'Início', 'Turmas', 'Inscritos'].map(h => (
-                                        <th key={h} style={{ padding: '0.6rem 0.875rem', textAlign: 'left', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748B', whiteSpace: 'nowrap' }}>{h}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {!rotasBiData?.rotas?.length ? (
-                                    <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#475569' }}>Nenhuma rota encontrada</td></tr>
-                                ) : rotasBiData.rotas.slice(0, 10).map((r: any) => {
-                                    const statusStyle: Record<string, { bg: string; color: string }> = {
-                                        PLANEJADA: { bg: 'rgba(14,165,233,0.12)', color: '#0EA5E9' },
-                                        EM_ANDAMENTO: { bg: 'rgba(16,185,129,0.12)', color: '#10B981' },
-                                        CONCLUIDA: { bg: 'rgba(100,116,139,0.12)', color: '#64748B' },
-                                    };
-                                    const st = statusStyle[r.status] || statusStyle.PLANEJADA;
+                    </div>
+                ) : drivers.length === 0 ? (
+                    <div style={{ padding: '3rem', textAlign: 'center', color: '#475569' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '.5rem' }}>🛣️</div>
+                        <div style={{ fontFamily: 'Orbitron,sans-serif', fontSize: '.72rem', letterSpacing: '.1em', color: '#334155' }}>
+                            NENHUM MOTORISTA EM ROTA
+                        </div>
+                        <p style={{ fontSize: '.75rem', color: '#334155', marginTop: '.4rem' }}>
+                            Viagens IN_TRANSIT aparecem aqui em tempo real.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="driver-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0 }}>
+                        <style>{`
+                            @media(max-width:900px){.driver-grid{grid-template-columns:1fr !important;}}
+                            @media(max-width:900px){.driver-list-col{border-left:none !important; border-top:1px solid rgba(255,255,255,0.06) !important; max-height:300px !important;}}
+                        `}</style>
+                        {/* Mapa F4.1/F4.2 */}
+                        <div style={{ padding: '1rem 1.25rem 0' }}>
+                            <MapaMotoristas
+                                drivers={driversFiltered}
+                                selectedDriverId={selectedDriver}
+                                routeMode={routeMode}
+                                onDriverClick={(id) => {
+                                    setSelectedDriver(id);
+                                    setDrawerDriver(drivers.find(d => d.userId === id) ?? null);
+                                    // F5.13: scroll lock gerenciado pelo DriverDrawer via useEffect cleanup
+                                }}
+                            />
+                        </div>
+                        {/* F4.3: Lista lateral */}
+                        <div className="custom-scrollbar driver-list-col" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)', maxHeight: 500, overflowY: 'auto' }}>
+                            {driversFiltered.map(d => {
+                                    const stColor = { online: '#22C55E', stopped: '#F59E0B', offline: '#EF4444' }[d.status];
+                                    const isSelected = selectedDriver === d.userId;
                                     return (
-                                        <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                                            <td style={{ padding: '0.6rem 0.875rem', color: '#F1F5F9', fontWeight: 600 }}>{r.cidade || '—'}</td>
-                                            <td style={{ padding: '0.6rem 0.875rem', color: '#94A3B8' }}>{r.estado || '—'}</td>
-                                            <td style={{ padding: '0.6rem 0.875rem' }}>
-                                                <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 10px', borderRadius: 20, background: st.bg, color: st.color }}>
-                                                    {r.status?.replace('_', ' ')}
+                                        <div key={d.userId}
+                                            onClick={() => {
+                                                setSelectedDriver(d.userId);
+                                                setDrawerDriver(d);
+                                            }}
+                                            style={{ padding: '.85rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                                cursor: 'pointer', background: isSelected ? 'rgba(255,214,0,0.05)' : 'transparent',
+                                                transition: 'background .15s', borderLeft: isSelected ? `3px solid #FFD600` : '3px solid transparent' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '.4rem' }}>
+                                                <div style={{ width: 8, height: 8, borderRadius: '50%',
+                                                    background: stColor, flexShrink: 0,
+                                                    boxShadow: d.status === 'online' ? `0 0 0 3px ${stColor}33` : 'none' }} />
+                                                <span style={{ fontWeight: 700, fontSize: '.82rem', color: '#F1F5F9',
+                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {d.name}
                                                 </span>
-                                            </td>
-                                            <td style={{ padding: '0.6rem 0.875rem', color: '#94A3B8', fontFamily: 'monospace' }}>{r.dataInicio ? new Date(r.dataInicio).toLocaleDateString('pt-BR') : '—'}</td>
-                                            <td style={{ padding: '0.6rem 0.875rem', color: '#F1F5F9', textAlign: 'center' }}>{r.totalTurmas}</td>
-                                            <td style={{ padding: '0.6rem 0.875rem', color: '#FFD600', fontWeight: 700, textAlign: 'center' }}>{r.totalInscritos}</td>
-                                        </tr>
+                                            </div>
+                                            <div style={{ fontSize: '.7rem', color: '#64748B', marginBottom: '.3rem',
+                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {d.trip.origin} → {d.trip.destination}
+                                            </div>
+                                            {/* Barra de progresso */}
+                                            <div style={{ height: 3, borderRadius: 2, background: '#1E293B', overflow: 'hidden', marginBottom: '.3rem' }}>
+                                                <div style={{ height: '100%', width: `${d.progress}%`,
+                                                    background: 'linear-gradient(90deg,#22C55E,#86EFAC)', borderRadius: 2 }} />
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.65rem', color: '#475569' }}>
+                                                <span>{d.progress}% concluído</span>
+                                                {d.eta && <span style={{ color: '#0891B2', fontWeight: 600 }}>
+                                                    ETA: {d.eta.minutos < 60 ? `${d.eta.minutos}min` : `${Math.floor(d.eta.minutos / 60)}h${d.eta.minutos % 60}min`}
+                                                </span>}
+                                            </div>
+                                        </div>
                                     );
                                 })}
-                            </tbody>
-                        </table>
+                        </div>
                     </div>
-                </div>
+                )}
+
+                {/* F4.7: Painel de alertas ativos */}
+                {alerts.length > 0 && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '.75rem 1.25rem' }}>
+                        <div style={{ fontSize: '.62rem', fontWeight: 700, color: '#EF4444',
+                            textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.5rem' }}>
+                            ⚠️ Alertas Ativos
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
+                            {alerts.slice(0, 3).map((a, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '.75rem',
+                                    padding: '.4rem .75rem', borderRadius: 7,
+                                    background: a.type === 'no_signal' ? 'rgba(239,68,68,.1)' :
+                                        a.type === 'long_stop' ? 'rgba(245,158,11,.1)' : 'rgba(34,197,94,.1)',
+                                    border: `1px solid ${a.type === 'no_signal' ? 'rgba(239,68,68,.2)' :
+                                        a.type === 'long_stop' ? 'rgba(245,158,11,.2)' : 'rgba(34,197,94,.2)'}` }}>
+                                    <span style={{ fontSize: '.9rem' }}>
+                                        {a.type === 'no_signal' ? '🔴' : a.type === 'long_stop' ? '🟡' : '🟢'}
+                                    </span>
+                                    <span style={{ fontSize: '.75rem', color: '#94A3B8', flex: 1 }}>{a.message}</span>
+                                    <span style={{ fontSize: '.65rem', color: '#475569', whiteSpace: 'nowrap' }}>
+                                        {new Date(a.timestamp).toLocaleTimeString('pt-BR')}
+                                    </span>
+                                    <button onClick={() => setAlerts(prev => prev.filter((_, j) => j !== i))}
+                                        style={{ background: 'none', border: 'none', color: '#475569',
+                                            cursor: 'pointer', fontSize: '.8rem', padding: 0 }}>✕</button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
+            </>
+            )}
+
+            {/* F4.4: Drawer lateral do motorista — F5.13: createPortal gerencia scroll lock */}
+            <DriverDrawer driver={drawerDriver} onClose={() => {
+                setDrawerDriver(null);
+                setSelectedDriver(null);
+                // F5.13: scroll lock é restaurado automaticamente pelo cleanup do useEffect do DriverDrawer
+            }} />
+
+            {drilldownOpen && drilldownType && (
+                <ModalPortal>
+                    <div
+                        onClick={() => setDrilldownOpen(false)}
+                        style={{
+                            position: 'fixed',
+                            inset: 0,
+                            zIndex: MODAL_PORTAL_Z_INDEX,
+                            background: 'rgba(2, 6, 23, 0.45)',
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                        }}
+                    >
+                        <aside
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                width: 'min(560px, 96vw)',
+                                height: '100vh',
+                                background: '#FFFFFF',
+                                borderLeft: '1px solid #E5E7EB',
+                                boxShadow: '-8px 0 30px rgba(15, 23, 42, 0.16)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                            }}
+                        >
+                            <div style={{ padding: '1rem 1.1rem', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.8rem', background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
+                                <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.8rem', letterSpacing: '0.08em', color: '#F8FAFC' }}>
+                                        {drilldownTitle[drilldownType]}
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                                        {drilldownLoading ? 'Carregando dados...' : `${filteredDrilldownRows.length} de ${drilldownRows.length} registro(s)`}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setDrilldownOpen(false)}
+                                    style={{ border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.08)', color: '#F8FAFC', borderRadius: 8, padding: '0.35rem 0.6rem', cursor: 'pointer', fontWeight: 700 }}
+                                >
+                                    Fechar
+                                </button>
+                            </div>
+                            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #F1F5F9', background: '#F8FAFC' }}>
+                                <input
+                                    value={drilldownQuery}
+                                    onChange={(e) => setDrilldownQuery(e.target.value)}
+                                    placeholder="Buscar em todos os campos..."
+                                    style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 10, padding: '0.55rem 0.75rem', fontSize: '0.8rem', outline: 'none' }}
+                                />
+                            </div>
+                            <div className="custom-scrollbar" style={{ padding: '0.85rem 1rem', overflowY: 'auto', flex: 1, display: 'grid', gap: '0.65rem', background: '#F8FAFC' }}>
+                                {drilldownLoading && <div style={{ fontSize: '0.82rem', color: '#64748B' }}>Buscando informações...</div>}
+                                {!drilldownLoading && filteredDrilldownRows.length === 0 && (
+                                    <div style={{ fontSize: '0.82rem', color: '#94A3B8' }}>Nenhum dado encontrado para este indicador.</div>
+                                )}
+                                {!drilldownLoading && filteredDrilldownRows.map((row, idx) => {
+                                    const rowKey = String(row.id || row.uf || row.period || idx);
+                                    const quick = drilldownType ? drilldownQuickAction(drilldownType, row as Record<string, unknown>) : null;
+                                    return (
+                                    <div key={rowKey} style={{ border: `1px solid ${drilldownAccent[drilldownType].border}`, borderRadius: 12, padding: '0.8rem 0.85rem', background: drilldownAccent[drilldownType].bg, boxShadow: '0 2px 10px rgba(15,23,42,0.06)' }}>
+                                        {drilldownType === 'coursesActive' && (
+                                            <>
+                                                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{row.name || 'Curso sem nome'}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155' }}>Carga horária: {row.workloadHours ?? row.workload ?? 0}h · Ativo: {row.active === false ? 'Não' : 'Sim'}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 3 }}>Descrição: {row.description || '—'} · Pré-requisitos: {row.prerequisites || '—'}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 3 }}>Ementa: {row.syllabus || '—'}</div>
+                                            </>
+                                        )}
+                                        {drilldownType === 'studentsTotal' && (
+                                            <>
+                                                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{row.user?.name || 'Aluno sem nome'}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155' }}>E-mail: {row.user?.email || '—'} · Telefone: {row.user?.phone || '—'}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 3 }}>CPF: {row.cpf || '—'} · Cidade/UF: {row.address?.city || '—'}/{row.address?.state || '—'} · Matrículas: {row._count?.enrollments ?? 0}</div>
+                                            </>
+                                        )}
+                                        {drilldownType === 'classesActive' && (
+                                            <>
+                                                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{row.classIdentifier || row.id}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155' }}>{row.course?.name || 'Curso —'} · {row.city?.name || 'Cidade —'}/{row.city?.state || '--'} · {row.status}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 3 }}>Período: {row.period || '—'} · Vagas: {row.vacancies ?? 0} · Início: {row.startDate ? new Date(row.startDate).toLocaleDateString('pt-BR') : '—'}</div>
+                                            </>
+                                        )}
+                                        {drilldownType === 'enrollmentsPending' && (
+                                            <>
+                                                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{row.student?.user?.name || row.student?.name || 'Aluno —'}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155' }}>Status: {row.status} · Turma: {row.class?.classIdentifier || row.classId || '—'}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 3 }}>Curso: {row.class?.course?.name || '—'} · Cidade: {row.class?.city?.name || '—'}/{row.class?.city?.state || '--'} · Criado em: {row.createdAt ? new Date(row.createdAt).toLocaleString('pt-BR') : '—'}</div>
+                                            </>
+                                        )}
+                                        {drilldownType === 'statesAvailable' && (
+                                            <>
+                                                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>UF {row.uf}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155' }}>Cidades operacionais cadastradas: {row.cities ?? 0}</div>
+                                            </>
+                                        )}
+                                        {drilldownType === 'approvalRate' && (
+                                            <>
+                                                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{row.period}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155' }}>Aprovados: {row.approved} · Total: {row.total} · Taxa: {row.rate}%</div>
+                                            </>
+                                        )}
+                                        {drilldownType === 'attendanceRate' && (
+                                            <>
+                                                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{row.classIdentifier || row.id}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155' }}>{row.course?.name || 'Curso —'} · {row.city?.name || 'Cidade —'}/{row.city?.state || '--'} · {row.status}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 3 }}>Período: {row.period || '—'} · Horário: {row.startTime || '--'} até {row.endTime || '--'} · Local: {row.locationName || '—'}</div>
+                                            </>
+                                        )}
+                                        {drilldownType === 'certificatesIssued' && (
+                                            <>
+                                                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{row.student?.user?.name || 'Aluno —'}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155' }}>{row.class?.course?.name || 'Curso —'} · Código: {row.verificationCode || '—'}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 3 }}>Emissão: {row.issuedAt ? new Date(row.issuedAt).toLocaleString('pt-BR') : '—'} · Status: {row.status || '—'}</div>
+                                            </>
+                                        )}
+                                        {quick && (
+                                            <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: '0.45rem', alignItems: 'center' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setDrilldownOpen(false);
+                                                        router.push(quick.href);
+                                                    }}
+                                                    style={{
+                                                        border: `1px solid ${drilldownAccent[drilldownType].border}`,
+                                                        background: 'linear-gradient(135deg, #0F172A, #1E293B)',
+                                                        color: '#F8FAFC',
+                                                        borderRadius: 8,
+                                                        fontWeight: 800,
+                                                        fontSize: '0.72rem',
+                                                        padding: '0.42rem 0.75rem',
+                                                        cursor: 'pointer',
+                                                        fontFamily: 'Orbitron, sans-serif',
+                                                        letterSpacing: '0.04em',
+                                                    }}
+                                                >
+                                                    {quick.label} →
+                                                </button>
+                                                <Link
+                                                    href={quick.href}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => setDrilldownOpen(false)}
+                                                    style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 3 }}
+                                                >
+                                                    Abrir em nova aba
+                                                </Link>
+                                            </div>
+                                        )}
+                                    </div>
+                                )})}
+                            </div>
+                        </aside>
+                    </div>
+                </ModalPortal>
+            )}
         </div>
     );
 }

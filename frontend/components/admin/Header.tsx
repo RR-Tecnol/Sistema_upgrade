@@ -3,13 +3,15 @@
 import { BellIcon, MagnifyingGlassIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState, useRef } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 interface HeaderProps {
     onMenuToggle?: () => void;
 }
 
 export default function Header({ onMenuToggle }: HeaderProps) {
-    const [user, setUser] = useState<any>(null);
+    // useAuthStore é reativo — atualiza automaticamente quando nome muda nas configurações
+    const { user, logout } = useAuthStore();
     const [currentDate, setCurrentDate] = useState('');
     const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
     const [showUserMenu, setShowUserMenu] = useState(false);
@@ -19,22 +21,11 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     const userMenuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const userData = localStorage.getItem('user');
-        if (userData) setUser(JSON.parse(userData));
-
         const now = new Date();
         setCurrentDate(now.toLocaleDateString('pt-BR', {
             weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'
         }));
 
-        // Escutar evento de atualização de usuário (disparado por configurações/perfil)
-        const handleUserUpdated = () => {
-            const updated = localStorage.getItem('user');
-            if (updated) setUser(JSON.parse(updated));
-        };
-        window.addEventListener('userUpdated', handleUserUpdated);
-
-        // Click outside handler for notifications and user menu
         const handleClickOutside = (event: MouseEvent) => {
             if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
                 setShowNotificationsPanel(false);
@@ -43,12 +34,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                 setShowUserMenu(false);
             }
         };
-
         document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            window.removeEventListener('userUpdated', handleUserUpdated);
-        };
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const initials = user?.name
@@ -56,8 +43,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         : 'AD';
 
     const handleLogout = () => {
-        localStorage.removeItem('user');
-        setUser(null);
+        logout();
         setShowUserMenu(false);
     };
 
@@ -66,9 +52,9 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             {/* Botão Hamburger — visível apenas em mobile */}
             <button className="hamburger-btn" onClick={onMenuToggle} aria-label="Abrir menu">
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                    <rect y="2" width="18" height="2" rx="1" fill="#374151"/>
-                    <rect y="8" width="18" height="2" rx="1" fill="#374151"/>
-                    <rect y="14" width="18" height="2" rx="1" fill="#374151"/>
+                    <rect y="2" width="18" height="2" rx="1" fill="#374151" />
+                    <rect y="8" width="18" height="2" rx="1" fill="#374151" />
+                    <rect y="14" width="18" height="2" rx="1" fill="#374151" />
                 </svg>
             </button>
 
@@ -111,16 +97,16 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                         }}>
                         <BellIcon style={{ width: 18, height: 18, color: unreadCount > 0 ? '#EF4444' : '#6B7280' }} />
                         {unreadCount > 0 && (
-                        <span style={{
-                            position: 'absolute', top: '-4px', right: '-4px',
-                            minWidth: 16, height: 16, borderRadius: '50%',
-                            background: '#EF4444',
-                            color: '#fff', fontSize: '0.55rem', fontWeight: 700,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            border: '2px solid #fff',
-                        }}>
-                            {unreadCount > 99 ? '99+' : unreadCount}
-                        </span>
+                            <span style={{
+                                position: 'absolute', top: '-4px', right: '-4px',
+                                minWidth: 16, height: 16, borderRadius: '50%',
+                                background: '#EF4444',
+                                color: '#fff', fontSize: '0.55rem', fontWeight: 700,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                border: '2px solid #fff',
+                            }}>
+                                {unreadCount > 99 ? '99+' : unreadCount}
+                            </span>
                         )}
                     </button>
 
@@ -187,6 +173,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                     <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#111827', lineHeight: 1.2 }}>{user?.name || 'Administrador'}</div>
                         <div style={{ fontSize: '0.62rem', color: '#B89B00', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>{user?.role || 'ADMIN'}</div>
+                        {/* useAuthStore é reativo: nome atualiza sem reload ao salvar configurações */}
                     </div>
                     <div
                         onClick={() => setShowUserMenu(!showUserMenu)}

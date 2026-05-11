@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { trucksApi, Truck } from '@/lib/api/trucks';
 import { groupsApi } from '@/lib/api/groups';
+import api from '@/lib/api/client';
 import {
     ArrowLeftIcon,
     WrenchScrewdriverIcon,
@@ -34,6 +35,7 @@ export default function CarretaEditPage() {
 
     const [truck, setTruck] = useState<Truck | null>(null);
     const [groups, setGroups] = useState<any[]>([]);
+    const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -60,12 +62,14 @@ export default function CarretaEditPage() {
     async function load() {
         setLoading(true);
         try {
-            const [t, g] = await Promise.all([
+            const [t, g, sRes] = await Promise.all([
                 trucksApi.getOne(id),
                 groupsApi.getAll().catch(() => []),
+                api.get(`/truck-maintenance/truck/${id}/stats`).catch(() => null)
             ]);
             setTruck(t);
             setGroups(g);
+            setStats(sRes?.data || null);
             setForm({
                 identifier: t.identifier,
                 licensePlate: t.licensePlate,
@@ -110,8 +114,6 @@ export default function CarretaEditPage() {
                 ...form,
                 capacity: Number(form.capacity),
                 roomsCount: Number(form.roomsCount),
-                lastMaintenanceDate: form.lastMaintenanceDate || undefined,
-                nextMaintenanceDate: form.nextMaintenanceDate || undefined,
                 modelYear: form.modelYear || undefined,
                 equipmentList: form.equipmentList || undefined,
                 notes: form.notes || undefined,
@@ -135,6 +137,13 @@ export default function CarretaEditPage() {
     );
 
     if (!truck) return null;
+
+    const classes = Array.isArray((truck as any).classes) ? (truck as any).classes : [];
+    const trips = Array.isArray((truck as any).trips) ? (truck as any).trips : [];
+    const expenses = Array.isArray((truck as any).expenses) ? (truck as any).expenses : [];
+    const activeClasses = classes.filter((c: any) => ['ENROLLMENT_OPEN', 'ENROLLMENT_CLOSED', 'IN_PROGRESS'].includes(c.status)).length;
+    const pendingTrips = trips.filter((t: any) => ['PLANNED', 'IN_TRANSIT'].includes(t.status)).length;
+    const totalExpenses = expenses.reduce((acc: number, e: any) => acc + Number(e.amount || 0), 0);
 
     return (
         <div style={{ display:'flex', flexDirection:'column', gap:'1.5rem' }} className="animate-fade-in">
@@ -188,6 +197,53 @@ export default function CarretaEditPage() {
                         ⚠️ {error}
                     </div>
                 )}
+
+                {/* Contexto operacional completo */}
+                <div className="glass-card" style={{ padding:'1.5rem', marginBottom:'1rem' }}>
+                    <h2 style={{ fontFamily:'Orbitron', fontWeight:800, fontSize:'0.8rem', letterSpacing:'0.1em', color:'#111827', marginBottom:'1rem' }}>
+                        📊 CONTEXTO OPERACIONAL
+                    </h2>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px,1fr))', gap:'0.75rem', marginBottom:'1rem' }}>
+                        {[
+                            { label: 'Turmas vinculadas', value: classes.length, color: '#2563EB', bg: '#EFF6FF' },
+                            { label: 'Turmas ativas', value: activeClasses, color: '#059669', bg: '#F0FDF4' },
+                            { label: 'Viagens pendentes', value: pendingTrips, color: '#D97706', bg: '#FFF7ED' },
+                            { label: 'Custos recentes', value: `R$ ${totalExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, color: '#7C3AED', bg: '#F5F3FF' },
+                        ].map((item, i) => (
+                            <div key={i} style={{ border: `1px solid ${item.color}33`, borderRadius: 10, padding: '0.75rem 0.9rem', background: item.bg }}>
+                                <div style={{ fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: item.color }}>{item.label}</div>
+                                <div style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1.1rem', color: item.color, marginTop: 4 }}>{item.value}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.75rem' }}>
+                        <div style={{ border:'1px solid #E5E7EB', borderRadius:10, padding:'0.75rem' }}>
+                            <div style={{ fontSize:'0.68rem', fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', color:'#6B7280', marginBottom:8 }}>Últimas Turmas</div>
+                            {classes.slice(0, 4).length === 0 ? (
+                                <p style={{ color:'#9CA3AF', fontSize:'0.75rem' }}>Sem turmas vinculadas.</p>
+                            ) : classes.slice(0, 4).map((c: any) => (
+                                <div key={c.id} style={{ display:'flex', justifyContent:'space-between', gap:8, padding:'0.35rem 0', borderBottom:'1px dashed #F3F4F6' }}>
+                                    <span style={{ fontSize:'0.78rem', color:'#111827', fontWeight:600 }}>{c.classIdentifier} · {c.course?.name || 'Curso'}</span>
+                                    <span style={{ fontSize:'0.72rem', color:'#6B7280' }}>{c.status}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ border:'1px solid #E5E7EB', borderRadius:10, padding:'0.75rem' }}>
+                            <div style={{ fontSize:'0.68rem', fontWeight:800, letterSpacing:'0.08em', textTransform:'uppercase', color:'#6B7280', marginBottom:8 }}>Últimas Viagens</div>
+                            {trips.slice(0, 4).length === 0 ? (
+                                <p style={{ color:'#9CA3AF', fontSize:'0.75rem' }}>Sem viagens registradas.</p>
+                            ) : trips.slice(0, 4).map((t: any) => (
+                                <div key={t.id} style={{ display:'flex', justifyContent:'space-between', gap:8, padding:'0.35rem 0', borderBottom:'1px dashed #F3F4F6' }}>
+                                    <span style={{ fontSize:'0.78rem', color:'#111827', fontWeight:600 }}>
+                                        {t.originCity?.name || 'Origem'} → {t.destinationCity?.name || 'Destino'}
+                                    </span>
+                                    <span style={{ fontSize:'0.72rem', color:'#6B7280' }}>{t.status}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
 
                 {/* Seção 1: Identificação */}
                 <div className="glass-card" style={{ padding:'1.5rem', marginBottom:'1rem' }}>
@@ -293,21 +349,45 @@ export default function CarretaEditPage() {
                             </button>
                         ))}
                     </div>
+
+                    {(form.status === 'MAINTENANCE' || form.status === 'INACTIVE') && (!stats || (!stats.emAndamento && !stats.agendadas)) && (
+                        <div style={{ marginTop: '1rem', padding: '1rem', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, background: '#FEF3C7', borderRadius: '50%', fontSize: '1.5rem', flexShrink: 0 }}>⚠️</div>
+                            <div style={{ flex: 1, minWidth: 200 }}>
+                                <h4 style={{ margin: 0, fontSize: '0.85rem', color: '#D97706', fontFamily: 'Orbitron', fontWeight: 800 }}>Status {form.status === 'INACTIVE' ? 'Inativo' : 'Em Manutenção'}, mas nenhum registro ativo</h4>
+                                <p style={{ margin: '0.3rem 0 0', fontSize: '0.75rem', color: '#B45309', lineHeight: 1.4 }}>
+                                    A carreta está com status indisponível, mas não possui nenhuma Ordem de Serviço em andamento ou agendada no Controle de Manutenção.
+                                </p>
+                            </div>
+                            <Link href={`/admin/carretas/${id}/manutencao`} style={{ padding: '0.6rem 1.2rem', background: '#D97706', color: '#fff', borderRadius: 8, fontSize: '0.75rem', fontWeight: 800, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, boxShadow: '0 4px 12px rgba(217,119,6,.3)' }}>
+                                <WrenchScrewdriverIcon style={{ width: 14, height: 14 }} /> Criar Registro
+                            </Link>
+                        </div>
+                    )}
                 </div>
 
                 {/* Seção 4: Manutenção e Notas */}
                 <div className="glass-card" style={{ padding:'1.5rem', marginBottom:'1.5rem' }}>
-                    <h2 style={{ fontFamily:'Orbitron', fontWeight:800, fontSize:'0.8rem', letterSpacing:'0.1em', color:'#111827', marginBottom:'1.25rem' }}>
-                        🔧 MANUTENÇÃO & OBSERVAÇÕES
-                    </h2>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:'1.25rem', flexWrap: 'wrap', gap: 10 }}>
+                        <h2 style={{ fontFamily:'Orbitron', fontWeight:800, fontSize:'0.8rem', letterSpacing:'0.1em', color:'#111827', margin: 0 }}>
+                            🔧 MANUTENÇÃO & OBSERVAÇÕES
+                        </h2>
+                        <Link href={`/admin/carretas/${id}/manutencao`} style={{ padding: '0.45rem 0.85rem', background: '#EFF6FF', color: '#1D4ED8', borderRadius: 8, fontSize: '0.7rem', fontWeight: 700, textDecoration: 'none', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            Controle Completo →
+                        </Link>
+                    </div>
                     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'1rem' }}>
-                        <div>
-                            <label className="form-label">Última Manutenção</label>
-                            <input type="date" className="form-input" value={form.lastMaintenanceDate} onChange={e => set('lastMaintenanceDate', e.target.value)} />
+                        <div style={{ padding: '0.85rem', background: '#F9FAFB', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+                            <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>Última Manutenção (Concluída)</label>
+                            <div style={{ fontWeight: 800, fontFamily: form.lastMaintenanceDate ? 'Orbitron' : 'inherit', color: form.lastMaintenanceDate ? '#111827' : '#9CA3AF', fontSize: '0.85rem', marginTop: 6 }}>
+                                {form.lastMaintenanceDate ? new Date(form.lastMaintenanceDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'Sem registros'}
+                            </div>
                         </div>
-                        <div>
-                            <label className="form-label">Próxima Manutenção</label>
-                            <input type="date" className="form-input" value={form.nextMaintenanceDate} onChange={e => set('nextMaintenanceDate', e.target.value)} />
+                        <div style={{ padding: '0.85rem', background: '#F0FDF4', borderRadius: 10, border: '1px solid #BBF7D0' }}>
+                            <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase', letterSpacing: '.05em' }}>Próxima Manutenção (Agendada)</label>
+                            <div style={{ fontWeight: 800, fontFamily: form.nextMaintenanceDate ? 'Orbitron' : 'inherit', color: form.nextMaintenanceDate ? '#059669' : '#9CA3AF', fontSize: '0.85rem', marginTop: 6 }}>
+                                {form.nextMaintenanceDate ? new Date(form.nextMaintenanceDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'Não agendada'}
+                            </div>
                         </div>
                         <div style={{ gridColumn:'1 / -1' }}>
                             <label className="form-label">Lista de Equipamentos</label>

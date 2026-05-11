@@ -21,6 +21,7 @@ export class AcoesController {
 
     // ── Estatísticas ─────────────────────────────────────────────
     @Get('estatisticas')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
     @ApiOperation({ summary: 'Estatísticas gerais das ações' })
     async getEstatisticas() {
         return this.acoesService.getEstatisticas();
@@ -28,6 +29,7 @@ export class AcoesController {
 
     // ── Listagem ─────────────────────────────────────────────────
     @Get()
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
     @ApiOperation({ summary: 'Listar todas as ações' })
     @ApiQuery({ name: 'status', required: false, enum: AcaoStatus })
     @ApiQuery({ name: 'grupoId', required: false })
@@ -45,6 +47,7 @@ export class AcoesController {
 
     // ── Autocomplete de cidades ───────────────────────────────────
     @Get('cidades-autocomplete')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
     @ApiOperation({ summary: 'Buscar cidades pelo nome para autocomplete' })
     @ApiQuery({ name: 'q', required: true })
     async searchCidades(@Query('q') q: string) {
@@ -53,6 +56,7 @@ export class AcoesController {
 
     // ── Detalhe ──────────────────────────────────────────────────
     @Get(':id')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
     @ApiOperation({ summary: 'Detalhe completo de uma ação' })
     @ApiResponse({ status: 200, description: 'Ação encontrada' })
     @ApiResponse({ status: 404, description: 'Ação não encontrada' })
@@ -61,6 +65,7 @@ export class AcoesController {
     }
 
     @Get(':id/resumo-financeiro')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
     @ApiOperation({ summary: 'Resumo financeiro estimado vs real de uma ação' })
     async getResumoFinanceiro(@Param('id') id: string) {
         return this.acoesService.getResumoFinanceiro(id);

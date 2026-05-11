@@ -10,8 +10,14 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { ClassStatus } from '@prisma/client';
 
+/**
+ * OAI-2 / A1: JwtAuthGuard + RolesGuard ao nível da classe — rotas sem guard deixavam de exigir JWT.
+ * `Get('public')` permanece `@Public()`; restantes precisam de `@Roles` explícito (deny-by-default no RolesGuard).
+ */
 @ApiTags('classes')
 @Controller('classes')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
 export class ClassesController {
     constructor(private classesService: ClassesService) { }
 
@@ -29,8 +35,7 @@ export class ClassesController {
     }
 
     @Get()
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @ApiBearerAuth()
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER', 'DRIVER', 'STUDENT')
     @ApiOperation({ summary: 'List all classes' })
     @ApiQuery({ name: 'status', required: false, enum: ClassStatus })
     @ApiQuery({ name: 'courseId', required: false })
@@ -58,17 +63,35 @@ export class ClassesController {
         return this.classesService.findAll(filters);
     }
 
-    // EXEC-06: Histórico do professor — DEVE ficar ANTES de /:id
     @Get('teacher/history')
-    @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @Roles('TEACHER')
     @ApiOperation({ summary: 'Histórico de frequência lançada pelo professor logado' })
     @ApiResponse({ status: 200, description: 'Histórico de frequência' })
     async teacherHistory(@Req() req: any) {
         return this.classesService.getTeacherAttendanceHistory(req.user.id);
     }
 
+    @Get('teacher/dashboard')
+    @Roles('TEACHER')
+    @ApiOperation({ summary: 'Dashboard agregado do professor autenticado — todos os dados em uma chamada' })
+    @ApiResponse({ status: 200, description: 'Dashboard data' })
+    async teacherDashboard(@Req() req: any) {
+        return this.classesService.getTeacherDashboard(req.user.id);
+    }
+
+    @Post(':id/aluno-risco')
+    @Roles('ADMIN', 'COORDINATOR', 'TEACHER')
+    @ApiOperation({ summary: 'Enviar alerta de risco de frequência para aluno + notificar admins via app e WebSocket' })
+    async sendRiskAlert(
+        @Param('id') classId: string,
+        @Body('studentId') studentId: string,
+        @Req() req: any,
+    ) {
+        return this.classesService.sendRiskAlert(classId, studentId, req.user.id);
+    }
+
     @Get(':id')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER', 'DRIVER', 'STUDENT')
     @ApiOperation({ summary: 'Get class by ID' })
     @ApiResponse({ status: 200, description: 'Class retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Class not found' })
@@ -112,7 +135,6 @@ export class ClassesController {
         return this.classesService.updateStatus(id, status);
     }
 
-    // Teacher Management
     @Post(':id/teachers/:teacherId')
     @Roles('ADMIN', 'COORDINATOR')
     @ApiOperation({ summary: 'Assign teacher to class' })
@@ -133,7 +155,6 @@ export class ClassesController {
         return this.classesService.removeTeacher(classId, teacherId);
     }
 
-    // Schedule Management
     @Post(':id/schedule')
     @Roles('ADMIN', 'COORDINATOR')
     @ApiOperation({ summary: 'Update class schedule' })
@@ -143,42 +164,64 @@ export class ClassesController {
     }
 
     @Get(':id/schedule')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER', 'DRIVER', 'STUDENT')
     @ApiOperation({ summary: 'Get class schedule' })
     @ApiResponse({ status: 200, description: 'Schedule retrieved successfully' })
     async getSchedule(@Param('id') classId: string) {
         return this.classesService.getSchedule(classId);
     }
 
-    // Statistics
     @Get(':id/statistics')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER', 'DRIVER', 'STUDENT')
     @ApiOperation({ summary: 'Get class statistics' })
     @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
     async getStatistics(@Param('id') classId: string) {
         return this.classesService.getClassStatistics(classId);
     }
 
-    // Attendance History — usado pelo calendário de frequência do ADM e professor
     @Get(':id/attendance/history')
-    @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER')
     @ApiOperation({ summary: 'Histórico de frequência por data de uma turma' })
     @ApiResponse({ status: 200, description: 'Histórico retornado com sucesso' })
     async getAttendanceHistory(@Param('id') classId: string) {
         return this.classesService.getAttendanceHistory(classId);
     }
 
-    // Bulk Attendance (Professor)
+    @Get(':id/attendance/student/:studentId')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER')
+    @ApiOperation({ summary: 'Detalhe de frequência de um aluno na turma (admin)' })
+    @ApiResponse({ status: 200, description: 'Perfil, resumo e registos do período' })
+    async getStudentAttendanceDetail(
+        @Param('id') classId: string,
+        @Param('studentId') studentId: string,
+        @Query('start') start?: string,
+        @Query('end') end?: string,
+    ) {
+        return this.classesService.getStudentAttendanceDetailForAdmin(classId, studentId, start, end);
+    }
+
+    @Patch(':id/attendance/slot')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER')
+    @ApiOperation({ summary: 'Atualizar presença/justificativa de um aluno num dia (reavalia alertas de certificado)' })
+    @ApiResponse({ status: 200, description: 'Registo atualizado' })
+    patchAttendanceSlot(
+        @Param('id') classId: string,
+        @Body() body: { date: string; studentId: string; justified?: boolean; present?: boolean },
+        @Req() req: any,
+    ) {
+        return this.classesService.patchAttendanceSlot(classId, body, req.user.id, req.user.role);
+    }
+
     @Post(':id/attendance/bulk')
-    @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER')
     @ApiOperation({ summary: 'Registrar frequência em lote (professor)' })
     @ApiResponse({ status: 201, description: 'Frequências registradas com sucesso' })
     bulkAttendance(
         @Param('id') classId: string,
-        @Body() body: { date: string; records: { studentId: string; present: boolean }[] },
+        @Body() body: { date: string; records: { studentId: string; present: boolean; justified?: boolean }[] },
         @Req() req: any,
     ) {
         const registeredBy = req.user.id;
-        return this.classesService.bulkAttendance(classId, body.date, body.records, registeredBy);
+        return this.classesService.bulkAttendance(classId, body.date, body.records, registeredBy, req.user.role);
     }
 }

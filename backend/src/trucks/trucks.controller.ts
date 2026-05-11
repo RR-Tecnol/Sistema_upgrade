@@ -16,6 +16,7 @@ export class TrucksController {
     constructor(private trucksService: TrucksService) { }
 
     @Get()
+    @Roles('ADMIN', 'COORDINATOR', 'DRIVER')
     @ApiOperation({ summary: 'List all trucks' })
     @ApiQuery({ name: 'status', required: false, enum: TruckStatus })
     @ApiQuery({ name: 'groupId', required: false })
@@ -38,6 +39,7 @@ export class TrucksController {
     }
 
     @Get(':id')
+    @Roles('ADMIN', 'COORDINATOR', 'DRIVER')
     @ApiOperation({ summary: 'Get truck by ID' })
     @ApiResponse({ status: 200, description: 'Truck retrieved successfully' })
     @ApiResponse({ status: 404, description: 'Truck not found' })
@@ -82,6 +84,7 @@ export class TrucksController {
     }
 
     @Get(':id/availability')
+    @Roles('ADMIN', 'COORDINATOR')
     @ApiOperation({ summary: 'Check truck availability' })
     @ApiQuery({ name: 'startDate', required: true })
     @ApiQuery({ name: 'endDate', required: true })

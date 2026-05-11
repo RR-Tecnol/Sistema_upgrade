@@ -6,6 +6,7 @@ import StudentSidebar from '@/components/student/Sidebar';
 import StudentHeader from '@/components/student/Header';
 import { ToastContainer } from '@/components/ui/Toast';
 import Tutorial, { TutorialButton } from '@/components/ui/Tutorial';
+import { useAnimacoes } from '@/hooks/useAnimacoes';
 
 const STUDENT_STEPS = [
     { icon: '🎓', title: 'Bem-vindo ao Portal do Aluno!', description: 'Aqui você acompanha sua frequência, inscrições, certificados e muito mais. Use o menu lateral para navegar.' },
@@ -21,9 +22,11 @@ export default function StudentLayout({ children }: { children: ReactNode }) {
     const [ready, setReady] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [showTutorial, setShowTutorial] = useState(false);
+    useAnimacoes(); // ANIMACOES: aplica preferência do usuário
 
     useEffect(() => {
-        const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+        // SEGURANÇA: sessionStorage (isolado por aba) com fallback legacy localStorage
+        const token = sessionStorage.getItem('token') || sessionStorage.getItem('access_token') || localStorage.getItem('token') || localStorage.getItem('access_token');
         if (!token) { router.replace('/login'); return; }
         setReady(true);
     }, [router]);
@@ -42,20 +45,34 @@ export default function StudentLayout({ children }: { children: ReactNode }) {
     }
 
     return (
-        <div className="admin-layout">
+        <>
             <ToastContainer />
             <Tutorial storageKey="tutorial-student-v1" steps={STUDENT_STEPS} portalName="Portal do Aluno" />
             {showTutorial && (
                 <Tutorial storageKey={`tutorial-student-reopen-${Date.now()}`} steps={STUDENT_STEPS} portalName="Portal do Aluno" />
             )}
             <TutorialButton onClick={() => { localStorage.removeItem('tutorial-student-v1'); window.location.reload(); }} />
-            <StudentSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-            <div className="admin-main">
-                <StudentHeader onToggleSidebar={() => setSidebarOpen(s => !s)} sidebarOpen={sidebarOpen} />
-                <main className="admin-content custom-scrollbar">
-                    {children}
-                </main>
+            <div className="admin-layout">
+                <StudentSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+                <div className="admin-main student-main-content">
+                    <StudentHeader onToggleSidebar={() => setSidebarOpen(s => !s)} sidebarOpen={sidebarOpen} />
+                    <main className="admin-content custom-scrollbar">
+                        {children}
+                    </main>
+                </div>
             </div>
-        </div>
+            <style>{`
+                @media (min-width: 769px) {
+                    .student-main-content {
+                        margin-left: 260px;
+                    }
+                }
+                @media (max-width: 768px) {
+                    .student-main-content {
+                        margin-left: 0;
+                    }
+                }
+            `}</style>
+        </>
     );
 }

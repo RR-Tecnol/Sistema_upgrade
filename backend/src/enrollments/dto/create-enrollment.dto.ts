@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsOptional, IsEnum, IsInt, IsBoolean, IsDateString, IsArray, ValidateNested, Min, Max } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsEnum, IsInt, IsBoolean, IsDateString, IsArray, ValidateNested, Min, Max, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -19,6 +19,12 @@ export class CreateEnrollmentDto {
     @IsString()
     classId: string;
 
+    // ─── Conta de acesso ─────────────────────────────────────────────
+    @ApiProperty({ description: 'Senha de acesso ao portal do aluno (mín. 6 caracteres)' })
+    @IsString()
+    @MinLength(6, { message: 'A senha deve ter no mínimo 6 caracteres' })
+    password: string;
+
     // Section 1: Personal Data
     @ApiProperty({ description: 'Nome completo' })
     @IsString()
@@ -32,14 +38,6 @@ export class CreateEnrollmentDto {
     @ApiProperty({ description: 'CPF (apenas números)' })
     @IsString()
     cpf: string;
-
-    @ApiProperty({ description: 'RG' })
-    @IsString()
-    rg: string;
-
-    @ApiProperty({ description: 'Órgão emissor do RG' })
-    @IsString()
-    rgIssuer: string;
 
     @ApiProperty({ description: 'Data de nascimento' })
     @IsDateString()
@@ -224,4 +222,8 @@ export class CreateEnrollmentDto {
     @ApiProperty({ description: 'Concorda com tratamento de dados (LGPD)' })
     @IsBoolean()
     dataProcessingConsent: boolean;
+
+    @ApiPropertyOptional({ description: 'Documentos anexados pelo aluno' })
+    @IsOptional()
+    documents?: Record<string, string>;
 }

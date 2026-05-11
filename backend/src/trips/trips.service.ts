@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripStatus } from '@prisma/client';
+import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 
 @Injectable()
 export class TripsService {
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private notificationsSender: NotificationsSenderService,
+    ) {}
 
     // ── Driver: busca viagens do motorista autenticado ────────────────────────
     async findByDriver(driverUserId: string, status?: TripStatus) {
@@ -56,38 +60,89 @@ export class TripsService {
     }
 
     // ── Driver: inicia uma viagem: PLANNED → IN_TRANSIT ───────────────────────
-    async startTrip(id: string, driverUserId: string, kmStart: number, actualDepartureDate?: string) {
+    async startTrip(id: string, driverUserId: string, kmStart?: number, startOdometerPhotoUrl?: string, actualDepartureDate?: string) {
         const trip = await this.findOne(id, driverUserId);
         if (trip.status !== TripStatus.PLANNED) {
             throw new BadRequestException('Apenas viagens PLANEJADAS podem ser iniciadas');
         }
-        return this.prisma.trip.update({
+        const today = new Date();
+        if (trip.departureDate.toDateString() !== today.toDateString()) {
+            throw new BadRequestException('A viagem só pode ser iniciada no dia da partida agendada');
+        }
+        if (trip.driverDecision === 'REJECTED') {
+            throw new BadRequestException('Esta viagem foi recusada. Aguarde reatribuição do administrador.');
+        }
+        if (!startOdometerPhotoUrl) {
+            throw new BadRequestException('Foto inicial do hodômetro é obrigatória para iniciar a viagem');
+        }
+        const updated = await this.prisma.trip.update({
             where: { id },
             data: {
                 status: TripStatus.IN_TRANSIT,
-                kmStart,
+                ...(kmStart != null ? { kmStart } : {}),
+                startOdometerPhotoUrl,
+                driverDecision: 'ACCEPTED',
+                driverDecisionAt: new Date(),
+                driverDecisionReason: null,
                 departureDate: actualDepartureDate ? new Date(actualDepartureDate) : trip.departureDate,
             },
         });
+
+        const adminIds = await this.notificationsSender.getAdminAndCoordinatorIds().catch(() => []);
+        await this.notificationsSender.sendToMany(
+            adminIds,
+            {
+                type: 'GENERAL_ANNOUNCEMENT' as any,
+                title: '🚛 Viagem iniciada',
+                message: `${trip.driverName || 'Motorista'} iniciou a viagem ${trip.id.slice(0, 8)} (${trip.originCity?.name || 'Origem'} → ${trip.destinationCity?.name || 'Destino'}).`,
+                channel: 'IN_APP' as any,
+                link: '/admin/viagens',
+            },
+        ).catch(() => undefined);
+
+        return updated;
     }
 
     // ── Driver: finaliza uma viagem: IN_TRANSIT → COMPLETED ───────────────────
-    async completeTrip(id: string, driverUserId: string, kmEnd: number, actualArrivalDate?: string) {
+    async completeTrip(id: string, driverUserId: string, endOdometerPhotoUrl: string, gpsDistanceKm?: number, kmEnd?: number, actualArrivalDate?: string) {
         const trip = await this.findOne(id, driverUserId);
         if (trip.status !== TripStatus.IN_TRANSIT) {
             throw new BadRequestException('Apenas viagens EM TRÂNSITO podem ser finalizadas');
         }
-        if (trip.kmStart && kmEnd <= trip.kmStart) {
+        
+        // Se a quilometragem final não foi fornecida, tentamos deduzir pelo GPS
+        let finalKm = kmEnd;
+        if (!finalKm && trip.kmStart != null && gpsDistanceKm != null) {
+            finalKm = Math.round(trip.kmStart + gpsDistanceKm);
+        }
+
+        if (trip.kmStart && finalKm && finalKm <= trip.kmStart) {
             throw new BadRequestException('Km final deve ser maior que km inicial');
         }
-        return this.prisma.trip.update({
+        const updated = await this.prisma.trip.update({
             where: { id },
             data: {
                 status: TripStatus.COMPLETED,
-                kmEnd,
+                kmEnd: finalKm,
+                gpsDistanceKm,
+                endOdometerPhotoUrl,
                 actualArrivalDate: actualArrivalDate ? new Date(actualArrivalDate) : new Date(),
             },
         });
+
+        const adminIds = await this.notificationsSender.getAdminAndCoordinatorIds().catch(() => []);
+        await this.notificationsSender.sendToMany(
+            adminIds,
+            {
+                type: 'GENERAL_ANNOUNCEMENT' as any,
+                title: '🏁 Viagem finalizada',
+                message: `${trip.driverName || 'Motorista'} finalizou a viagem ${trip.id.slice(0, 8)} (${trip.originCity?.name || 'Origem'} → ${trip.destinationCity?.name || 'Destino'}).`,
+                channel: 'IN_APP' as any,
+                link: '/admin/viagens',
+            },
+        ).catch(() => undefined);
+
+        return updated;
     }
 
     // ── Driver: adiciona nota ao diário de bordo (append) ─────────────────────
@@ -101,6 +156,184 @@ export class TripsService {
         return this.prisma.trip.update({
             where: { id },
             data: { notes: appendedNotes },
+        });
+    }
+
+    async respondTrip(id: string, driverUserId: string, decision: 'ACCEPTED' | 'REJECTED', reason?: string) {
+        const trip = await this.findOne(id, driverUserId);
+        if (trip.status !== TripStatus.PLANNED) {
+            throw new BadRequestException('Somente viagens planejadas podem ser aceitas ou recusadas');
+        }
+        if (trip.driverDecision === 'ACCEPTED' && decision === 'ACCEPTED') return trip;
+        if (decision === 'REJECTED' && !reason?.trim()) {
+            throw new BadRequestException('Informe o motivo da recusa');
+        }
+
+        const updated = await this.prisma.trip.update({
+            where: { id },
+            data: {
+                driverDecision: decision,
+                driverDecisionAt: new Date(),
+                driverDecisionReason: decision === 'REJECTED' ? reason?.trim() ?? null : null,
+            },
+        });
+
+        if (decision === 'REJECTED') {
+            const marker = `[TRIP_REJECT:${trip.id}]`;
+            const existingAbsence = await this.prisma.absence.findFirst({
+                where: {
+                    userId: driverUserId,
+                    active: true,
+                    description: { contains: marker },
+                },
+                select: { id: true },
+            });
+            if (!existingAbsence) {
+                await this.prisma.absence.create({
+                    data: {
+                        userId: driverUserId,
+                        type: 'OTHER' as any,
+                        date: new Date(),
+                        status: 'PENDING' as any,
+                        description: `${marker} Recusa de viagem ${trip.id.slice(0, 8)} — ${trip.originCity?.name || 'Origem'} → ${trip.destinationCity?.name || 'Destino'}. Motivo: ${reason?.trim() || 'Não informado'}`,
+                        adminNote: 'Gerado automaticamente pela recusa de viagem no portal do motorista.',
+                    },
+                });
+            }
+        }
+
+        const title = decision === 'ACCEPTED' ? '✅ Viagem aceita pelo motorista' : '⚠️ Viagem recusada pelo motorista';
+        const message = decision === 'ACCEPTED'
+            ? `${trip.driverName || 'Motorista'} aceitou a viagem ${trip.id.slice(0, 8)}`
+            : `${trip.driverName || 'Motorista'} recusou a viagem ${trip.id.slice(0, 8)}. Motivo: ${reason?.trim() || 'Não informado'}`;
+        const adminIds = await this.notificationsSender.getAdminAndCoordinatorIds().catch(() => []);
+        await this.notificationsSender.sendToMany(
+            adminIds,
+            {
+                type: 'GENERAL_ANNOUNCEMENT' as any,
+                title,
+                message,
+                channel: 'IN_APP' as any,
+                link: '/admin/viagens',
+            },
+        ).catch(() => undefined);
+
+        return updated;
+    }
+
+    async createManualTrip(input: {
+        truckId: string;
+        originCityId: string;
+        destinationCityId: string;
+        departureDate: string;
+        expectedArrivalDate: string;
+        driverUserId: string;
+        notes?: string;
+        originCep?: string;
+        destinationCep?: string;
+        originLatitude?: number;
+        originLongitude?: number;
+        destinationLatitude?: number;
+        destinationLongitude?: number;
+    }) {
+        const driver = await this.prisma.user.findUnique({ where: { id: input.driverUserId } });
+        if (!driver || driver.role !== 'DRIVER') {
+            throw new BadRequestException('Motorista inválido');
+        }
+
+        const oLat = Number(input.originLatitude);
+        const oLng = Number(input.originLongitude);
+        const dLat = Number(input.destinationLatitude);
+        const dLng = Number(input.destinationLongitude);
+        const validPair = (a: number, b: number) => Number.isFinite(a) && Number.isFinite(b) && a >= -90 && a <= 90 && b >= -180 && b <= 180;
+        if (!validPair(oLat, oLng) || !validPair(dLat, dLng)) {
+            throw new BadRequestException(
+                'Coordenadas de origem e destino obrigatórias (GPS válido). Use CEP + geocódigo ou latitude/longitude, como na criação de turmas.',
+            );
+        }
+        const cepDigits = (s?: string) => (s ?? '').replace(/\D/g, '');
+        const oCep = cepDigits(input.originCep);
+        const dCep = cepDigits(input.destinationCep);
+        if (oCep.length !== 8 || dCep.length !== 8) {
+            throw new BadRequestException('CEP de origem e destino obrigatórios (8 dígitos cada) para ancoragem da rota e histórico operacional.');
+        }
+
+        const trip = await this.prisma.trip.create({
+            data: {
+                truckId: input.truckId,
+                originCityId: input.originCityId,
+                destinationCityId: input.destinationCityId,
+                departureDate: new Date(input.departureDate),
+                expectedArrivalDate: new Date(input.expectedArrivalDate),
+                driverUserId: input.driverUserId,
+                driverName: driver.name || 'Motorista',
+                driverPhone: driver.phone ?? null,
+                notes: input.notes ?? null,
+                originCep: oCep,
+                destinationCep: dCep,
+                originLatitude: oLat,
+                originLongitude: oLng,
+                destinationLatitude: dLat,
+                destinationLongitude: dLng,
+                status: TripStatus.PLANNED,
+                driverDecision: 'PENDING',
+            },
+        });
+        await this.notificationsSender.send({
+            userId: input.driverUserId,
+            type: 'TRIP_SCHEDULED' as any,
+            title: '🚛 Nova viagem atribuída',
+            message: 'Uma nova viagem foi atribuída para você. Acesse Viagens para aceitar ou recusar.',
+            link: '/driver/viagens',
+        }).catch(() => undefined);
+        return trip;
+    }
+
+    async assignDriver(id: string, driverUserId: string) {
+        const trip = await this.prisma.trip.findUnique({ where: { id } });
+        if (!trip) throw new NotFoundException('Viagem não encontrada');
+        if (trip.status !== TripStatus.PLANNED) throw new BadRequestException('Só é possível reatribuir viagens planejadas');
+        const driver = await this.prisma.user.findUnique({ where: { id: driverUserId } });
+        if (!driver || driver.role !== 'DRIVER') throw new BadRequestException('Motorista inválido');
+
+        const updated = await this.prisma.trip.update({
+            where: { id },
+            data: {
+                driverUserId,
+                driverName: driver.name || 'Motorista',
+                driverPhone: driver.phone ?? null,
+                driverDecision: 'PENDING',
+                driverDecisionAt: null,
+                driverDecisionReason: null,
+                rejectionPenalty: null,
+                rejectionPenaltyBy: null,
+                rejectionPenaltyAt: null,
+            },
+        });
+        await this.notificationsSender.send({
+            userId: driverUserId,
+            type: 'TRIP_SCHEDULED' as any,
+            title: '🚛 Viagem atribuída',
+            message: 'Uma viagem foi vinculada ao seu perfil. Verifique em Viagens.',
+            link: '/driver/viagens',
+        }).catch(() => undefined);
+        return updated;
+    }
+
+    async applyRejectionPenalty(id: string, adminId: string, penaltyAmount?: number, adminNote?: string) {
+        const trip = await this.prisma.trip.findUnique({ where: { id } });
+        if (!trip) throw new NotFoundException('Viagem não encontrada');
+        if (trip.driverDecision !== 'REJECTED') throw new BadRequestException('A penalização só pode ser aplicada para viagem recusada');
+
+        const penalty = Number(penaltyAmount || 0);
+        return this.prisma.trip.update({
+            where: { id },
+            data: {
+                rejectionPenalty: penalty > 0 ? penalty : null,
+                rejectionPenaltyBy: penalty > 0 ? adminId : null,
+                rejectionPenaltyAt: penalty > 0 ? new Date() : null,
+                notes: adminNote ? `${trip.notes || ''}\n[PENALIDADE] ${adminNote}`.trim() : trip.notes,
+            },
         });
     }
 
@@ -203,16 +436,16 @@ export class TripsService {
             newTrips.map(trip => this.prisma.trip.create({ data: trip }))
         );
 
-        // Notificar motorista
+        // Notificar motorista sobre a agenda
         try {
             await this.prisma.notification.create({
                 data: {
                     userId:         driverUserId,
-                    type:           'GENERAL_ANNOUNCEMENT',
+                    type:           'TRIP_SCHEDULED',
                     title:          `🚛 ${created.length} Viagens Agendadas!`,
                     message:        `Turma ${classData.classIdentifier} — ${created.length} dias de aula adicionados à sua agenda automaticamente.`,
-                    link:           '/driver/viagens',
                     channel:        'IN_APP',
+                    data:           { link: '/driver/viagens' },
                     deliveryStatus: 'DELIVERED',
                 } as any,
             });

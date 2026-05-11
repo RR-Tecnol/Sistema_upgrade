@@ -193,7 +193,7 @@ export default function PortalAlunoPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#F9FAFB' }}>{user?.name || 'Aluno'}</div>
-                        <div style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>{user?.cpf || ''}</div>
+                        <div style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>{(user as any)?.cpf || ''}</div>
                     </div>
                     <button onClick={handleLogout}
                         style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#9CA3AF', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>

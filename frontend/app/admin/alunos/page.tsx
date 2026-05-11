@@ -1,44 +1,16 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { studentsApi, Student, StudentFilters, StudentStats } from '@/lib/api/students';
 import { PlusIcon, MagnifyingGlassIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, TrashIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
-
-/* ── Animated count-up ── */
-function useCountUp(target: number, duration = 900) {
-    const [count, setCount] = useState(0);
-    const raf = useRef(0);
-    useEffect(() => {
-        if (target === 0) { setCount(0); return; }
-        const start = Date.now();
-        const tick = () => {
-            const p = Math.min((Date.now() - start) / duration, 1);
-            setCount(Math.round((1 - Math.pow(1 - p, 3)) * target));
-            if (p < 1) raf.current = requestAnimationFrame(tick);
-        };
-        raf.current = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf.current);
-    }, [target, duration]);
-    return count;
-}
-
-function StatKPI({ label, value, sub, color, bg, border }: { label: string; value: number; sub: string; color: string; bg: string; border: string }) {
-    const n = useCountUp(value);
-    return (
-        <div style={{ padding: '1rem 1.25rem', borderRadius: 14, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color, opacity: 0.7, marginBottom: '0.2rem' }}>{label}</div>
-                <div style={{ fontFamily: 'Orbitron', fontSize: '1.8rem', fontWeight: 900, color, lineHeight: 1 }}>{n}</div>
-                <div style={{ fontSize: '0.68rem', color, opacity: 0.55, marginTop: '0.2rem' }}>{sub}</div>
-            </div>
-            {/* Mini bar indicator */}
-            <div style={{ width: 3, height: 48, borderRadius: 2, background: color, opacity: 0.25 }} />
-        </div>
-    );
-}
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
+import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
 export default function AlunosPage() {
     const [students, setStudents] = useState<Student[]>([]);
@@ -83,35 +55,46 @@ export default function AlunosPage() {
     };
     const [deleteStudentId, setDeleteStudentId] = useState<string | null>(null);
     const [deleteStudentName, setDeleteStudentName] = useState('');
+    const [listViewMode, setListViewMode] = usePersistedAdminViewMode('admin:alunos:list', 'table');
     const handleDelete = async () => {
         if (!deleteStudentId) return;
         try { await studentsApi.delete(deleteStudentId); setDeleteStudentId(null); loadStudents(); loadStats(); toast.success('Aluno excluído com sucesso!'); } catch { toast.error('Erro ao excluir aluno'); setDeleteStudentId(null); }
     };
 
     const stateActive = filters.state;
+    const statesFromStats = Object.keys(stats?.byState || {}).sort();
 
     return (
         <>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} className="animate-fade-in">
 
-            {/* ── HEADER ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '2rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '0.3rem' }}>ALUNOS</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Gerencie os alunos cadastrados no sistema</p>
-                </div>
-                <Link href="/admin/alunos/novo" className="btn-primary" style={{ textDecoration: 'none' }}>
-                    <PlusIcon style={{ width: 15, height: 15 }} />
-                    Novo Aluno
-                </Link>
-            </div>
+            <AdminHeaderHero
+                title="ALUNOS"
+                subtitle="Gerencie os alunos cadastrados no sistema"
+                rightSlot={(
+                    <Link href="/admin/alunos/novo" className="btn-primary" style={{ textDecoration: 'none' }}>
+                        <PlusIcon style={{ width: 15, height: 15 }} />
+                        Novo Aluno
+                    </Link>
+                )}
+            />
 
             {/* ── KPI STRIP ── */}
             {stats && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
-                    <StatKPI label="Total de Alunos" value={stats.total} sub="cadastrados" color="#B89B00" bg="#FFFDE7" border="#FEF08A" />
-                    <StatKPI label="Maranhão" value={stats.byState.MA} sub="alunos MA" color="#0891B2" bg="#F0F9FF" border="#BAE6FD" />
-                    <StatKPI label="Piauí" value={stats.byState.PI} sub="alunos PI" color="#059669" bg="#F0FDF4" border="#BBF7D0" />
+                    <AnimatedKpiCard label="Total de Alunos" value={stats.total} sub="cadastrados" color="#B89B00" bg="#FFFDE7" border="#FEF08A" />
+                    {statesFromStats.slice(0, 3).map((uf, idx) => (
+                        <AnimatedKpiCard
+                            key={uf}
+                            label={uf}
+                            value={stats.byState[uf] || 0}
+                            sub={`alunos ${uf}`}
+                            color={idx === 0 ? '#0891B2' : idx === 1 ? '#059669' : '#7C3AED'}
+                            bg={idx === 0 ? '#F0F9FF' : idx === 1 ? '#F0FDF4' : '#F5F3FF'}
+                            border={idx === 0 ? '#BAE6FD' : idx === 1 ? '#BBF7D0' : '#DDD6FE'}
+                            delayMs={(idx + 1) * 60}
+                        />
+                    ))}
                 </div>
             )}
 
@@ -142,7 +125,7 @@ export default function AlunosPage() {
 
                 <div style={{ width: 1, height: 28, background: '#E5E7EB', flexShrink: 0 }} />
 
-                {/* Estado — dropdown com todos 26+1 estados */}
+                {/* Estado — dropdown dinâmico conforme dados reais */}
                 <select
                     value={filters.state || ''}
                     onChange={e => handleFilterState(e.target.value || undefined)}
@@ -156,33 +139,9 @@ export default function AlunosPage() {
                     }}
                 >
                     <option value=''>🗺 Todos os Estados</option>
-                    <option value='AC'>AC – Acre</option>
-                    <option value='AL'>AL – Alagoas</option>
-                    <option value='AP'>AP – Amapá</option>
-                    <option value='AM'>AM – Amazonas</option>
-                    <option value='BA'>BA – Bahia</option>
-                    <option value='CE'>CE – Ceará</option>
-                    <option value='DF'>DF – Distrito Federal</option>
-                    <option value='ES'>ES – Espírito Santo</option>
-                    <option value='GO'>GO – Goiás</option>
-                    <option value='MA'>MA – Maranhão</option>
-                    <option value='MT'>MT – Mato Grosso</option>
-                    <option value='MS'>MS – Mato Grosso do Sul</option>
-                    <option value='MG'>MG – Minas Gerais</option>
-                    <option value='PA'>PA – Pará</option>
-                    <option value='PB'>PB – Paraíba</option>
-                    <option value='PR'>PR – Paraná</option>
-                    <option value='PE'>PE – Pernambuco</option>
-                    <option value='PI'>PI – Piauí</option>
-                    <option value='RJ'>RJ – Rio de Janeiro</option>
-                    <option value='RN'>RN – Rio Grande do Norte</option>
-                    <option value='RS'>RS – Rio Grande do Sul</option>
-                    <option value='RO'>RO – Rondônia</option>
-                    <option value='RR'>RR – Roraima</option>
-                    <option value='SC'>SC – Santa Catarina</option>
-                    <option value='SP'>SP – São Paulo</option>
-                    <option value='SE'>SE – Sergipe</option>
-                    <option value='TO'>TO – Tocantins</option>
+                    {statesFromStats.map(uf => (
+                        <option key={uf} value={uf}>{uf}</option>
+                    ))}
                 </select>
 
                 {/* REQ-13: Filtro por Curso */}
@@ -208,12 +167,15 @@ export default function AlunosPage() {
                     </>
                 )}
 
-                <div style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
-                    {total > 0 ? `${total} resultado${total !== 1 ? 's' : ''}` : ''}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <AdminViewModeToggle mode={listViewMode} onChange={setListViewMode} />
+                    <span style={{ fontSize: '0.72rem', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+                        {total > 0 ? `${total} resultado${total !== 1 ? 's' : ''}` : ''}
+                    </span>
                 </div>
             </div>
 
-            {/* ── TABLE ── */}
+            {/* ── TABLE / CARDS ── */}
             <div style={{ background: '#FFFFFF', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: '4rem' }}>
@@ -227,6 +189,59 @@ export default function AlunosPage() {
                         </div>
                         <p style={{ fontFamily: 'Orbitron', fontSize: '0.7rem', letterSpacing: '0.15em', color: 'var(--text-muted)' }}>NENHUM ALUNO ENCONTRADO</p>
                         <p style={{ fontSize: '0.78rem', color: '#D1D5DB', marginTop: '0.4rem' }}>Tente ajustar os filtros ou cadastre um novo aluno</p>
+                    </div>
+                ) : listViewMode === 'card' ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14, padding: 16 }}>
+                        {students.map((student, idx) => {
+                            const initials = student.user.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
+                            const isMA = student.address?.state === 'MA';
+                            const accent = isMA ? '#0891B2' : '#059669';
+                            return (
+                                <div
+                                    key={student.id}
+                                    className="adm-kpi-card adm-scale-in"
+                                    style={{
+                                        animationDelay: `${idx * 30}ms`,
+                                        background: '#fff',
+                                        borderStyle: 'solid',
+                                        borderWidth: '1px 1px 1px 4px',
+                                        borderLeftColor: accent,
+                                        borderTopColor: `${accent}33`,
+                                        borderRightColor: `${accent}22`,
+                                        borderBottomColor: `${accent}22`,
+                                    }}
+                                >
+                                    <div className="adm-kpi-grid" />
+                                    <div className="adm-kpi-scan" style={{ background: `linear-gradient(90deg, transparent, ${accent}44, transparent)` }} />
+                                    <div className="adm-kpi-topline" style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }} />
+                                    <div style={{ position: 'relative', zIndex: 1, padding: '14px 14px 10px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                            <div style={{
+                                                width: 40, height: 40, borderRadius: 10, background: accent, color: '#fff',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.7rem',
+                                            }}>{initials}</div>
+                                            <div>
+                                                <div style={{ fontWeight: 800, color: '#111827', fontSize: '0.88rem' }}>{student.user.name}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'JetBrains Mono' }}>{student.cpf}</div>
+                                            </div>
+                                        </div>
+                                        <div style={{ fontSize: '0.74rem', color: '#374151', marginBottom: 4 }}>{student.user.email}</div>
+                                        <div style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>{student.user.phone}</div>
+                                        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                            {student.address ? (
+                                                <span style={{ padding: '0.2rem 0.6rem', borderRadius: 100, fontSize: '0.65rem', fontWeight: 800, background: isMA ? '#E0F2FE' : '#DCFCE7', color: isMA ? '#0369A1' : '#15803D', border: `1px solid ${isMA ? '#BAE6FD' : '#BBF7D0'}` }}>{student.address.state}</span>
+                                            ) : null}
+                                            <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.85rem', color: '#B89B00' }}>Mat.: {student._count?.enrollments || 0}</span>
+                                            <span style={{ padding: '0.2rem 0.55rem', borderRadius: 100, fontSize: '0.65rem', fontWeight: 700, background: student.active ? '#DCFCE7' : '#F3F4F6', color: student.active ? '#15803D' : '#9CA3AF', border: `1px solid ${student.active ? '#BBF7D0' : '#E5E7EB'}` }}>{student.active ? 'Ativo' : 'Inativo'}</span>
+                                        </div>
+                                    </div>
+                                    <div style={{ position: 'relative', zIndex: 1, borderTop: '1px solid rgba(148,163,184,.2)', padding: '10px 12px', display: 'flex', gap: 8 }}>
+                                        <Link href={`/admin/alunos/${student.id}`} style={{ flex: 1, textAlign: 'center', padding: '8px', borderRadius: 8, background: '#FFFDE7', border: '1px solid #FEF08A', color: '#92730A', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'none' }}>Ver</Link>
+                                        <button type="button" onClick={() => { setDeleteStudentId(student.id); setDeleteStudentName(student.user.name); }} style={{ flex: 1, padding: '8px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>Excluir</button>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -367,7 +382,8 @@ export default function AlunosPage() {
         </div>
         {/* Modal exclusão padrão aluno */}
         {deleteStudentId && (
-            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            <ModalPortal>
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
                 onClick={() => setDeleteStudentId(null)}>
                 <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', animation: 'slideUp 0.2s' }}
                     onClick={e => e.stopPropagation()}>
@@ -392,6 +408,7 @@ export default function AlunosPage() {
                     </div>
                 </div>
             </div>
+            </ModalPortal>
         )}
         <style>{`@keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
         </>

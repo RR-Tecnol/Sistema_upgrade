@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { coursesApi, CreateCourseDto } from '@/lib/api/courses';
+import { citiesApi, type City } from '@/lib/api/cities';
 import Link from 'next/link';
+import { AdminCreationSuccessScreen } from '@/components/admin/AdminCreationSuccessScreen';
 
 // ── Icons (inline SVGs to avoid extra deps) ──────────────────────────────────
 const Icons = {
@@ -186,6 +188,7 @@ export default function NovoCursoPage() {
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [animDir, setAnimDir] = useState<'forward' | 'back'>('forward');
+    const [availableStates, setAvailableStates] = useState<string[]>(['MA', 'PI']);
 
     const [formData, setFormData] = useState<CreateCourseDto>({
         name: '',
@@ -198,13 +201,51 @@ export default function NovoCursoPage() {
         availableInMA: true,
         availableInPI: true,
         isMulticourse: false,
+        stateConfig: {
+            MA: { available: true, durationDays: 30 },
+            PI: { available: true, durationDays: 30 },
+        },
     });
+
+    useEffect(() => {
+        citiesApi.getAll()
+            .then((cities: City[]) => {
+                const fromCities = Array.from(new Set((cities || []).map(c => (c.state || '').toUpperCase()).filter(s => /^[A-Z]{2}$/.test(s))));
+                const merged = Array.from(new Set(['MA', 'PI', ...fromCities])).sort();
+                setAvailableStates(merged);
+                setFormData(prev => {
+                    const nextCfg = { ...(prev.stateConfig || {}) } as Record<string, { available: boolean; durationDays: number }>;
+                    for (const uf of merged) {
+                        if (!nextCfg[uf]) nextCfg[uf] = { available: false, durationDays: uf === 'MA' ? prev.durationDaysMA : (uf === 'PI' ? prev.durationDaysPI : prev.durationDaysMA) };
+                    }
+                    return { ...prev, stateConfig: nextCfg };
+                });
+            })
+            .catch(() => {
+                setAvailableStates(['MA', 'PI']);
+            });
+    }, []);
 
     const set = (field: string, value: unknown) =>
         setFormData(p => ({ ...p, [field]: value }));
 
     const setNum = (name: string, val: number) =>
-        setFormData(p => ({ ...p, [name]: val }));
+        setFormData(p => {
+            const next: any = { ...p, [name]: val };
+            if (name === 'durationDaysMA') {
+                next.stateConfig = {
+                    ...(p.stateConfig || {}),
+                    MA: { available: p.stateConfig?.MA?.available ?? true, durationDays: val },
+                };
+            }
+            if (name === 'durationDaysPI') {
+                next.stateConfig = {
+                    ...(next.stateConfig || p.stateConfig || {}),
+                    PI: { available: p.stateConfig?.PI?.available ?? true, durationDays: val },
+                };
+            }
+            return next;
+        });
 
     const handleInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -222,12 +263,14 @@ export default function NovoCursoPage() {
         }
         if (step === 2) {
             if (formData.workloadHours < 1) errs.workloadHours = 'Informe a carga horária';
-            if (formData.durationDaysMA < 1) errs.durationDaysMA = 'Duração inválida';
-            if (formData.durationDaysPI < 1) errs.durationDaysPI = 'Duração inválida';
+            const cfg = formData.stateConfig || {};
+            const invalidDuration = Object.entries(cfg).some(([_, rule]) => rule?.available && Number(rule.durationDays) < 1);
+            if (invalidDuration) errs.duration = 'Duração inválida para um ou mais estados ativos';
         }
         if (step === 3) {
             if (!formData.syllabus.trim()) errs.syllabus = 'Ementa é obrigatória';
-            if (!formData.availableInMA && !formData.availableInPI) errs.region = 'Selecione ao menos uma região';
+            const hasAnyState = Object.values(formData.stateConfig || {}).some(rule => !!rule?.available);
+            if (!hasAnyState) errs.region = 'Selecione ao menos um estado';
         }
         setErrors(errs);
         return Object.keys(errs).length === 0;
@@ -247,11 +290,27 @@ export default function NovoCursoPage() {
     const handleSubmit = async () => {
         try {
             setLoading(true);
-            await coursesApi.create(formData);
+            // Garante que os campos numéricos são enviados como number (não string)
+            const payload = {
+                ...formData,
+                durationDaysMA: Number(formData.stateConfig?.MA?.durationDays || formData.durationDaysMA),
+                durationDaysPI: Number(formData.stateConfig?.PI?.durationDays || formData.durationDaysPI),
+                workloadHours: Number(formData.workloadHours),
+                availableInMA: !!formData.stateConfig?.MA?.available,
+                availableInPI: !!formData.stateConfig?.PI?.available,
+                stateConfig: formData.stateConfig,
+                // Remove prerequisites vazio para não falhar na validação
+                prerequisites: formData.prerequisites?.trim() || undefined,
+            };
+            await coursesApi.create(payload as any);
             setSuccess(true);
             setTimeout(() => router.push('/admin/cursos'), 2200);
-        } catch {
-            setErrors({ submit: 'Erro ao criar curso. Tente novamente.' });
+        } catch (err: any) {
+            const errData = err?.response?.data;
+            const msg = Array.isArray(errData?.message)
+                ? errData.message.join(', ')
+                : errData?.message || err?.message || 'Erro ao criar curso. Tente novamente.';
+            setErrors({ submit: msg });
         } finally {
             setLoading(false);
         }
@@ -259,6 +318,7 @@ export default function NovoCursoPage() {
 
     const charCount = formData.description.length;
     const syllabusLines = formData.syllabus.split('\n').filter(l => l.trim()).length;
+    const stateConfig = formData.stateConfig || {};
 
     // ── Step 1: Identity ──────────────────────────────────────────────────────
     const Step1 = () => (
@@ -279,7 +339,6 @@ export default function NovoCursoPage() {
                         onChange={handleInput}
                         className={`nc-input nc-input--lg ${errors.name ? 'nc-input--error' : ''}`}
                         placeholder="Ex: Informática Básica"
-                        autoFocus
                     />
                     {formData.name && (
                         <span className="nc-input-badge">
@@ -363,6 +422,7 @@ export default function NovoCursoPage() {
                     {errors.durationDaysPI && <p className="nc-error">{errors.durationDaysPI}</p>}
                 </FieldGroup>
             </div>
+            {errors.duration && <p className="nc-error">{errors.duration}</p>}
 
             {/* Comparison widget */}
             <div className="nc-compare-card">
@@ -400,20 +460,28 @@ export default function NovoCursoPage() {
                 </div>
             </div>
 
-            <FieldGroup label="Regiões de Atuação *">
+            <FieldGroup label="Estados de Atuação *" hint="Detectados automaticamente a partir das Cidades de Curso em Configurações > Operacional">
                 <div className="nc-regions">
-                    <Toggle
-                        checked={formData.availableInMA}
-                        onChange={v => set('availableInMA', v)}
-                        label="Maranhão"
-                        sublabel="Qualifica Maranhão — programa itinerante"
-                    />
-                    <Toggle
-                        checked={formData.availableInPI}
-                        onChange={v => set('availableInPI', v)}
-                        label="Piauí"
-                        sublabel="Qualifica Piauí — programa itinerante"
-                    />
+                    {availableStates.map((uf) => (
+                        <div key={uf} className="nc-duration-card" style={{ borderColor: '#E5E7EB' }}>
+                            <Toggle
+                                checked={!!stateConfig[uf]?.available}
+                                onChange={(v) => set('stateConfig', { ...stateConfig, [uf]: { available: v, durationDays: stateConfig[uf]?.durationDays || 30 } })}
+                                label={uf}
+                                sublabel={`Estado ${uf} detectado no ecossistema`}
+                            />
+                            <div style={{ marginTop: 10 }}>
+                                <div className="nc-duration-flag">Duração ({uf})</div>
+                                <NumberStepper
+                                    name={`duration-${uf}`}
+                                    value={Number(stateConfig[uf]?.durationDays || 30)}
+                                    onChange={(_, val) => set('stateConfig', { ...stateConfig, [uf]: { available: !!stateConfig[uf]?.available, durationDays: val } })}
+                                    min={1}
+                                    suffix=" dias"
+                                />
+                            </div>
+                        </div>
+                    ))}
                 </div>
                 {errors.region && <p className="nc-error">{errors.region}</p>}
             </FieldGroup>
@@ -474,14 +542,16 @@ export default function NovoCursoPage() {
                 <div className="nc-review-section">
                     <div className="nc-review-section-title"><Icons.Clock /> Estrutura</div>
                     <ReviewRow label="Carga Horária" value={`${formData.workloadHours}h`} />
-                    <ReviewRow label="Duração MA" value={`${formData.durationDaysMA} dias`} />
-                    <ReviewRow label="Duração PI" value={`${formData.durationDaysPI} dias`} />
+                    {availableStates.map((uf) => (
+                        <ReviewRow key={uf} label={`Duração ${uf}`} value={`${stateConfig[uf]?.durationDays || 30} dias`} />
+                    ))}
                 </div>
 
                 <div className="nc-review-section">
                     <div className="nc-review-section-title"><Icons.Map /> Abrangência</div>
-                    <ReviewRow label="Disponível MA" value={formData.availableInMA} />
-                    <ReviewRow label="Disponível PI" value={formData.availableInPI} />
+                    {availableStates.map((uf) => (
+                        <ReviewRow key={uf} label={`Disponível ${uf}`} value={!!stateConfig[uf]?.available} />
+                    ))}
                     <ReviewRow label="Pré-requisitos" value={formData.prerequisites || 'Nenhum'} />
                 </div>
 
@@ -506,30 +576,25 @@ export default function NovoCursoPage() {
         </div>
     );
 
-    // ── Success Overlay ───────────────────────────────────────────────────────
+    // ── Success (mesmo padrão dos demais módulos de criação) ───────────────────
     if (success) {
         return (
-            <div className="nc-success-overlay">
-                <div className="nc-success-card">
-                    <div className="nc-success-ring">
-                        <div className="nc-success-icon"><Icons.Check /></div>
-                    </div>
-                    <h2 className="nc-success-title">Curso Criado!</h2>
-                    <p className="nc-success-sub">"{formData.name}" foi cadastrado com sucesso.</p>
-                    <div className="nc-success-bar" />
-                    <p className="nc-success-redirect">Redirecionando para lista de cursos...</p>
-                </div>
-            </div>
+            <AdminCreationSuccessScreen
+                title="CURSO CRIADO!"
+                entityName={formData.name}
+                redirectMessage="Redirecionando para lista de cursos..."
+            />
         );
     }
 
-    // FEAT-CUR2: renderização condicional direta evita piscar (Step1..4 redefinidas a cada render criavam unmount/mount)
+    // FIX: chamar como função (Step1()) em vez de componente (<Step1 />) evita unmount/remount
+    // que era a causa raiz do bug de digitação (foco saindo do campo a cada tecla)
     const renderStep = () => {
         switch (step) {
-            case 1: return <Step1 />;
-            case 2: return <Step2 />;
-            case 3: return <Step3 />;
-            default: return <Step4 />;
+            case 1: return Step1();
+            case 2: return Step2();
+            case 3: return Step3();
+            default: return Step4();
         }
     };
 
@@ -763,27 +828,6 @@ export default function NovoCursoPage() {
           box-shadow:0 2px 10px rgba(5,150,105,.4); }
         .nc-btn-submit:hover { background:linear-gradient(135deg,#047857,#065F46);
           box-shadow:0 4px 18px rgba(5,150,105,.5); transform:translateY(-1px); }
-
-        /* ── Success overlay ── */
-        .nc-success-overlay { position:fixed; inset:0; background:rgba(255,255,255,.92);
-          backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center;
-          z-index:100; animation:ncFadeIn .4s both; }
-        .nc-success-card { text-align:center; max-width:360px; padding:3rem 2rem; }
-        .nc-success-ring { width:6rem; height:6rem; border-radius:50%; border:3px solid #10b981;
-          display:flex; align-items:center; justify-content:center; margin:0 auto 1.5rem;
-          animation:ncPop .5s cubic-bezier(.16,1,.3,1) both; }
-        @keyframes ncPop { from{opacity:0;transform:scale(.5)} to{opacity:1;transform:scale(1)} }
-        .nc-success-icon { width:3rem; height:3rem; border-radius:50%; background:#10b981;
-          display:flex; align-items:center; justify-content:center; color:#fff; }
-        .nc-success-title { font-family:'Orbitron',sans-serif; font-size:2rem; font-weight:900;
-          color:var(--text-primary); margin-bottom:.5rem; }
-        .nc-success-sub { font-size:.9rem; color:var(--text-muted); margin-bottom:2rem; }
-        .nc-success-bar { height:3px; background:#E5E7EB; border-radius:99px; overflow:hidden; margin-bottom:1rem; }
-        .nc-success-bar::after { content:''; display:block; height:100%;
-          background:linear-gradient(90deg,#10b981,#059669);
-          animation:ncFill 2s linear both; }
-        @keyframes ncFill { from{width:0} to{width:100%} }
-        .nc-success-redirect { font-size:.78rem; color:#9CA3AF; }
       `}</style>
 
             <div className="nc-page">

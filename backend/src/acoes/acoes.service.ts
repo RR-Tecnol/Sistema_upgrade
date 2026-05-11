@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { AcaoStatus } from '@prisma/client';
 import { CreateAcaoDto } from './dto/create-acao.dto';
 import { CreateAcaoCustoDto } from './dto/create-acao-custo.dto';
@@ -14,8 +15,14 @@ export class AcoesService {
     constructor(
         private prisma: PrismaService,
         private settingsService: SettingsService,
+        private readonly notifications: NotificationsGateway,
     ) { }
 
+    private emitFinanceiroListagemRefresh(source: string, extra: Record<string, unknown> = {}) {
+        try {
+            this.notifications.notifyFinanceiroListagemRefresh({ source, ...extra });
+        } catch { /* WS nunca bloqueia */ }
+    }
 
     async findAll(filters?: {
         status?: AcaoStatus;
@@ -105,6 +112,7 @@ export class AcoesService {
         }
 
         // Auto-sync: criar AcaoCusto para funcionários que ainda não têm lançamento
+        let contaPagarDiariaCriada = false;
         if ((acao as any).funcionarios?.length) {
             for (const f of (acao as any).funcionarios) {
                 const descricao = `Diária - ${f.employee.name}`;
@@ -143,6 +151,7 @@ export class AcoesService {
                             observacoes: `${f.diasTrabalhados} dia(s) × R$ ${Number(f.valorDiaria).toFixed(2)}/dia`,
                         },
                     });
+                    contaPagarDiariaCriada = true;
                 }
             }
             // Recarregar ação com custos atualizados
@@ -157,6 +166,9 @@ export class AcoesService {
                 },
             });
             if (acaoAtualizada) {
+                if (contaPagarDiariaCriada) {
+                    this.emitFinanceiroListagemRefresh('acao_find_one_sync_diaria', { acaoId: id });
+                }
                 const resumoFinanceiro = this.calcularResumoFinanceiro(acaoAtualizada);
                 return { ...acaoAtualizada, resumoFinanceiro };
             }
@@ -249,6 +261,16 @@ export class AcoesService {
                 dataInicio: new Date(data.dataInicio),
                 dataFim: new Date(data.dataFim),
                 localExecucao: data.localExecucao,
+                // ── REQ-LOCAL-2026: detalhes adicionais do local físico ──
+                localEndereco: data.localEndereco,
+                localReferencia: data.localReferencia,
+                localLatitude: data.localLatitude,
+                localLongitude: data.localLongitude,
+                // ── Tipo de rota (REQ-ROUTE-2026) ──
+                routeType: data.routeType ?? 'INTERCIDADE',
+                originCidadeId: data.originCidadeId,
+                originNeighborhood: data.originNeighborhood,
+                destinationNeighborhood: data.destinationNeighborhood,
                 distanciaKm: data.distanciaKm,
                 precoCombustivelL: data.precoCombustivelL,
                 autonomiaKmL: data.autonomiaKmL,
@@ -313,6 +335,7 @@ export class AcoesService {
                         observacoes: `${v.diasTrabalhados} dia(s) × R$ ${Number(v.valorDiaria).toFixed(2)}/dia`,
                     })),
                 });
+                this.emitFinanceiroListagemRefresh('acao_status_em_andamento_diarias', { acaoId: id });
             }
         }
 
@@ -533,6 +556,7 @@ export class AcoesService {
                 observacoes: `${diasFinal} dia(s) × R$ ${valorDiariaFinal.toFixed(2)}/dia`,
             },
         });
+        this.emitFinanceiroListagemRefresh('acao_add_funcionario_diaria', { acaoId, employeeId: dto.employeeId });
 
         return vinculo;
     }
@@ -608,6 +632,7 @@ export class AcoesService {
                 },
             });
         }
+        this.emitFinanceiroListagemRefresh('acao_update_funcionario_dias_diaria', { acaoId, employeeId });
 
         return { message: 'Dias e custos atualizados com sucesso', valor: novoValor, dias: diasTrabalhados };
     }
@@ -625,6 +650,7 @@ export class AcoesService {
             await this.prisma.acaoCusto.deleteMany({ where: { acaoId, tipo: 'DIARIA_FUNCIONARIO', descricao } });
             // Remover ContaPagar relacionada
             await this.prisma.contaPagar.deleteMany({ where: { acaoId, tipo_conta: 'diaria_funcionario', descricao } });
+            this.emitFinanceiroListagemRefresh('acao_remove_funcionario_diaria', { acaoId, employeeId });
         }
 
         await this.prisma.acaoFuncionario.deleteMany({ where: { acaoId, employeeId } });

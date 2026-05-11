@@ -12,18 +12,21 @@ import {
     XMarkIcon,
     ExclamationTriangleIcon,
     Cog6ToothIcon,
+    ClockIcon,
 } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 const navItems = [
-    { name: 'Dashboard', href: '/driver/dashboard', icon: HomeIcon },
-    { name: 'Minhas Viagens', href: '/driver/viagens', icon: TruckIcon },
-    { name: 'Reembolsos', href: '/driver/reembolsos', icon: CurrencyDollarIcon },
-    { name: 'Manutenção', href: '/driver/manutencao', icon: WrenchScrewdriverIcon },
-    { name: 'Minha Rota', href: '/driver/rota', icon: MapPinIcon },
-    { name: 'Imprevistos', href: '/driver/imprevistos', icon: ExclamationTriangleIcon },
-    { name: 'Configurações', href: '/driver/configuracoes', icon: Cog6ToothIcon },
+    { name: 'Dashboard',     href: '/driver/dashboard',    icon: HomeIcon },
+    { name: 'Frequência',    href: '/driver/frequencia',   icon: ClockIcon },
+    { name: 'Minhas Viagens',href: '/driver/viagens',      icon: TruckIcon },
+    { name: 'Meu Veículo',   href: '/driver/veiculo',      icon: TruckIcon },
+    { name: 'Reembolsos',    href: '/driver/reembolsos',   icon: CurrencyDollarIcon },
+    { name: 'Manutenção',    href: '/driver/manutencao',   icon: WrenchScrewdriverIcon },
+    { name: 'Minha Rota',    href: '/driver/rota',         icon: MapPinIcon },
+    { name: 'Imprevistos',   href: '/driver/imprevistos',  icon: ExclamationTriangleIcon },
+    { name: 'Configurações', href: '/driver/configuracoes',icon: Cog6ToothIcon },
 ];
 
 interface Props {
@@ -38,8 +41,8 @@ export default function DriverSidebar({ open = true, onClose }: Props) {
     const [time, setTime] = useState('');
 
     useEffect(() => {
-        const u = localStorage.getItem('user');
-        if (u) setUser(JSON.parse(u));
+        const raw = sessionStorage.getItem('user') || localStorage.getItem('user');
+        if (raw) { try { setUser(JSON.parse(raw)); } catch {} }
         const tick = () => setTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
         tick();
         const t = setInterval(tick, 1000);
@@ -51,19 +54,21 @@ export default function DriverSidebar({ open = true, onClose }: Props) {
         : 'MT';
 
     const handleLogout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user');
+        ['token','access_token','user','auth-storage'].forEach(k => {
+            sessionStorage.removeItem(k);
+            localStorage.removeItem(k);
+        });
         router.push('/login');
     };
 
     return (
         <>
-            <div
-                className="sidebar-overlay"
-                style={{ display: open ? 'block' : 'none' }}
-                onClick={onClose}
-            />
+            {open && (
+                <div
+                    className="sidebar-overlay"
+                    onClick={onClose}
+                />
+            )}
 
             <aside className={`sidebar ${open ? 'open' : ''}`}>
                 <div className="sidebar-header">
@@ -86,11 +91,36 @@ export default function DriverSidebar({ open = true, onClose }: Props) {
 
                 <button
                     onClick={onClose}
-                    className="hamburger-btn"
-                    style={{ position: 'absolute', top: '1rem', right: '0.75rem' }}
                     aria-label="Fechar menu"
+                    onMouseEnter={e => {
+                        const el = e.currentTarget as HTMLElement;
+                        el.style.transform = 'translateY(-1px) scale(1.04)';
+                        el.style.background = 'rgba(17,24,39,0.2)';
+                    }}
+                    onMouseLeave={e => {
+                        const el = e.currentTarget as HTMLElement;
+                        el.style.transform = 'translateY(0) scale(1)';
+                        el.style.background = 'rgba(17,24,39,0.12)';
+                    }}
+                    style={{
+                        position: 'absolute',
+                        top: '1rem',
+                        right: '0.75rem',
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        border: '1px solid rgba(17,24,39,0.18)',
+                        background: 'rgba(17,24,39,0.12)',
+                        color: '#0F172A',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all .18s ease',
+                        boxShadow: '0 2px 8px rgba(0,0,0,.08)',
+                    }}
                 >
-                    <XMarkIcon style={{ width: 16, height: 16 }} />
+                    <XMarkIcon style={{ width: 17, height: 17, strokeWidth: 2.3 }} />
                 </button>
 
                 <nav className="sidebar-nav custom-scrollbar">

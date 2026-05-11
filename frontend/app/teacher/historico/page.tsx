@@ -9,6 +9,8 @@ import {
     UserGroupIcon, AcademicCapIcon, ClipboardDocumentCheckIcon,
     ChevronDownIcon, ChevronRightIcon,
 } from '@heroicons/react/24/outline';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 
 /* ─────────────────────────────────────────────
    Tipos
@@ -50,6 +52,13 @@ const TAB_LABELS: Record<Tab, string> = {
     ponto: '⏱ Meu Ponto',
 };
 
+interface Checkin {
+    id: string;
+    checkedAt: string;
+    date: string;
+    note?: string;
+}
+
 /* ─────────────────────────────────────────────
    Agrupamento por dia
 ───────────────────────────────────────────── */
@@ -85,6 +94,8 @@ export default function TeacherHistorico() {
     const [tab, setTab] = useState<Tab>('frequencia');
     const [attGroups, setAttGroups] = useState<DayGroup[]>([]);
     const [classes, setClasses] = useState<ClassSummary[]>([]);
+    const [checkins, setCheckins] = useState<Checkin[]>([]);
+    const [checkingIn, setCheckingIn] = useState(false);
     const [expandedDay, setExpandedDay] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [totalPresent, setTotalPresent] = useState(0);
@@ -94,12 +105,12 @@ export default function TeacherHistorico() {
     const loadAll = useCallback(async () => {
         setLoading(true);
         try {
-
-            const [attRes, classRes] = await Promise.allSettled([
+            const [attRes, classRes, checkRes] = await Promise.allSettled([
                 api.get('/classes/teacher/history'),
-                api.get('/classes', { params: { status: ['IN_PROGRESS', 'COMPLETED', 'PLANNED'] } }),
+                // Busca turmas do professor sem filtro de status — backend aceita string, não array
+                api.get('/classes', { params: { teacherUserId: user?.id } }),
+                api.get('/teachers/me/checkins'),
             ]);
-
             if (attRes.status === 'fulfilled') {
                 const records: AttRecord[] = Array.isArray(attRes.value.data) ? attRes.value.data : [];
                 setAttGroups(groupByDay(records));
@@ -110,10 +121,42 @@ export default function TeacherHistorico() {
                 const data = classRes.value.data;
                 setClasses(Array.isArray(data) ? data : []);
             }
+            if (checkRes.status === 'fulfilled') {
+                setCheckins(Array.isArray(checkRes.value.data) ? checkRes.value.data : []);
+            }
         } catch {/* noop */} finally {
             setLoading(false);
         }
-    }, []);
+    }, [user]);
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const hasCheckedInToday = checkins.some(c => c.date === todayStr);
+    const todayCheckin = checkins.find(c => c.date === todayStr);
+
+    const handleCheckin = async () => {
+        if (hasCheckedInToday || checkingIn) {
+            if (hasCheckedInToday) {
+                toast.error('Você já registrou o ponto hoje.');
+            }
+            return;
+        }
+        setCheckingIn(true);
+        try {
+            const post = await api.post('/teachers/me/checkin');
+            const already = post.data?.alreadyRegistered === true;
+            toast.success(
+                already
+                    ? 'Ponto de hoje já estava registrado.'
+                    : `Ponto registrado! ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+            );
+            const res = await api.get('/teachers/me/checkins');
+            setCheckins(Array.isArray(res.data) ? res.data : []);
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Erro ao registrar ponto.');
+        } finally {
+            setCheckingIn(false);
+        }
+    };
 
     useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -129,39 +172,33 @@ export default function TeacherHistorico() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} className="animate-fade-in">
-            {/* ── Header ── */}
-            <div>
-                <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '1.8rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '0.3rem' }}>
-                    HISTÓRICO
-                </h1>
-                <p style={{ color: '#6B7280', fontSize: '0.85rem' }}>
-                    Registro completo de frequências, turmas e ponto do professor
-                </p>
-            </div>
+            <AdminHeaderHero
+                title="HISTÓRICO"
+                subtitle="Registro completo de frequências, turmas e ponto do professor"
+                badge="PROFESSOR"
+            />
 
             {/* ── KPIs ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.85rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.85rem' }}>
                 {[
-                    { icon: <CalendarDaysIcon style={{ width: 18, height: 18 }} />, label: 'Dias de Aula', value: attGroups.length, color: '#B89B00' },
-                    { icon: <CheckCircleIcon style={{ width: 18, height: 18 }} />, label: 'Presenças', value: totalPresent, color: '#059669' },
-                    { icon: <XCircleIcon style={{ width: 18, height: 18 }} />, label: 'Faltas Reg.', value: totalAbsent, color: '#DC2626' },
-                    { icon: <ClockIcon style={{ width: 18, height: 18 }} />, label: 'Taxa Presença', value: `${taxaPresenca}%`, color: taxaPresenca >= 75 ? '#059669' : '#F59E0B' },
-                    { icon: <UserGroupIcon style={{ width: 18, height: 18 }} />, label: 'Turmas', value: classes.length, color: '#7C3AED' },
+                    { icon: <CalendarDaysIcon style={{ width: 16, height: 16 }} />, label: 'Dias de Aula', value: attGroups.length, color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A', displayValue: String(attGroups.length) },
+                    { icon: <CheckCircleIcon style={{ width: 16, height: 16 }} />, label: 'Presenças', value: totalPresent, color: '#059669', bg: '#F0FDF4', border: '#BBF7D0', displayValue: String(totalPresent) },
+                    { icon: <XCircleIcon style={{ width: 16, height: 16 }} />, label: 'Faltas Reg.', value: totalAbsent, color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', displayValue: String(totalAbsent) },
+                    { icon: <ClockIcon style={{ width: 16, height: 16 }} />, label: 'Taxa Presença', value: 0, color: taxaPresenca >= 75 ? '#059669' : '#F59E0B', bg: taxaPresenca >= 75 ? '#F0FDF4' : '#FFFBEB', border: taxaPresenca >= 75 ? '#BBF7D0' : '#FDE68A', displayValue: `${taxaPresenca}%` },
+                    { icon: <UserGroupIcon style={{ width: 16, height: 16 }} />, label: 'Turmas', value: classes.length, color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE', displayValue: String(classes.length) },
                 ].map((kpi, i) => (
-                    <div key={i} className="animate-scale-in" style={{
-                        animationDelay: `${i * 60}ms`,
-                        background: '#fff', borderRadius: 12, padding: '0.9rem 1rem',
-                        border: '1px solid #E5E7EB',
-                        display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    }}>
-                        <div style={{ width: 36, height: 36, borderRadius: 9, background: `${kpi.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: kpi.color, flexShrink: 0 }}>
-                            {kpi.icon}
-                        </div>
-                        <div>
-                            <div style={{ fontFamily: 'Orbitron', fontWeight: 700, fontSize: '1.2rem', color: '#111827', lineHeight: 1 }}>{kpi.value}</div>
-                            <div style={{ fontSize: '0.62rem', color: '#9CA3AF', marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{kpi.label}</div>
-                        </div>
-                    </div>
+                    <AnimatedKpiCard
+                        key={i}
+                        label={kpi.label}
+                        value={kpi.value}
+                        displayValue={kpi.displayValue}
+                        color={kpi.color}
+                        bg={kpi.bg}
+                        border={kpi.border}
+                        delayMs={i * 60}
+                        icon={kpi.icon}
+                        compact
+                    />
                 ))}
             </div>
 
@@ -315,60 +352,75 @@ export default function TeacherHistorico() {
 
                 {/* ── aba: Meu Ponto ── */}
                 {tab === 'ponto' && (
-                    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-                        <div style={{ padding: '1.25rem', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <ClipboardDocumentCheckIcon style={{ width: 20, height: 20, color: '#FFD600' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {/* Card bater ponto hoje */}
+                        <div style={{ background: 'linear-gradient(135deg, #FFFDE7, #FFF9C4)', border: '1.5px solid #FEF08A', borderRadius: 16, padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
                             <div>
-                                <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.9rem' }}>Registro de Ponto</div>
-                                <div style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>Professor: {user?.name || '—'}</div>
+                                <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B89B00', marginBottom: '0.4rem' }}>
+                                    {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                                </div>
+                                <div style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '2.2rem', color: '#000', lineHeight: 1 }}>
+                                    {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: '0.4rem' }}>Horário atual do sistema</div>
+                                {todayCheckin && (
+                                    <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: '#059669', fontWeight: 600 }}>
+                                        ✓ Ponto registrado hoje às {new Date(todayCheckin.checkedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                )}
                             </div>
+                            <button
+                                onClick={handleCheckin}
+                                disabled={checkingIn || hasCheckedInToday}
+                                style={{ padding: '0.85rem 1.75rem', borderRadius: 12, background: checkingIn || hasCheckedInToday ? '#E5E7EB' : '#FFD600', border: 'none', cursor: checkingIn || hasCheckedInToday ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.78rem', letterSpacing: '0.1em', color: checkingIn || hasCheckedInToday ? '#9CA3AF' : '#000', boxShadow: checkingIn || hasCheckedInToday ? 'none' : '0 4px 14px rgba(255,214,0,0.4)', transition: 'all 0.2s' }}
+                                onMouseEnter={e => { if (!checkingIn && !hasCheckedInToday) (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+                            >
+                                {checkingIn ? '⏳ Registrando...' : hasCheckedInToday ? '✓ PONTO DE HOJE' : '⏱ REGISTRAR PONTO'}
+                            </button>
                         </div>
 
-                        {/* Card bater ponto hoje */}
-                        <div style={{ padding: '1.5rem' }}>
-                            <div style={{
-                                background: 'linear-gradient(135deg, #FFFDE7 0%, #FFF9C4 100%)',
-                                border: '1.5px solid #FEF08A', borderRadius: 14,
-                                padding: '1.25rem', marginBottom: '1.25rem',
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem',
-                            }}>
-                                <div>
-                                    <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B89B00', marginBottom: '0.3rem' }}>
-                                        {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                                    </div>
-                                    <div style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '2rem', color: '#000', lineHeight: 1 }}>
-                                        {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginTop: '0.3rem' }}>
-                                        Horário atual do sistema
-                                    </div>
+                        {/* Histórico de check-ins */}
+                        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+                            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ fontFamily: 'Orbitron', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.1em', color: '#B89B00' }}>HISTÓRICO DE PONTOS</div>
+                                <span style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>{checkins.length} registro{checkins.length !== 1 ? 's' : ''}</span>
+                            </div>
+                            {checkins.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '3rem', color: '#9CA3AF', fontSize: '0.85rem' }}>
+                                    <ClockIcon style={{ width: 32, height: 32, color: '#E5E7EB', margin: '0 auto 0.75rem' }} />
+                                    <p>Nenhum ponto registrado ainda.</p>
+                                    <p style={{ fontSize: '0.72rem', marginTop: '0.25rem' }}>Clique em &ldquo;Registrar Ponto&rdquo; para começar.</p>
                                 </div>
-                                <button style={{
-                                    padding: '0.75rem 1.5rem', borderRadius: 10,
-                                    background: '#FFD600', border: 'none', cursor: 'pointer',
-                                    fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.75rem',
-                                    letterSpacing: '0.1em', color: '#000',
-                                    boxShadow: '0 4px 14px rgba(255,214,0,0.4)',
-                                    transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'}
-                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform = ''}
-                                onClick={async () => {
-                                    try {
-                                        await api.post('/teachers/me/checkin');
-                                        toast.success(`Ponto registrado! ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
-                                    } catch (err: any) {
-                                        toast.error(err?.response?.data?.message || 'Erro ao registrar ponto. Tente novamente.');
-                                    }
-                                }}>
-                                    ⏱ REGISTRAR PONTO
-                                </button>
-                            </div>
-
-                            <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.8rem', padding: '1.5rem' }}>
-                                <ClockIcon style={{ width: 32, height: 32, color: '#E5E7EB', margin: '0 auto 0.5rem' }} />
-                                <p>Histórico de pontos aparecerá aqui após os primeiros registros.</p>
-                            </div>
+                            ) : (
+                                <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+                                    {checkins.map((c, i) => {
+                                        const dt = new Date(c.checkedAt);
+                                        const isToday = c.date === new Date().toISOString().split('T')[0];
+                                        return (
+                                            <div key={c.id} className="animate-fade-in" style={{ animationDelay: `${i * 25}ms`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.25rem', borderBottom: i < checkins.length - 1 ? '1px solid #F9FAFB' : 'none', background: isToday ? '#FFFDE7' : 'transparent' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isToday ? '#FFD600' : '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', flexShrink: 0 }}>
+                                                        {isToday ? '⏱' : '📅'}
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.85rem' }}>
+                                                            {dt.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                                                        </div>
+                                                        {isToday && <div style={{ fontSize: '0.65rem', color: '#B89B00', fontWeight: 700 }}>HOJE</div>}
+                                                    </div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontFamily: 'Orbitron', fontWeight: 800, fontSize: '1rem', color: isToday ? '#B89B00' : '#374151' }}>
+                                                        {dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>check-in</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

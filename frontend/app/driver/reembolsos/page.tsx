@@ -1,6 +1,18 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '@/lib/api/client';
+import imageCompression from 'browser-image-compression';
+import { CameraIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import {
+    EmployeeStyleAdminDetailShell,
+    EmployeeStyleAttachmentsGrid,
+    EmployeeStylePill,
+    EmployeeStyleSectionTitle,
+    portalReimbursementAttachmentDocs,
+} from '@/components/admin/employee-style-admin-detail';
 
 const TIPOS = [
     { value: 'FOOD',              label: '🍽️ Alimentação' },
@@ -34,7 +46,7 @@ const CSS = `
     background: rgba(0,0,0,0.45);
     backdrop-filter: blur(8px);
     z-index: 100;
-    display: flex; align-items: flex-end; justify-content: center; padding: 1rem;
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
 }
 .rmb-modal {
     background: #FFFFFF;
@@ -65,6 +77,24 @@ const CSS = `
 }
 `;
 
+function reimbursementPortalAccentGlow(status: string) {
+    switch (status) {
+        case 'REJECTED': return 'rgba(220,38,38,0.22)';
+        case 'APPROVED': return 'rgba(5,150,105,0.2)';
+        default: return 'rgba(217,119,6,0.22)';
+    }
+}
+
+function initialsFromTipoLabel(label: string) {
+    const t = String(label || '').replace(/[^\wÀ-ú]/gi, '').slice(0, 2).toUpperCase();
+    return t || 'RB';
+}
+
+function fmtCurrDriver(value: number | string) {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return isNaN(num) ? 'R$ 0,00' : num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export default function DriverReembolsos() {
     const [reembolsos, setReembolsos] = useState<any[]>([]);
     const [trips, setTrips]           = useState<any[]>([]);
@@ -72,6 +102,11 @@ export default function DriverReembolsos() {
     const [showForm, setShowForm]     = useState(false);
     const [saving, setSaving]         = useState(false);
     const [form, setForm]             = useState({ type: 'FOOD', amount: '', description: '' });
+    const [mounted, setMounted]       = useState(false);
+    const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+    const [fotoFile, setFotoFile]     = useState<File | null>(null);
+    const fileRef                     = useRef<HTMLInputElement>(null);
+    const [detailRb, setDetailRb] = useState<Record<string, unknown> | null>(null);
 
     const load = async () => {
         setLoading(true);
@@ -86,72 +121,82 @@ export default function DriverReembolsos() {
     };
 
     useEffect(() => { load(); }, []);
+    useEffect(() => { setMounted(true); }, []);
+
+    useEffect(() => {
+        const modalOpen = !!(detailRb || showForm);
+        document.body.style.overflow = modalOpen ? 'hidden' : '';
+        return () => { document.body.style.overflow = ''; };
+    }, [detailRb, showForm]);
 
     const handleSubmit = async () => {
         if (!form.amount || !form.description) return;
         setSaving(true);
         try {
+            let receiptUrl: string | undefined;
+            if (fotoFile) {
+                try {
+                    const urlRes = await api.post('/reimbursements/presigned-url', {
+                        filename: fotoFile.name, contentType: fotoFile.type,
+                    });
+                    await fetch(urlRes.data.uploadUrl, {
+                        method: 'PUT', body: fotoFile,
+                        headers: { 'Content-Type': fotoFile.type },
+                    });
+                    receiptUrl = urlRes.data.fileUrl;
+                } catch { /* MinIO indisponivel — continua sem URL */ }
+            }
             await api.post('/reimbursements', {
                 type: form.type,
                 amount: parseFloat(form.amount.replace(',', '.')),
                 description: form.description,
-                // tripId não existe no schema Reimbursement
+                ...(receiptUrl ? { receiptUrl } : {}),
             });
             setShowForm(false);
             setForm({ type: 'FOOD', amount: '', description: '' });
+            setFotoPreview(null); setFotoFile(null);
             load();
         } catch { } finally { setSaving(false); }
     };
+
+    async function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const compressed = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1200, useWebWorker: true });
+            setFotoFile(compressed as unknown as File);
+            const reader = new FileReader();
+            reader.onload = ev => setFotoPreview(ev.target?.result as string);
+            reader.readAsDataURL(compressed);
+        } catch {
+            setFotoFile(file);
+            const reader = new FileReader();
+            reader.onload = ev => setFotoPreview(ev.target?.result as string);
+            reader.readAsDataURL(file);
+        }
+    }
 
     return (
         <>
         <style>{CSS}</style>
         <div className="rmb-page" style={{ maxWidth: 580, margin: '0 auto' }}>
 
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <div>
-                    <h1 style={{
-                        fontFamily: 'Orbitron, sans-serif',
-                        fontSize: '2rem', fontWeight: 900,
-                        letterSpacing: '0.08em', margin: 0,
-                        background: 'linear-gradient(135deg, #FFD600, #F59E0B)',
-                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                    }}>REEMBOLSOS</h1>
-                    <p style={{ color: '#6B7280', fontSize: '0.82rem', margin: '0.25rem 0 0' }}>
-                        Solicite e acompanhe seus pedidos de reembolso
-                    </p>
-                </div>
-                <button
-                    onClick={() => setShowForm(true)}
-                    style={{
-                        padding: '0.65rem 1.25rem', borderRadius: 10, border: 'none',
-                        background: 'linear-gradient(135deg,#FFD600,#F59E0B)',
-                        color: '#0F172A', fontWeight: 800, fontSize: '0.82rem',
-                        cursor: 'pointer', boxShadow: '0 4px 12px rgba(255,214,0,0.35)',
-                    }}>
-                    + Novo
-                </button>
-            </div>
+            <AdminHeaderHero
+                title="REEMBOLSOS"
+                subtitle="Solicite e acompanhe seus pedidos de reembolso"
+                badge="MOTORISTA"
+                rightSlot={<button onClick={() => setShowForm(true)} className="btn-primary">+ Novo</button>}
+            />
 
             {/* Resumo rápido */}
             {reembolsos.length > 0 && (
-                <div style={{
-                    display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem',
-                    marginBottom: '1.25rem',
-                }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
                     {[
-                        { label: 'Pendentes', count: reembolsos.filter(r => r.status === 'PENDING').length, color: '#92400E', bg: 'rgba(255,214,0,0.1)' },
-                        { label: 'Aprovados', count: reembolsos.filter(r => r.status === 'APPROVED').length, color: '#065F46', bg: 'rgba(16,185,129,0.1)' },
-                        { label: 'Rejeitados', count: reembolsos.filter(r => r.status === 'REJECTED').length, color: '#991B1B', bg: 'rgba(239,68,68,0.1)' },
+                        { label: 'Pendentes', count: reembolsos.filter(r => r.status === 'PENDING').length, color: '#92400E', bg: '#FFFDE7', border: '#FEF08A' },
+                        { label: 'Aprovados', count: reembolsos.filter(r => r.status === 'APPROVED').length, color: '#065F46', bg: '#F0FDF4', border: '#BBF7D0' },
+                        { label: 'Rejeitados', count: reembolsos.filter(r => r.status === 'REJECTED').length, color: '#991B1B', bg: '#FEF2F2', border: '#FECACA' },
                     ].map((s, i) => (
-                        <div key={i} style={{
-                            background: s.bg, borderRadius: 12, padding: '0.75rem 1rem',
-                            textAlign: 'center',
-                        }}>
-                            <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.35rem', fontWeight: 900, color: s.color }}>{s.count}</div>
-                            <div style={{ fontSize: '0.62rem', fontWeight: 700, color: s.color, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{s.label}</div>
-                        </div>
+                        <AnimatedKpiCard key={i} label={s.label} value={s.count} color={s.color} bg={s.bg} border={s.border} compact />
                     ))}
                 </div>
             )}
@@ -212,12 +257,109 @@ export default function DriverReembolsos() {
                                 ❌ Motivo: {r.rejectionReason}
                             </div>
                         )}
+                        <div style={{ marginTop: 10 }}>
+                            <button type="button" onClick={() => setDetailRb(r)} style={{ padding: '0.35rem 0.7rem', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
+                                Ver detalhes
+                            </button>
+                        </div>
                     </div>
                 );
             })}
 
+            {detailRb && (() => {
+                const r = detailRb as {
+                    id: string;
+                    type: string;
+                    status: string;
+                    amount: number;
+                    description?: string;
+                    createdAt?: string;
+                    receiptUrl?: string | null;
+                    rejectionReason?: string | null;
+                    acao?: { nome?: string } | null;
+                };
+                const st = STATUS_STYLE[r.status] || STATUS_STYLE.PENDING;
+                const tipo = TIPOS.find(t => t.value === r.type);
+                const tipoLabel = tipo?.label || r.type;
+                const data = r.createdAt ? new Date(r.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+                return (
+                    <EmployeeStyleAdminDetailShell
+                        onClose={() => setDetailRb(null)}
+                        accentColor={st.color}
+                        accentGlow={reimbursementPortalAccentGlow(r.status)}
+                        initials={initialsFromTipoLabel(tipoLabel)}
+                        statusBadge={(
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.2rem 0.6rem', borderRadius: 100, fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', background: st.bg, color: st.color, textTransform: 'uppercase' }}>
+                                {st.label}
+                            </span>
+                        )}
+                        headline={tipoLabel}
+                        headerTags={(
+                            <>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.28rem 0.7rem', borderRadius: 100, background: `${st.color}22`, border: `1px solid ${st.color}55`, fontSize: '0.72rem', fontWeight: 700, color: st.color }}>
+                                    💰 {fmtCurrDriver(r.amount)}
+                                </span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.28rem 0.7rem', borderRadius: 100, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.72rem', fontWeight: 600, color: '#E7E5E4' }}>
+                                    📅 {data}
+                                </span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0.28rem 0.7rem', borderRadius: 100, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', fontSize: '0.72rem', fontWeight: 700, color: '#CBD5E1' }}>
+                                    🚗 Portal motorista
+                                </span>
+                            </>
+                        )}
+                        footer={(
+                            <button
+                                type="button"
+                                onClick={() => setDetailRb(null)}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.75rem',
+                                    borderRadius: 12,
+                                    border: '1.5px solid #E2E8F0',
+                                    background: 'transparent',
+                                    color: '#6B7280',
+                                    fontWeight: 700,
+                                    fontSize: '0.85rem',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                ✕ Fechar
+                            </button>
+                        )}
+                    >
+                        <div>
+                            <EmployeeStyleSectionTitle icon="📋" title="Resumo" color="#B89B00" />
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.6rem' }}>
+                                <EmployeeStylePill icon="💵" label="Valor" value={fmtCurrDriver(r.amount)} accent="#059669" />
+                                <EmployeeStylePill icon="📆" label="Solicitado em" value={data} accent="#6366F1" />
+                                <EmployeeStylePill icon="🏷️" label="Categoria" value={tipoLabel} accent="#7C3AED" />
+                                {r.acao?.nome ? <EmployeeStylePill icon="📍" label="Período / ação" value={r.acao.nome} accent="#0891B2" /> : null}
+                            </div>
+                        </div>
+                        <div>
+                            <EmployeeStyleSectionTitle icon="🧾" title="Descrição" color="#7C3AED" />
+                            <div style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: 12, padding: '0.85rem 1rem', fontSize: '0.88rem', color: '#374151', lineHeight: 1.65 }}>
+                                {r.description?.trim() || '—'}
+                            </div>
+                        </div>
+                        {r.rejectionReason?.trim() ? (
+                            <div>
+                                <EmployeeStyleSectionTitle icon="⚠️" title="Motivo da rejeição" color="#DC2626" />
+                                <div style={{ background: 'rgba(220,38,38,0.06)', border: '1.5px solid rgba(248,113,113,0.45)', borderRadius: 14, padding: '1rem 1.1rem', fontSize: '0.88rem', color: '#7F1D1D', lineHeight: 1.65 }}>
+                                    {r.rejectionReason}
+                                </div>
+                            </div>
+                        ) : null}
+                        <div>
+                            <EmployeeStyleSectionTitle icon="📁" title="Comprovante" color="#3B82F6" />
+                            <EmployeeStyleAttachmentsGrid docs={portalReimbursementAttachmentDocs(r.id, r.receiptUrl)} />
+                        </div>
+                    </EmployeeStyleAdminDetailShell>
+                );
+            })()}
+
             {/* Modal Novo Reembolso */}
-            {showForm && (
+            {mounted && showForm && createPortal(
                 <div className="rmb-modal-overlay"
                     onClick={e => { if (e.target === e.currentTarget) setShowForm(false); }}>
                     <div className="rmb-modal">
@@ -252,6 +394,28 @@ export default function DriverReembolsos() {
                             value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
                             className="rmb-input" style={{ resize: 'vertical' }} />
 
+                        {/* Upload de comprovante */}
+                        <label className="rmb-label">Comprovante (opcional)</label>
+                        <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: 'none' }} />
+                        <button type="button" onClick={() => fileRef.current?.click()} style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            padding: '0.55rem 1rem', borderRadius: 9, marginBottom: '0.75rem',
+                            background: 'rgba(255,214,0,0.08)', border: '1px dashed rgba(255,214,0,0.4)',
+                            color: '#B89B00', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                        }}>
+                            <CameraIcon style={{ width: 16, height: 16 }} />
+                            {fotoFile ? 'Trocar comprovante' : 'Tirar / Selecionar foto'}
+                        </button>
+                        {fotoPreview && (
+                            <div style={{ position: 'relative', display: 'inline-block', marginBottom: '0.75rem' }}>
+                                <img src={fotoPreview} alt="Preview" style={{ maxWidth: 180, maxHeight: 130, borderRadius: 8, objectFit: 'cover', border: '2px solid rgba(255,214,0,0.3)' }} />
+                                <button type="button" onClick={() => { setFotoPreview(null); setFotoFile(null); }}
+                                    style={{ position: 'absolute', top: -8, right: -8, background: '#EF4444', border: 'none', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <XMarkIcon style={{ width: 13, height: 13 }} />
+                                </button>
+                            </div>
+                        )}
+
                         {trips.length > 0 && (
                             <>
                                 <label className="rmb-label">Vincular à viagem (opcional)</label>
@@ -285,7 +449,8 @@ export default function DriverReembolsos() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
         </>

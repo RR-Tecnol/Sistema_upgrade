@@ -2,7 +2,23 @@
 ## v2.0 | 23/03/2026 — Atualizado após auditoria completa
 
 > Guia completo sobre como funcionam os seeds, como executá-los e como criar novos.
-> **Regra de ouro:** Nunca criar arquivos seed separados. Tudo em `seed.ts` + `seed-extra.ts`.
+> **Regra de ouro:** Nunca criar arquivos seed separados. Tudo em `seed-full.ts`.
+
+---
+
+## 🔗 REFERÊNCIAS CRUZADAS
+
+> **Ler antes de rodar ou alterar qualquer seed:**
+> - [`sobre-sistema.md §3`](./arquitetura/sobre-sistema.md) — schema Prisma: modelos e relacionamentos
+> - [`LIVRO_DE_REGRAS.md §3`](./arquitetura/LIVRO_DE_REGRAS.md) — regras de banco (soft delete, UUID, datas UTC)
+> - [`ESTADO_SISTEMA.md`](./arquitetura/ESTADO_SISTEMA.md) — estado atual e seed de apresentação pendente
+> - [`PROX-PASSOS.md §F5.8–F5.12`](./arquitetura/PROX-PASSOS.md) — blocos de seed a implementar
+>
+> **Arquivo oficial do seed:** `backend/prisma/seed-full.ts`
+> - ❌ NUNCA criar: `seed-novo.ts`, `seed-temp.ts`, `seed-test.ts`, `seed_trip_test.js` etc.
+> - Todo dado de teste vai em `seed-full.ts`
+>
+> **Aviso de violação removida:** `seed-rastreamento.ts` deletado em F5.7 — integrado ao `seed-full.ts`
 
 ---
 
@@ -13,7 +29,10 @@
 | `backend/prisma/seed-full.ts` | Dados **obrigatórios + demonstração** — usuários, cursos, grupos, cidades, carretas, turmas, viagens, reembolsos, ausências, notificações | `npm run prisma:seed` | ✅ Sim |
 
 > ⛔ **NUNCA criar:** `seed-novo.ts`, `seed-temp.ts`, `seed-test.ts`, `seed_trip_test.js` etc.
-> Qualquer dado de teste vai em `seed-extra.ts`. Seeds avulsos são legado e devem ser excluídos.
+> Qualquer dado de teste vai em `seed-full.ts`. Seeds avulsos são legado e devem ser excluídos.
+>
+> ⚠️ **VIOLAÇÃO ATIVA:** `seed-rastreamento.ts` foi criado em 27/03/2026 violando esta regra.
+> Deve ser migrado para `seed-full.ts` → seção `runSeed_rastreamento()` e depois deletado.
 
 ---
 
@@ -144,7 +163,43 @@ if (entidadeCount < 3) {
 
 ---
 
-## Seeds a Implementar (ainda pendentes em seed-extra.ts)
+## Seeds a Implementar — Apresentação Executiva (F5.8 a F5.12)
+
+```typescript
+// seed-full.ts — adicionar após runSeed3_test():
+
+// ─── BLOCO: Rastreamento — Seed de Apresentação ─────────────────────────────
+async function runSeed_rastreamento() {
+    // 1. Marca João (joao.driver.test99) como COMPLETED → some do mapa
+    // 2. Limpa trips fantasmas (IN_TRANSIT sem nenhuma DriverLocation)
+    // 3. Cria 8 motoristas demo com trips IN_TRANSIT + trilhas GPS
+    // 4. Cria 3 motoristas com trips COMPLETED (encerradas hoje, histórico visível)
+    // IMPORTANTE: usar offsets relativos a Date.now() — nunca timestamps hardcoded
+}
+
+// ─── BLOCO: Refresh de timestamps (para apresentação) ────────────────────────
+// Exposto via: npx tsx prisma/seed-full.ts --refresh-drivers
+// Atualiza apenas capturedAt das últimas DriverLocations dos motoristas demo
+// para manter os status corretos (ONLINE/STOPPED/OFFLINE) no momento da apresentação
+async function refreshDriverTimestamps() { ... }
+```
+
+**Offsets de timestamp para cada status (relativos ao `Date.now()` na execução):**
+| Status desejado | Offset do último `capturedAt` |
+|----------------|------------------------------|
+| 🟢 ONLINE | `now - 3min` |
+| 🟡 STOPPED | `now - 10min` (speed=0 por >30min via pontos anteriores) |
+| 🔴 OFFLINE | `now - 120min` |
+
+**Comando para apresentação (rodar 5min antes):**
+```powershell
+cd backend
+npx tsx prisma/seed-full.ts --refresh-drivers
+```
+
+---
+
+## Seeds a Implementar (ainda pendentes em seed-full.ts) — legado
 
 ```typescript
 // 1. UserPreferences para cada usuário de teste (após migration PASSO 1.3)

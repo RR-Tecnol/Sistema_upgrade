@@ -10,6 +10,24 @@ export interface Certificate {
     class?: { classIdentifier: string; course?: { name: string } };
 }
 
+/** Resposta pública de GET /certificates/verify/:code (ultra-leve; sem matrícula/CPF). */
+export interface PublicCertificateVerification {
+    status: 'ACTIVE' | 'CANCELLED';
+    studentNameObfuscated: string;
+    courseName: string;
+    workloadHours: number;
+    issuedAt: string;
+    institutionName: string;
+    institutionLogoUrl?: string | null;
+    siteUrl?: string | null;
+    primaryColor?: string | null;
+    verificationCode: string;
+    ogShare?: {
+        title: string;
+        description: string;
+    };
+}
+
 export const certificatesApi = {
     getMy: async () => {
         const res = await api.get<Certificate[]>('/certificates/my');
@@ -17,7 +35,7 @@ export const certificatesApi = {
     },
 
     verify: async (code: string) => {
-        const res = await api.get<Certificate>(`/certificates/verify/${code}`);
+        const res = await api.get<PublicCertificateVerification>(`/certificates/verify/${code}`);
         return res.data;
     },
 

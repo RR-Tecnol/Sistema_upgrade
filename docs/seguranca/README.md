@@ -5,6 +5,19 @@
 
 ---
 
+## 🔗 REFERÊNCIAS CRUZADAS
+
+> **Este arquivo é o sumário executivo de segurança. Para detalhe completo, use:**
+> - [`MR_ROBOT_MENTALIDADE.md`](./MR_ROBOT_MENTALIDADE.md) — checklist completo e como operar como hacker ético
+> - [`ERROS_E_SOLUCOES.md`](./ERROS_E_SOLUCOES.md) — histórico de SEC-* e BUG-* com soluções
+> - [`sobre-sistema.md §5`](../arquitetura/sobre-sistema.md) — arquitetura de auth: JWT, 2FA, Guards
+> - [`LIVRO_DE_REGRAS.md §5`](../arquitetura/LIVRO_DE_REGRAS.md) — regras de autenticação e autorização
+> - [`PLANO_DE_TESTES.md MÓDULO 12`](../testes/PLANO_DE_TESTES.md) — testes de cibersegurança (S01–S15)
+>
+> **Alertas ativos listados aqui** são bugs conhecidos não críticos — também documentados em `ESTADO_SISTEMA.md`.
+
+---
+
 ## POSTURA DE SEGURANÇA ATUAL
 
 | Camada | Mecanismo | Status |

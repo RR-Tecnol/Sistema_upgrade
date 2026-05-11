@@ -2,40 +2,86 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api/client';
 import { BellIcon } from '@heroicons/react/24/outline';
-
-interface Notification {
-    id: string;
-    title: string;
-    message: string;
-    type: string;
-    read: boolean;
-    link?: string;
-    createdAt: string;
-}
+import { useNotifications, type Notification as HookNotification } from '@/hooks/useNotifications';
 
 const TYPE_ICON: Record<string, string> = {
-    ENROLLMENT_RECEIVED:  '📋',
-    ENROLLMENT_APPROVED:  '✅',
-    ENROLLMENT_REJECTED:  '❌',
-    CERTIFICATE_AVAILABLE:'🏆',
-    ABSENCE_REGISTERED:   '⚠️',
-    EXCESSIVE_ABSENCES:   '🚨',
-    CLASS_REMINDER:       '📅',
-    CLASS_CANCELLED:      '🚫',
+    ENROLLMENT_RECEIVED: '📋',
+    ENROLLMENT_APPROVED: '✅',
+    ENROLLMENT_REJECTED: '❌',
+    CERTIFICATE_AVAILABLE: '🏆',
+    ABSENCE_REGISTERED: '⚠️',
+    EXCESSIVE_ABSENCES: '🚨',
+    CLASS_REMINDER: '📅',
+    CLASS_CANCELLED: '🚫',
     GENERAL_ANNOUNCEMENT: '📢',
+    nova_inscricao: '📋',
+    inscricao_aprovada: '✅',
+    inscricao_rejeitada: '❌',
+    frequencia_registrada: '✓',
+    imprevisto_cadastrado: '⚠️',
+    imprevisto_cadastrado_por_admin: '📌',
+    imprevisto_revisado: '✔️',
+    reembolso_solicitado: '💰',
+    reembolso_revisado: '💵',
+    custo_excessivo: '⚠️',
+    JUSTIFICATION_APPROVED: '✅',
+    JUSTIFICATION_REJECTED: '❌',
+    FEEDBACK_INVITATION: '🎁',
+    geral: '📢',
 };
 
-export default function NotificationBell() {
-    const [open, setOpen] = useState(false);
-    const [items, setItems] = useState<Notification[]>([]);
-    const [unread, setUnread] = useState(0);
-    const [loading, setLoading] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    const router = useRouter();
+const XP_BY_TYPE: Record<string, number | null> = {
+    CERTIFICATE_AVAILABLE: 100,
+    ENROLLMENT_APPROVED: 50,
+    ENROLLMENT_RECEIVED: null,
+    ENROLLMENT_REJECTED: null,
+    ABSENCE_REGISTERED: null,
+    EXCESSIVE_ABSENCES: null,
+    CLASS_REMINDER: null,
+    CLASS_CANCELLED: null,
+    GENERAL_ANNOUNCEMENT: null,
+};
 
-    // Fechar ao clicar fora
+function getNotifXP(notif: HookNotification): number | null {
+    if (notif.type in XP_BY_TYPE) return XP_BY_TYPE[notif.type];
+    const t = (notif.title || notif.message || '').toLowerCase();
+    if (t.includes('certificado') || t.includes('certificate')) return 100;
+    if (t.includes('rank') || t.includes('aprovad')) return 50;
+    if (t.includes('frequência') || t.includes('mínimo')) return 10;
+    return null;
+}
+
+function timeAgo(ts: string) {
+    const diff = Date.now() - new Date(ts).getTime();
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return 'agora';
+    if (min < 60) return `${min}min`;
+    const hrs = Math.floor(min / 60);
+    if (hrs < 24) return `${hrs}h`;
+    return `${Math.floor(hrs / 24)}d`;
+}
+
+/**
+ * UX-12: mesma fonte que o admin header — `useNotifications` (REST inicial + Socket.IO).
+ */
+export default function NotificationBell() {
+    const router = useRouter();
+    const {
+        notifications,
+        unreadCount,
+        connected,
+        markAllRead,
+        markOneRead,
+        refetch,
+    } = useNotifications();
+
+    const [open, setOpen] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const items = notifications.slice(0, 15);
+
     useEffect(() => {
         function handleOutside(e: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -46,70 +92,37 @@ export default function NotificationBell() {
         return () => document.removeEventListener('mousedown', handleOutside);
     }, []);
 
-    // Polling simples a cada 30 seg para manter contagem atualizada
     useEffect(() => {
-        loadCount();
-        const interval = setInterval(loadCount, 30000);
-        return () => clearInterval(interval);
-    }, []);
+        if (!open) return;
+        (async () => {
+            setSyncing(true);
+            await refetch();
+            setSyncing(false);
+        })();
+    }, [open, refetch]);
 
-    // Carregar lista ao abrir dropdown
-    useEffect(() => {
-        if (open) loadNotifications();
-    }, [open]);
-
-    async function loadCount() {
-        try {
-            const res = await api.get('/notifications?limit=1');
-            setUnread(res.data?.meta?.unreadCount ?? 0);
-        } catch { /* silencioso */ }
+    async function handleMarkAllRead() {
+        await markAllRead();
     }
 
-    async function loadNotifications() {
-        setLoading(true);
-        try {
-            const res = await api.get('/notifications?limit=15');
-            setItems(res.data?.data ?? []);
-            setUnread(res.data?.meta?.unreadCount ?? 0);
-        } catch { /* silencioso */ } finally {
-            setLoading(false);
-        }
-    }
-
-    async function markRead(id: string) {
-        await api.patch(`/notifications/${id}/read`).catch(() => {});
-        setItems(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-        setUnread(u => Math.max(0, u - 1));
-    }
-
-    async function markAllRead() {
-        await api.patch('/notifications/read-all').catch(() => {});
-        setItems(prev => prev.map(n => ({ ...n, read: true })));
-        setUnread(0);
-    }
-
-    function handleClick(n: Notification) {
-        if (!n.read) markRead(n.id);
+    async function handleClick(n: HookNotification) {
+        if (!n.read) await markOneRead(n.id);
         if (n.link) {
             setOpen(false);
             router.push(n.link);
         }
     }
 
-    function timeAgo(dateStr: string) {
-        const diff = Date.now() - new Date(dateStr).getTime();
-        const min = Math.floor(diff / 60000);
-        if (min < 1) return 'agora';
-        if (min < 60) return `${min}min`;
-        const hrs = Math.floor(min / 60);
-        if (hrs < 24) return `${hrs}h`;
-        return `${Math.floor(hrs / 24)}d`;
-    }
+    const displayTitle = (n: HookNotification) =>
+        n.title?.trim() || n.message?.slice(0, 72) || 'Notificação';
+
+    const displaySubtitle = (n: HookNotification) =>
+        n.title?.trim() ? n.message : null;
 
     return (
         <div ref={dropdownRef} style={{ position: 'relative' }}>
-            {/* Bell Button */}
             <button
+                type="button"
                 onClick={() => setOpen(o => !o)}
                 style={{
                     position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -120,22 +133,37 @@ export default function NotificationBell() {
                 }}
                 aria-label="Notificações"
             >
+                {connected && (
+                    <span
+                        title="Tempo real (WebSocket)"
+                        style={{
+                            position: 'absolute',
+                            top: 2,
+                            left: 2,
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            background: '#10B981',
+                            border: '1.5px solid rgba(15,23,42,0.9)',
+                            zIndex: 1,
+                        }}
+                    />
+                )}
                 <BellIcon style={{ width: 18, height: 18, color: open ? '#FFD600' : '#94A3B8' }} />
-                {unread > 0 && (
+                {unreadCount > 0 && (
                     <span style={{
                         position: 'absolute', top: -4, right: -4,
-                        width: unread > 9 ? 22 : 18, height: 18,
+                        width: unreadCount > 9 ? 22 : 18, height: 18,
                         borderRadius: 100, fontSize: '0.6rem', fontWeight: 900,
                         background: '#EF4444', color: '#fff',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         border: '2px solid #fff', animation: 'bellPulse 2s ease-in-out infinite',
                     }}>
-                        {unread > 99 ? '99+' : unread}
+                        {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                 )}
             </button>
 
-            {/* Dropdown */}
             {open && (
                 <div style={{
                     position: 'absolute', top: '100%', right: 0, marginTop: 8,
@@ -146,7 +174,6 @@ export default function NotificationBell() {
                     zIndex: 9000, overflow: 'hidden',
                     animation: 'dropIn 0.2s cubic-bezier(0.22,1,0.36,1)',
                 }}>
-                    {/* Header */}
                     <div style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '0.875rem 1rem',
@@ -155,29 +182,37 @@ export default function NotificationBell() {
                     }}>
                         <div style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.12em', color: '#111827' }}>
                             🔔 NOTIFICAÇÕES
-                            {unread > 0 && (
+                            {connected && (
+                                <span style={{ marginLeft: 8, fontSize: '0.58rem', color: '#059669', fontFamily: 'Inter, sans-serif', fontWeight: 700 }}>
+                                    ● AO VIVO
+                                </span>
+                            )}
+                            {unreadCount > 0 && (
                                 <span style={{ marginLeft: 8, fontSize: '0.65rem', color: '#D97706', fontFamily: 'Inter, sans-serif' }}>
-                                    ({unread} não lida{unread !== 1 ? 's' : ''})
+                                    ({unreadCount} não lida{unreadCount !== 1 ? 's' : ''})
                                 </span>
                             )}
                         </div>
-                        {unread > 0 && (
-                            <button onClick={markAllRead} style={{
-                                fontSize: '0.65rem', color: '#6B7280', background: 'rgba(0,0,0,0.04)',
-                                border: '1px solid #E5E7EB',
-                                cursor: 'pointer', fontWeight: 600, padding: '3px 8px', borderRadius: 6,
-                                transition: 'all 0.2s',
-                            }}>
+                        {unreadCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => void handleMarkAllRead()}
+                                style={{
+                                    fontSize: '0.65rem', color: '#6B7280', background: 'rgba(0,0,0,0.04)',
+                                    border: '1px solid #E5E7EB',
+                                    cursor: 'pointer', fontWeight: 600, padding: '3px 8px', borderRadius: 6,
+                                    transition: 'all 0.2s',
+                                }}
+                            >
                                 Marcar todas lidas
                             </button>
                         )}
                     </div>
 
-                    {/* Lista */}
                     <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                        {loading ? (
+                        {syncing ? (
                             <div style={{ padding: '2rem', textAlign: 'center', color: '#9CA3AF', fontSize: '0.8rem' }}>
-                                Carregando...
+                                A sincronizar...
                             </div>
                         ) : items.length === 0 ? (
                             <div style={{ padding: '2.5rem 1rem', textAlign: 'center' }}>
@@ -189,7 +224,8 @@ export default function NotificationBell() {
                             items.map(n => (
                                 <button
                                     key={n.id}
-                                    onClick={() => handleClick(n)}
+                                    type="button"
+                                    onClick={() => void handleClick(n)}
                                     style={{
                                         width: '100%', textAlign: 'left', padding: '0.85rem 1rem',
                                         display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
@@ -199,8 +235,11 @@ export default function NotificationBell() {
                                         borderLeft: n.read ? '3px solid transparent' : '3px solid #FFD600',
                                         cursor: 'pointer', transition: 'background 0.15s',
                                     }}
-                                    onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
-                                    onMouseLeave={e => (e.currentTarget.style.background = n.read ? '#FFFFFF' : 'rgba(255,214,0,0.06)')}
+                                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#F9FAFB'; }}
+                                    onMouseLeave={e => {
+                                        (e.currentTarget as HTMLButtonElement).style.background =
+                                            n.read ? '#FFFFFF' : 'rgba(255,214,0,0.06)';
+                                    }}
                                 >
                                     <span style={{ fontSize: '1.2rem', flexShrink: 0, marginTop: '0.1rem' }}>
                                         {TYPE_ICON[n.type] ?? '📢'}
@@ -211,17 +250,34 @@ export default function NotificationBell() {
                                             color: n.read ? '#6B7280' : '#111827',
                                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                         }}>
-                                            {n.title}
+                                            {displayTitle(n)}
+                                            {(() => {
+                                                const xp = getNotifXP(n);
+                                                if (!xp) return null;
+                                                return (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                                                        marginLeft: '0.4rem', padding: '0.1rem 0.45rem', borderRadius: 100,
+                                                        background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.3)',
+                                                        fontSize: '0.58rem', fontWeight: 800, color: '#B89B00',
+                                                        fontFamily: 'JetBrains Mono', verticalAlign: 'middle',
+                                                    }}>
+                                                        ⚡+{xp}xp
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
-                                        <div style={{
-                                            fontSize: '0.7rem', color: '#9CA3AF', marginTop: '0.15rem',
-                                            overflow: 'hidden', textOverflow: 'ellipsis',
-                                            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                                        }}>
-                                            {n.message}
-                                        </div>
+                                        {displaySubtitle(n) && (
+                                            <div style={{
+                                                fontSize: '0.7rem', color: '#9CA3AF', marginTop: '0.15rem',
+                                                overflow: 'hidden', textOverflow: 'ellipsis',
+                                                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                            }}>
+                                                {n.message}
+                                            </div>
+                                        )}
                                         <div style={{ fontSize: '0.62rem', color: '#D1D5DB', marginTop: '0.25rem', fontFamily: 'JetBrains Mono' }}>
-                                            {timeAgo(n.createdAt)}
+                                            {timeAgo(n.timestamp)}
                                         </div>
                                     </div>
                                     {!n.read && (

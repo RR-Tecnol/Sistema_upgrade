@@ -1,11 +1,47 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { CreateTruckMaintenanceDto } from './dto/create-truck-maintenance.dto';
 import { UpdateTruckMaintenanceDto } from './dto/update-truck-maintenance.dto';
 
 @Injectable()
 export class TruckMaintenanceService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private readonly notifications: NotificationsGateway,
+    ) { }
+
+    private emitFinanceiroListagemRefresh(source: string, extra: Record<string, unknown> = {}) {
+        try {
+            this.notifications.notifyFinanceiroListagemRefresh({ source, ...extra });
+        } catch { /* WS nunca bloqueia */ }
+    }
+
+    private async syncTruckDates(truckId: string) {
+        const all = await this.prisma.truckMaintenance.findMany({ where: { truckId } });
+        
+        const concluidaDates = all
+            .filter(m => m.status === 'concluida' && m.dataConclusao)
+            .map(m => new Date(m.dataConclusao!).getTime());
+        const lastMaintenanceDate = concluidaDates.length > 0 
+            ? new Date(Math.max(...concluidaDates)) 
+            : null;
+
+        const agendadaDates = all
+            .filter(m => m.status === 'agendada' && m.dataAgendada)
+            .map(m => new Date(m.dataAgendada!).getTime());
+        const nextMaintenanceDate = agendadaDates.length > 0
+            ? new Date(Math.min(...agendadaDates))
+            : null;
+
+        await this.prisma.truck.update({
+            where: { id: truckId },
+            data: { 
+                lastMaintenanceDate: lastMaintenanceDate, 
+                nextMaintenanceDate: nextMaintenanceDate 
+            }
+        });
+    }
 
     // ── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -83,8 +119,13 @@ export class TruckMaintenanceService {
                 where: { id: maintenance.id },
                 data: { contaPagarId: conta.id },
             });
+            this.emitFinanceiroListagemRefresh('truck_maintenance_create_conta', {
+                truckMaintenanceId: maintenance.id,
+                contaPagarId: conta.id,
+            });
         }
 
+        await this.syncTruckDates(dto.truckId);
         return maintenance;
     }
 
@@ -111,6 +152,10 @@ export class TruckMaintenanceService {
                     where: { id: existingAny.contaPagarId },
                     data: updateData,
                 }).catch(() => { });
+                this.emitFinanceiroListagemRefresh('truck_maintenance_update_conta', {
+                    truckMaintenanceId: id,
+                    contaPagarId: existingAny.contaPagarId as string,
+                });
             }
         } else {
             // Criar ContaPagar se ainda não existia e agora há um custo informado
@@ -131,6 +176,10 @@ export class TruckMaintenanceService {
                     } as any,
                 });
                 await this.prisma.truckMaintenance.update({ where: { id }, data: { contaPagarId: conta.id } });
+                this.emitFinanceiroListagemRefresh('truck_maintenance_update_create_conta', {
+                    truckMaintenanceId: id,
+                    contaPagarId: conta.id,
+                });
             }
         }
 
@@ -142,7 +191,7 @@ export class TruckMaintenanceService {
             if (openCount === 0) {
                 await this.prisma.truck.update({
                     where: { id: updated.truckId },
-                    data: { status: 'AVAILABLE', lastMaintenanceDate: new Date() },
+                    data: { status: 'AVAILABLE' },
                 });
             }
         }
@@ -157,13 +206,16 @@ export class TruckMaintenanceService {
             }
         }
 
+        await this.syncTruckDates(updated.truckId);
         return updated;
     }
 
     async remove(id: string) {
-        await this.findOne(id);
+        const existing = await this.findOne(id);
         // Soft delete via status cancelada (LIVRO_DE_REGRAS §3)
-        return this.prisma.truckMaintenance.update({ where: { id }, data: { status: 'cancelada' } });
+        const updated = await this.prisma.truckMaintenance.update({ where: { id }, data: { status: 'cancelada' } });
+        await this.syncTruckDates(existing.truckId);
+        return updated;
     }
 
     // ── STATS ─────────────────────────────────────────────────────────────────

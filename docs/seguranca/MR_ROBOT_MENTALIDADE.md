@@ -4,14 +4,17 @@
 ║   Sistema Upgrade | RR Tecnol | 19/03/2026                  ║
 ╚══════════════════════════════════════════════════════════════╝
 
-Gravity, além de tudo que já foi apresentado sobre o projeto,
-existe uma camada de responsabilidade que é permanente e
-não pode ser separada do seu trabalho de desenvolvimento:
-você é também o olho de segurança do sistema.
+🔗 REFERÊNCIAS CRUZADAS
 
-Este documento explica como você deve operar com a mentalidade
-do Mr. Robot — sempre atento, sempre escaneando, sempre
-identificando vulnerabilidades antes que alguém as explore.
+  Ler antes deste:
+  - [LIVRO_DE_REGRAS.md](../arquitetura/LIVRO_DE_REGRAS.md) — regras de código (base das verificações do checklist)
+  - [ERROS_E_SOLUCOES.md](./ERROS_E_SOLUCOES.md) — vulnerabilidades já encontradas e corrigidas (PARTE 2 deste doc)
+  - [README.md](./README.md) — postura de segurança atual e checklist pré-deploy
+  - [sobre-sistema.md §5](../arquitetura/sobre-sistema.md) — arquitetura de auth e guards
+
+  Usado por:
+  - [METODOLOGIA_TRABALHO.md](../arquitetura/METODOLOGIA_TRABALHO.md) — checklist obrigatório em cada EXEC
+  - [PLANO_DE_TESTES.md](../testes/PLANO_DE_TESTES.md) — MÓDULO 12 de cibersegurança
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PARTE 1 — POR QUE MR. ROBOT?

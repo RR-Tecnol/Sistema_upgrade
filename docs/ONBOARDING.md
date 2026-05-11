@@ -5,6 +5,24 @@
 
 ---
 
+## 🔗 MAPA DE DOCUMENTAÇÃO (o que ler e quando)
+
+> Para desenvolvedores e IAs: use esta tabela para navegar pelas docs na ordem certa.
+
+| Ordem | Documento | Para quê |
+|-------|-----------|----------|
+| 1º | [`arquitetura/sobre-sistema.md`](./arquitetura/sobre-sistema.md) | Arquitetura completa, módulos, fluxos por perfil, enums |
+| 2º | [`arquitetura/ESTADO_SISTEMA.md`](./arquitetura/ESTADO_SISTEMA.md) | O que está funcionando hoje e o que está pendente |
+| 3º | [`arquitetura/LIVRO_DE_REGRAS.md`](./arquitetura/LIVRO_DE_REGRAS.md) | Regras de código, UI, banco e segurança |
+| 4º | [`seguranca/ERROS_E_SOLUCOES.md`](./seguranca/ERROS_E_SOLUCOES.md) | Todos os bugs já resolvidos (não repita) |
+| 5º | [`arquitetura/PROX-PASSOS.md`](./arquitetura/PROX-PASSOS.md) | Roadmap e próximas ações |
+| Situacional | [`SEEDS_GUIDE.md`](./SEEDS_GUIDE.md) | Quando for rodar seed |
+| Situacional | [`arquitetura/SETUP.md`](./arquitetura/SETUP.md) | Instalação detalhada |
+| Situacional | [`arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md`](./arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md) | GPS, demo vs produção |
+| Situacional | [`arquitetura/REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md`](./arquitetura/REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md) | Portal `/driver/*` |
+
+---
+
 ## 🎯 O Que é Este Sistema?
 
 O **Sistema UPGRADE** é uma plataforma web de gestão para os programas **Qualifica Maranhão** e **Qualifica Piauí** — cursos itinerantes de capacitação profissional operados em carretas/caminhões.

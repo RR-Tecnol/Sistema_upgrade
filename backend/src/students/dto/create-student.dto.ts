@@ -37,14 +37,6 @@ export class CreateStudentDto {
     @IsString()
     cpf: string;
 
-    @ApiProperty({ example: '1234567' })
-    @IsString()
-    rg: string;
-
-    @ApiProperty({ example: 'SSP/MA' })
-    @IsString()
-    rgIssuer: string;
-
     @ApiProperty({ example: '1990-01-15' })
     @IsDateString()
     birthDate: string;

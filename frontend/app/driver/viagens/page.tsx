@@ -1,6 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import api from '@/lib/api/client';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import { toast } from '@/components/ui/Toast';
 
 interface Trip {
     id: string; status: string; notes?: string;
@@ -10,6 +13,10 @@ interface Trip {
     actualArrivalDate?: string;
     kmStart?: number; kmEnd?: number;
     truck: { identifier: string; licensePlate: string };
+    origin?: string;
+    destination?: string;
+    originCityName?: string;
+    destinationCityName?: string;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -25,12 +32,41 @@ export default function DriverViagens() {
     const [kmInput, setKmInput] = useState('');
     const [showModal, setShowModal] = useState<{ trip: Trip; type: 'start' | 'end' } | null>(null);
     const [saving, setSaving] = useState(false);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [respondingId, setRespondingId] = useState<string | null>(null);
+    const [rejectModal, setRejectModal] = useState<{ tripId: string; reason: string } | null>(null);
+
+    const toText = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const routeFromTrip = (trip: Trip) => {
+        const origin =
+            toText(trip.originCity?.name) ||
+            toText(trip.originCityName) ||
+            toText(trip.origin) ||
+            'Origem não informada';
+        const destination =
+            toText(trip.destinationCity?.name) ||
+            toText(trip.destinationCityName) ||
+            toText(trip.destination) ||
+            'Destino não informado';
+        return { origin, destination };
+    };
+    const normalizeTrip = (raw: any): Trip => {
+        const source = raw || {};
+        const originName = toText(source.originCity?.name) || toText(source.originCityName) || toText(source.origin);
+        const destinationName = toText(source.destinationCity?.name) || toText(source.destinationCityName) || toText(source.destination);
+        return {
+            ...source,
+            originCity: source.originCity?.name ? source.originCity : { name: originName || 'Origem não informada', state: '' },
+            destinationCity: source.destinationCity?.name ? source.destinationCity : { name: destinationName || 'Destino não informado', state: '' },
+        };
+    };
 
     const load = async () => {
         setLoading(true);
         try {
             const res = await api.get('/driver/trips');
-            setTrips(Array.isArray(res.data) ? res.data : []);
+            const rows = Array.isArray(res.data) ? res.data : [];
+            setTrips(rows.map(normalizeTrip));
         } catch { } finally { setLoading(false); }
     };
 
@@ -39,25 +75,70 @@ export default function DriverViagens() {
     const filtered = trips.filter(t => t.status === tab);
 
     const handleAction = async () => {
-        if (!showModal || !kmInput) return;
+        if (!showModal) return;
         setSaving(true);
         try {
             if (showModal.type === 'start') {
-                await api.patch(`/driver/trips/${showModal.trip.id}/start`, { kmStart: parseInt(kmInput) });
+                if (!photoFile) return;
+                const ext = photoFile.name.split('.').pop();
+                const { data: presigned } = await api.post('/driver/trips/presigned-url', {
+                    filename: `hodometro_inicial.${ext}`,
+                });
+                await fetch(presigned.uploadUrl, {
+                    method: 'PUT',
+                    body: photoFile,
+                    headers: { 'Content-Type': photoFile.type },
+                });
+                await api.patch(`/driver/trips/${showModal.trip.id}/start`, {
+                    startOdometerPhotoUrl: presigned.fileUrl,
+                });
+                toast.success('Viagem iniciada com sucesso.');
             } else {
+                if (!kmInput) return;
                 await api.patch(`/driver/trips/${showModal.trip.id}/complete`, { kmEnd: parseInt(kmInput) });
+                toast.success('Viagem finalizada com sucesso.');
             }
-            setShowModal(null); setKmInput(''); load();
-        } catch { } finally { setSaving(false); }
+            setShowModal(null); setKmInput(''); setPhotoFile(null); load();
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Erro ao executar ação da viagem.');
+        } finally { setSaving(false); }
     };
 
     const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR');
-    const cardStyle: React.CSSProperties = { background: '#FFFFFF', borderRadius: 14, padding: '1.1rem', border: '1px solid #E5E7EB', marginBottom: '0.75rem', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' };
-    const btnStyle: React.CSSProperties = { padding: '0.6rem 1rem', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', minHeight: 40 };
+    const cardStyle: CSSProperties = { background: '#FFFFFF', borderRadius: 14, padding: '1.1rem', border: '1px solid #E5E7EB', marginBottom: '0.75rem', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' };
+    const btnStyle: CSSProperties = { padding: '0.6rem 1rem', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', minHeight: 40 };
+
+    const handleDecision = async (tripId: string, decision: 'ACCEPTED' | 'REJECTED', reason?: string) => {
+        setRespondingId(tripId);
+        try {
+            await api.patch(`/driver/trips/${tripId}/respond`, { decision, reason });
+            toast.success(decision === 'ACCEPTED' ? 'Viagem aceita com sucesso.' : 'Viagem recusada e enviada para análise.');
+            await load();
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Não foi possível registrar sua decisão.');
+        } finally {
+            setRespondingId(null);
+        }
+    };
+
+    const isDepartureDay = (departureDate: string) => {
+        const dep = new Date(departureDate);
+        const now = new Date();
+        return dep.toDateString() === now.toDateString();
+    };
 
     return (
         <div className="animate-fade-in" style={{ maxWidth: 560, margin: '0 auto' }}>
-            <h1 className="gradient-text" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.8rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '1.25rem' }}>VIAGENS</h1>
+            <AdminHeaderHero
+                title="VIAGENS"
+                subtitle="Acompanhe viagens em andamento, planejadas e concluídas"
+                badge="MOTORISTA"
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                <AnimatedKpiCard label="Em Andamento" value={trips.filter(t => t.status === 'IN_TRANSIT').length} color="#10B981" bg="#F0FDF4" border="#BBF7D0" compact />
+                <AnimatedKpiCard label="Planejadas" value={trips.filter(t => t.status === 'PLANNED').length} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" compact />
+                <AnimatedKpiCard label="Concluídas" value={trips.filter(t => t.status === 'COMPLETED').length} color="#6B7280" bg="#F3F4F6" border="#E5E7EB" compact />
+            </div>
 
             {/* Tabs */}
             <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.25rem', background: '#F3F4F6', padding: '0.35rem', borderRadius: 10, border: '1px solid #E5E7EB' }}>
@@ -97,7 +178,7 @@ export default function DriverViagens() {
                         </div>
 
                         <div style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', marginBottom: '0.4rem' }}>
-                            {trip.originCity.name} <span style={{ color: '#0891B2' }}>→</span> {trip.destinationCity.name}
+                            {routeFromTrip(trip).origin} <span style={{ color: '#0891B2' }}>→</span> {routeFromTrip(trip).destination}
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#6B7280', marginBottom: '0.75rem' }}>
                             {trip.status === 'COMPLETED'
@@ -113,10 +194,29 @@ export default function DriverViagens() {
                         )}
 
                         {trip.status === 'PLANNED' && (
-                            <button onClick={() => { setShowModal({ trip, type: 'start' }); setKmInput(''); }}
-                                style={{ ...btnStyle, background: '#0891B2', color: '#fff', width: '100%' }}>
-                                🚛 Iniciar Viagem
-                            </button>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                <button
+                                    onClick={() => handleDecision(trip.id, 'ACCEPTED')}
+                                    disabled={respondingId === trip.id}
+                                    style={{ ...btnStyle, background: '#10B981', color: '#fff', width: '100%' }}
+                                >
+                                    {respondingId === trip.id ? '...' : '✅ Aceitar'}
+                                </button>
+                                <button
+                                    onClick={() => setRejectModal({ tripId: trip.id, reason: '' })}
+                                    disabled={respondingId === trip.id}
+                                    style={{ ...btnStyle, background: '#EF4444', color: '#fff', width: '100%' }}
+                                >
+                                    {respondingId === trip.id ? '...' : '❌ Recusar'}
+                                </button>
+                                <button
+                                    onClick={() => { setShowModal({ trip, type: 'start' }); setKmInput(''); setPhotoFile(null); }}
+                                    disabled={!isDepartureDay(trip.departureDate)}
+                                    style={{ ...btnStyle, background: !isDepartureDay(trip.departureDate) ? '#94A3B8' : '#0891B2', color: '#fff', width: '100%', gridColumn: '1 / -1', opacity: !isDepartureDay(trip.departureDate) ? 0.75 : 1, cursor: !isDepartureDay(trip.departureDate) ? 'not-allowed' : 'pointer' }}
+                                >
+                                    {isDepartureDay(trip.departureDate) ? '🚛 Iniciar Viagem' : '🚫 Disponível somente no dia da partida'}
+                                </button>
+                            </div>
                         )}
                         {trip.status === 'IN_TRANSIT' && (
                             <button onClick={() => { setShowModal({ trip, type: 'end' }); setKmInput(''); }}
@@ -142,18 +242,71 @@ export default function DriverViagens() {
                             {showModal.type === 'start' ? '🚛 Iniciar Viagem' : '✅ Finalizar Viagem'}
                         </div>
                         <div style={{ color: '#64748B', fontSize: '0.8rem', marginBottom: '1rem' }}>
-                            {showModal.trip.originCity.name} → {showModal.trip.destinationCity.name}
+                            {routeFromTrip(showModal.trip).origin} → {routeFromTrip(showModal.trip).destination}
                         </div>
-                        <label style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
-                            Hodômetro atual (km)
-                        </label>
-                        <input type="number" placeholder="Ex: 145020" value={kmInput} onChange={e => setKmInput(e.target.value)}
-                            style={{ width: '100%', padding: '0.85rem', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: '#0F172A', color: '#F1F5F9', fontSize: '1.1rem', fontFamily: 'monospace', boxSizing: 'border-box', marginBottom: '1rem' }} />
+                        {showModal.type === 'end' && (
+                            <>
+                                <label style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
+                                    Hodômetro final (km)
+                                </label>
+                                <input type="number" placeholder="Ex: 145020" value={kmInput} onChange={e => setKmInput(e.target.value)}
+                                    style={{ width: '100%', padding: '0.85rem', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: '#0F172A', color: '#F1F5F9', fontSize: '1.1rem', fontFamily: 'monospace', boxSizing: 'border-box', marginBottom: '1rem' }} />
+                            </>
+                        )}
+                        {showModal.type === 'start' && (
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
+                                    Foto do hodômetro inicial (obrigatório)
+                                </label>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={e => e.target.files && setPhotoFile(e.target.files[0])}
+                                    style={{ width: '100%', padding: '0.5rem', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: '#0F172A', color: '#F1F5F9', fontSize: '0.82rem' }}
+                                />
+                            </div>
+                        )}
                         <div style={{ display: 'flex', gap: '0.75rem' }}>
                             <button onClick={() => setShowModal(null)} style={{ flex: 1, padding: '0.75rem', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#64748B', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
-                            <button onClick={handleAction} disabled={saving || !kmInput}
-                                style={{ flex: 2, padding: '0.75rem', borderRadius: 10, border: 'none', background: showModal.type === 'start' ? '#0891B2' : '#10B981', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: saving || !kmInput ? 0.6 : 1 }}>
+                            <button onClick={handleAction} disabled={saving || (showModal.type === 'start' ? !photoFile : !kmInput)}
+                                style={{ flex: 2, padding: '0.75rem', borderRadius: 10, border: 'none', background: showModal.type === 'start' ? '#0891B2' : '#10B981', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: saving || (showModal.type === 'start' ? !photoFile : !kmInput) ? 0.6 : 1 }}>
                                 {saving ? 'Salvando...' : showModal.type === 'start' ? 'Iniciar' : 'Finalizar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {rejectModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)', zIndex: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+                    onClick={e => { if (e.target === e.currentTarget) setRejectModal(null); }}>
+                    <div style={{ background: '#FFFFFF', borderRadius: 18, padding: '1.2rem', width: '100%', maxWidth: 420, border: '1px solid #E5E7EB', boxShadow: '0 18px 44px rgba(0,0,0,.25)' }}>
+                        <div style={{ fontWeight: 900, fontFamily: 'Orbitron', fontSize: '.85rem', letterSpacing: '.08em', color: '#B91C1C', marginBottom: '.35rem' }}>JUSTIFICAR RECUSA</div>
+                        <p style={{ fontSize: '.8rem', color: '#6B7280', marginBottom: '.75rem' }}>Informe o motivo da recusa. Esta ação também será registrada em imprevistos para o admin.</p>
+                        <textarea
+                            rows={4}
+                            value={rejectModal.reason}
+                            onChange={(e) => setRejectModal((prev) => prev ? { ...prev, reason: e.target.value } : prev)}
+                            placeholder="Ex.: indisponibilidade, problema de saúde, pane no veículo..."
+                            style={{ width: '100%', borderRadius: 10, border: '1.5px solid #E5E7EB', padding: '.7rem .8rem', resize: 'vertical', minHeight: 100 }}
+                        />
+                        <div style={{ display: 'flex', gap: '.6rem', marginTop: '.8rem' }}>
+                            <button onClick={() => setRejectModal(null)} style={{ flex: 1, padding: '.7rem', borderRadius: 10, border: '1px solid #E5E7EB', background: '#F8FAFC', color: '#64748B', fontWeight: 700, cursor: 'pointer' }}>
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!rejectModal.reason.trim()) {
+                                        toast.error('Informe a justificativa da recusa.');
+                                        return;
+                                    }
+                                    await handleDecision(rejectModal.tripId, 'REJECTED', rejectModal.reason.trim());
+                                    setRejectModal(null);
+                                }}
+                                style={{ flex: 1.7, padding: '.7rem', borderRadius: 10, border: 'none', background: '#EF4444', color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+                            >
+                                Confirmar Recusa
                             </button>
                         </div>
                     </div>

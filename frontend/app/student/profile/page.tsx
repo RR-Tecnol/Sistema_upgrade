@@ -1,14 +1,33 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import api from '@/lib/api/client';
 import {
     UserIcon,
     EnvelopeIcon,
     PhoneIcon,
     MapPinIcon,
-    KeyIcon,
 } from '@heroicons/react/24/outline';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+
+type ConsentFlagKey =
+    | 'termsAccepted'
+    | 'dataProcessingConsent'
+    | 'imageUseAuthorization'
+    | 'attendanceCommitment'
+    | 'privacyPolicyAccepted';
+
+interface LegalConsentRow {
+    id: string;
+    recordedAt: string;
+    enrollmentId?: string | null;
+    termsAccepted: boolean;
+    dataProcessingConsent: boolean;
+    imageUseAuthorization: boolean;
+    attendanceCommitment: boolean;
+    privacyPolicyAccepted: boolean;
+}
 
 interface StudentProfile {
     id: string;
@@ -19,43 +38,23 @@ interface StudentProfile {
     user: { name: string; email: string; phone: string };
     contact: { email: string; phone: string; phoneAlt?: string };
     address: { street: string; number: string; neighborhood: string; city: string; state: string; cep: string };
+    legalConsents?: LegalConsentRow[];
 }
 
-// Toast inline para o portal do aluno (sem precisar do provider do admin)
-function useLocalToast() {
-    const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
-    const show = (msg: string, type: 'success' | 'error') => {
-        setToast({ msg, type });
-        setTimeout(() => setToast(null), 4000);
-    };
-    const ToastEl = toast ? (
-        <div style={{
-            position: 'fixed', top: 20, right: 20, zIndex: 9999,
-            background: toast.type === 'success'
-                ? 'linear-gradient(135deg,#059669,#047857)'
-                : 'linear-gradient(135deg,#DC2626,#B91C1C)',
-            color: '#fff', padding: '0.75rem 1.1rem', borderRadius: 12,
-            fontWeight: 600, fontSize: '0.85rem', boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-            display: 'flex', alignItems: 'center', gap: '0.6rem',
-            animation: 'toastIn 0.25s ease',
-        }}>
-            <span>{toast.type === 'success' ? '✓' : '✕'}</span>
-            {toast.msg}
+function Section({ title, icon, children }: { title: string; icon: string; children: ReactNode }) {
+    return (
+        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', padding: '1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+            <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.8rem', fontWeight: 900, letterSpacing: '0.1em', color: '#111827', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {icon} {title}
+            </h2>
+            {children}
         </div>
-    ) : null;
-    return { show, ToastEl };
+    );
 }
 
 export default function StudentProfile() {
     const [profile, setProfile] = useState<StudentProfile | null>(null);
     const [loading, setLoading] = useState(true);
-    const [showPasswordForm, setShowPasswordForm] = useState(false);
-    const [passwordData, setPasswordData] = useState({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-    });
-    const { show: showToast, ToastEl } = useLocalToast();
 
     useEffect(() => { fetchProfile(); }, []);
 
@@ -67,29 +66,6 @@ export default function StudentProfile() {
             /* silencioso — perfil exibe dados locais como fallback */
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handlePasswordChange = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (passwordData.newPassword !== passwordData.confirmPassword) {
-            showToast('As senhas não coincidem', 'error');
-            return;
-        }
-
-        try {
-            await api.patch('/students/me/password', {
-                currentPassword: passwordData.currentPassword,
-                newPassword: passwordData.newPassword,
-            });
-
-            showToast('Senha alterada com sucesso!', 'success');
-            setShowPasswordForm(false);
-            setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        } catch (error) {
-            /* silencioso — mensagem de erro exibida via estado */
-            showToast('Erro ao alterar senha. Verifique a senha atual.', 'error');
         }
     };
 
@@ -130,29 +106,25 @@ export default function StudentProfile() {
         { label: 'Estado', value: profile.address?.state },
     ];
 
-    const Section = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
-        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', padding: '1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-            <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.8rem', fontWeight: 900, letterSpacing: '0.1em', color: '#111827', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {icon} {title}
-            </h2>
-            {children}
-        </div>
-    );
+    const consentLabels: { key: ConsentFlagKey; label: string }[] = [
+        { key: 'termsAccepted', label: 'Termos e condições do programa' },
+        { key: 'dataProcessingConsent', label: 'Tratamento de dados pessoais (LGPD)' },
+        { key: 'imageUseAuthorization', label: 'Uso de imagem para divulgação' },
+        { key: 'attendanceCommitment', label: 'Compromisso de frequência mínima' },
+        { key: 'privacyPolicyAccepted', label: 'Política de privacidade / consentimento associado' },
+    ];
+
+    const latestConsent = profile.legalConsents?.[0];
 
     return (
         <>
-            {ToastEl}
-            <style>{`@keyframes toastIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }`}</style>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-                <div>
-                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.8rem', fontWeight: 900, letterSpacing: '0.08em', margin: 0 }}>
-                        MEU PERFIL
-                    </h1>
-                    <p style={{ color: '#9CA3AF', fontSize: '0.82rem', marginTop: '0.25rem' }}>
-                        Visualize suas informações cadastradas no sistema
-                    </p>
-                </div>
+                <AdminHeaderHero
+                    title="MEU PERFIL"
+                    subtitle="Visualize suas informações cadastradas no sistema"
+                    badge="PORTAL DO ALUNO"
+                />
 
                 {/* Pessoal */}
                 <Section title="DADOS PESSOAIS" icon="👤">
@@ -190,48 +162,66 @@ export default function StudentProfile() {
                     </div>
                 </Section>
 
-                {/* Segurança */}
-                <Section title="SEGURANÇA" icon="🔑">
-                    {!showPasswordForm ? (
-                        <button
-                            onClick={() => setShowPasswordForm(true)}
-                            className="btn-primary"
-                            style={{ width: 'auto' }}
-                        >
-                            🔒 Alterar Senha
-                        </button>
+                {/* LGPD — consentimentos ligados ao perfil */}
+                <Section title="CONSENTIMENTOS (LGPD)" icon="📜">
+                    {!latestConsent ? (
+                        <p style={{ fontSize: '0.85rem', color: '#6B7280', margin: 0 }}>
+                            Ainda não há registo de consentimentos associado ao seu perfil. Após concluir uma inscrição com aceite dos termos, o registo aparecerá aqui.
+                        </p>
                     ) : (
-                        <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 400 }}>
-                            {[
-                                { label: 'Senha Atual', key: 'currentPassword' },
-                                { label: 'Nova Senha', key: 'newPassword' },
-                                { label: 'Confirmar Nova Senha', key: 'confirmPassword' },
-                            ].map(({ label, key }) => (
-                                <div key={key}>
-                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
-                                        {label}
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={passwordData[key as keyof typeof passwordData]}
-                                        onChange={e => setPasswordData(p => ({ ...p, [key]: e.target.value }))}
-                                        className="form-input"
-                                        required
-                                        minLength={6}
-                                    />
-                                </div>
-                            ))}
-                            <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                <button type="button" onClick={() => { setShowPasswordForm(false); setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' }); }}
-                                    style={{ flex: 1, padding: '0.7rem', borderRadius: 10, border: '1.5px solid #E5E7EB', background: 'transparent', color: '#6B7280', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
-                                    Cancelar
-                                </button>
-                                <button type="submit" className="btn-primary" style={{ flex: 1.5, justifyContent: 'center' }}>
-                                    Salvar Senha
-                                </button>
-                            </div>
-                        </form>
+                        <>
+                            <p style={{ fontSize: '0.72rem', color: '#6B7280', margin: '0 0 1rem' }}>
+                                Último registo em{' '}
+                                <strong style={{ color: '#111827' }}>
+                                    {new Date(latestConsent.recordedAt).toLocaleString('pt-BR')}
+                                </strong>
+                                {latestConsent.enrollmentId ? ' (vinculado a uma inscrição)' : ''}.
+                            </p>
+                            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {consentLabels.map(({ key, label }) => (
+                                    <li
+                                        key={key}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '0.55rem 0.75rem',
+                                            borderRadius: 10,
+                                            background: '#F9FAFB',
+                                            border: '1px solid #E5E7EB',
+                                            fontSize: '0.8rem',
+                                            color: '#374151',
+                                        }}
+                                    >
+                                        <span>{label}</span>
+                                        <span style={{ fontWeight: 800, color: latestConsent[key] ? '#059669' : '#DC2626' }}>
+                                            {latestConsent[key] ? 'Sim' : 'Não'}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                            {(profile.legalConsents?.length ?? 0) > 1 && (
+                                <p style={{ fontSize: '0.7rem', color: '#9CA3AF', margin: '0.75rem 0 0' }}>
+                                    Existem {profile.legalConsents!.length - 1} registo(s) anterior(es); o mais recente é exibido acima.
+                                </p>
+                            )}
+                        </>
                     )}
+                </Section>
+
+                {/* Segurança — troca de senha e 2FA ficam em Configurações */}
+                <Section title="SEGURANÇA" icon="🔑">
+                    <p style={{ fontSize: '0.88rem', color: '#4B5563', lineHeight: 1.55, margin: '0 0 1rem' }}>
+                        Para <strong>alterar a senha</strong> ou configurar <strong>autenticação em dois fatores</strong>, use o menu{' '}
+                        <strong>Configurações</strong>, aba <strong>Segurança</strong>.
+                    </p>
+                    <Link
+                        href="/student/configuracoes?tab=seguranca"
+                        className="btn-primary"
+                        style={{ display: 'inline-flex', width: 'auto', textDecoration: 'none', alignItems: 'center' }}
+                    >
+                        Abrir Configurações — Segurança
+                    </Link>
                 </Section>
             </div>
         </>

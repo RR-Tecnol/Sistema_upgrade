@@ -6,6 +6,7 @@ import DriverSidebar from '@/components/driver/Sidebar';
 import DriverHeader from '@/components/driver/Header';
 import { ToastContainer } from '@/components/ui/Toast';
 import Tutorial, { TutorialButton } from '@/components/ui/Tutorial';
+import { useAnimacoes } from '@/hooks/useAnimacoes';
 
 const DRIVER_STEPS = [
     { icon: '🚛', title: 'Bem-vindo ao Portal do Motorista', description: 'Gerencie suas viagens, solicite reembolsos, registre imprevistos e acompanhe a manutenção da carreta.' },
@@ -21,9 +22,11 @@ export default function DriverLayout({ children }: { children: ReactNode }) {
     const [ready, setReady] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [showTutorial, setShowTutorial] = useState(false);
+    useAnimacoes(); // ANIMACOES: aplica preferência do usuário
 
     useEffect(() => {
-        const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+        // SEGURANÇA: sessionStorage (isolado por aba) com fallback legacy localStorage
+        const token = sessionStorage.getItem('token') || sessionStorage.getItem('access_token') || localStorage.getItem('token') || localStorage.getItem('access_token');
         if (!token) {
             router.replace('/login');
             return;
@@ -47,17 +50,19 @@ export default function DriverLayout({ children }: { children: ReactNode }) {
     }
 
     return (
-        <div className="admin-layout">
+        <>
             <ToastContainer />
             <Tutorial storageKey="tutorial-driver-v1" steps={DRIVER_STEPS} portalName="Portal do Motorista" forceOpen={showTutorial} onClose={() => setShowTutorial(false)} />
             <TutorialButton onClick={() => setShowTutorial(true)} />
-            <DriverSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-            <div className="admin-main">
-                <DriverHeader onMenuToggle={() => setSidebarOpen(s => !s)} />
-                <main className="admin-content custom-scrollbar">
-                    {children}
-                </main>
+            <div className="admin-layout">
+                <DriverSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+                <div className="admin-main">
+                    <DriverHeader onMenuToggle={() => setSidebarOpen(s => !s)} />
+                    <main className="admin-content custom-scrollbar">
+                        {children}
+                    </main>
+                </div>
             </div>
-        </div>
+        </>
     );
 }

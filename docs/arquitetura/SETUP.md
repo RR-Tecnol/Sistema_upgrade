@@ -5,6 +5,23 @@
 
 ---
 
+## 🔗 REFERÊNCIAS CRUZADAS
+
+> **Ler junto com este arquivo:**
+> - [`ONBOARDING.md`](../ONBOARDING.md) — versão simplificada do setup (5 passos rápidos)
+> - [`SEEDS_GUIDE.md`](../SEEDS_GUIDE.md) — detalhes do seed, dados criados e troubleshooting
+> - [`ERROS_E_SOLUCOES.md`](../seguranca/ERROS_E_SOLUCOES.md) — problemas durante instalação e soluções comprovadas
+> - [`ESTADO_SISTEMA.md`](./ESTADO_SISTEMA.md) — credenciais atuais e portas corretas (fonte de verdade)
+>
+> **Comandos críticos que NÃO devem ser usados:**
+> | Proibido | Correto | Por quê |
+> |---------|---------|---------|
+> | `$env:PORT=3002 npm run start:dev` | `npm run start:dev` (PORT=3001 no .env) | Sobrescreve .env e causa confusão de porta |
+> | `npx prisma migrate reset` sem backup | Fazer snapshot antes | Apaga TODOS os dados |
+> | Criar `seed-novo.ts` | Editar `seed-full.ts` | Regra do seed único |
+
+---
+
 ## ✅ Pré-requisitos
 
 | Ferramenta | Versão mínima | Link |

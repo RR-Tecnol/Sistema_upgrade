@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { studentsApi } from '@/lib/api/students';
 import Image from 'next/image';
 import Link from 'next/link';
+import { ENROLLMENT_DOC_LABELS, downloadEnrollmentFileFromUrl } from '@/components/enrollment/EnrollmentDocumentsPreview';
 
 /* ── helpers ─────────────────────────────────────── */
 const fmt = (d?: string) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
@@ -197,6 +198,9 @@ const TABS = [
   { id:'socio', emoji:'📊', label:'Socioeconômico' },
   { id:'career', emoji:'🎯', label:'Carreira' },
   { id:'enrollments', emoji:'📋', label:'Matrículas' },
+  { id:'frequencia', emoji:'📈', label:'Frequência' },
+  { id:'certificados', emoji:'🏅', label:'Certificados' },
+  { id:'auditoria', emoji:'🧾', label:'Auditoria' },
 ];
 
 /* ── Main ─────────────────────────────────────────── */
@@ -244,6 +248,13 @@ export default function StudentDetailPage() {
   const enr = student.enrollments || [];
   const att = student.attendances || [];
   const certs = student.certificates || [];
+  const consents = student.legalConsents || [];
+  const attendanceByClass = att.reduce((acc: Record<string, { present: number; absent: number; courseName: string }>, cur: any) => {
+    const k = cur.classId || 'sem_turma';
+    if (!acc[k]) acc[k] = { present: 0, absent: 0, courseName: cur.class?.course?.name || 'Sem curso' };
+    if (cur.present) acc[k].present += 1; else acc[k].absent += 1;
+    return acc;
+  }, {});
 
   return (
     <div style={{ maxWidth:900, margin:'0 auto', paddingBottom:'3rem' }}>
@@ -329,8 +340,6 @@ export default function StudentDetailPage() {
           <Section emoji="📄" title="Documentação e Dados Pessoais">
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:'1.1rem' }}>
               <Row label="CPF" value={fmtCpf(student.cpf)} mono/>
-              <Row label="RG" value={student.rg} mono/>
-              <Row label="Órgão Emissor" value={student.rgIssuer}/>
               <Row label="Data de Nascimento" value={fmt(student.birthDate)}/>
               <Row label="Gênero" value={GENDER_MAP[student.gender] || student.gender}/>
               <Row label="Raça/Cor" value={RACE_MAP[student.raceColor] || student.raceColor}/>
@@ -339,6 +348,72 @@ export default function StudentDetailPage() {
               <Row label="Naturalidade" value={student.birthCity ? `${student.birthCity}/${student.birthState}` : undefined}/>
             </div>
           </Section>
+          
+          {student.documents && Object.keys(student.documents).length > 0 && (
+            <Section emoji="📁" title="Documentos Anexados">
+              <div style={{ marginBottom: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const entries = Object.entries(student.documents || {}).filter(([, v]) => v && String(v).trim().length > 0);
+                    const prefix = (student.cpf || 'aluno').replace(/\D/g, '') || 'aluno';
+                    for (const [key, raw] of entries) {
+                      const href = String(raw).trim();
+                      await downloadEnrollmentFileFromUrl(href, `${prefix}_${key}`);
+                      await new Promise((r) => setTimeout(r, 280));
+                    }
+                  }}
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: 10,
+                    border: '1px solid #D1D5DB',
+                    background: '#fff',
+                    color: '#374151',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Baixar todos os documentos
+                </button>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(250px,1fr))', gap:'0.75rem' }}>
+                {(['identidade', 'cpfDoc', 'addressProof', 'educationProof', 'photo'] as const).map((key) => {
+                  const href = student.documents?.[key];
+                  if (!href || !String(href).trim()) return null;
+                  const url = String(href).trim();
+                  const label = ENROLLMENT_DOC_LABELS[key] || key;
+                  const linkStyle = { flex: 1, minWidth: 0, padding: '0.75rem 1rem', background: '#F3F4F6', borderRadius: '12px', color: '#1F2937', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #E5E7EB' } as const;
+                  return (
+                    <div key={key} style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' }}>
+                      <a href={url} target="_blank" rel="noreferrer" style={linkStyle}>↗ {label}</a>
+                      <button
+                        type="button"
+                        title="Descarregar ficheiro"
+                        onClick={() => downloadEnrollmentFileFromUrl(url, `${(student.cpf || 'aluno').replace(/\D/g, '') || 'aluno'}_${key}`)}
+                        style={{
+                          padding: '0.75rem 0.85rem',
+                          borderRadius: 12,
+                          border: '1px solid #D1D5DB',
+                          background: '#fff',
+                          color: '#374151',
+                          fontWeight: 800,
+                          fontSize: '0.68rem',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Baixar
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+
           <Section emoji="👨‍👩‍👧" title="Filiação">
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1.1rem' }}>
               <Row label="Nome da Mãe" value={student.motherName}/>
@@ -506,6 +581,94 @@ export default function StudentDetailPage() {
               <style>{`@keyframes fadeSlide{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
             </div>
           )
+        )}
+
+        {activeTab === 'frequencia' && (
+          Object.keys(attendanceByClass).length === 0 ? (
+            <div style={{ textAlign:'center', padding:'3rem', color:'#D1D5DB' }}>
+              <span style={{ fontSize:'2.5rem', display:'block', marginBottom:'.75rem' }}>📈</span>
+              <p style={{ fontFamily:'"Orbitron",sans-serif', fontSize:'.7rem', letterSpacing:'.1em' }}>SEM HISTÓRICO DE FREQUÊNCIA</p>
+            </div>
+          ) : (
+            <Section emoji="📈" title="Consolidado de Frequência por Turma">
+              <div style={{ display:'grid', gap:'.7rem' }}>
+                {Object.entries(attendanceByClass as Record<string, { present: number; absent: number; courseName: string }>).map(([classId, data]) => {
+                  const total = data.present + data.absent;
+                  const rate = total ? Math.round((data.present / total) * 100) : 0;
+                  return (
+                    <div key={classId} style={{ border:'1px solid #E5E7EB', borderRadius:12, padding:'0.85rem 1rem', background:'#fff' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                        <div style={{ fontWeight:700, color:'#111827', fontSize:'.85rem' }}>{data.courseName}</div>
+                        <span style={{ fontFamily:'"Orbitron",sans-serif', fontWeight:900, color: rate >= 75 ? '#15803D' : '#DC2626' }}>{rate}%</span>
+                      </div>
+                      <div style={{ marginTop:6, fontSize:'.75rem', color:'#6B7280' }}>
+                        Presentes: {data.present} · Faltas: {data.absent} · Total de registros: {total}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )
+        )}
+
+        {activeTab === 'certificados' && (
+          certs.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'3rem', color:'#D1D5DB' }}>
+              <span style={{ fontSize:'2.5rem', display:'block', marginBottom:'.75rem' }}>🏅</span>
+              <p style={{ fontFamily:'"Orbitron",sans-serif', fontSize:'.7rem', letterSpacing:'.1em' }}>SEM CERTIFICADOS EMITIDOS</p>
+            </div>
+          ) : (
+            <Section emoji="🏅" title="Histórico de Certificados">
+              <div style={{ display:'flex', flexDirection:'column', gap:'.75rem' }}>
+                {certs.map((c: any) => (
+                  <div key={c.id} style={{ border:'1px solid #E5E7EB', borderRadius:12, padding:'0.85rem 1rem', display:'flex', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+                    <div>
+                      <div style={{ fontWeight:700, color:'#111827', fontSize:'.85rem' }}>{c.class?.course?.name || 'Curso'}</div>
+                      <div style={{ fontSize:'.75rem', color:'#6B7280' }}>Código: {c.certificateCode || '—'}</div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:'.72rem', color:'#6B7280' }}>Emitido em</div>
+                      <div style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:'.78rem', color:'#111827' }}>{fmt(c.issuedAt)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )
+        )}
+
+        {activeTab === 'auditoria' && (
+          <Section emoji="🧾" title="Auditoria e Consentimentos (LGPD)">
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))', gap:'0.75rem', marginBottom:'1rem' }}>
+              <div style={{ border:'1px solid #E5E7EB', borderRadius:12, padding:'0.8rem' }}>
+                <div style={{ fontSize:'.66rem', fontWeight:800, textTransform:'uppercase', letterSpacing:'.08em', color:'#6B7280' }}>Criado em</div>
+                <div style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:'.82rem', color:'#111827' }}>{fmt(student.createdAt)}</div>
+              </div>
+              <div style={{ border:'1px solid #E5E7EB', borderRadius:12, padding:'0.8rem' }}>
+                <div style={{ fontSize:'.66rem', fontWeight:800, textTransform:'uppercase', letterSpacing:'.08em', color:'#6B7280' }}>Último login (user)</div>
+                <div style={{ fontFamily:'"JetBrains Mono",monospace', fontSize:'.82rem', color:'#111827' }}>{fmt(student.user?.lastLoginAt)}</div>
+              </div>
+            </div>
+
+            <div style={{ fontSize:'.68rem', fontWeight:800, letterSpacing:'.08em', textTransform:'uppercase', color:'#6B7280', marginBottom:8 }}>
+              Registros de consentimento ({consents.length})
+            </div>
+            {consents.length === 0 ? (
+              <p style={{ color:'#9CA3AF', fontSize:'.78rem' }}>Nenhum consentimento registrado.</p>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:'.5rem' }}>
+                {consents.map((c: any) => (
+                  <div key={c.id} style={{ border:'1px solid #E5E7EB', borderRadius:10, padding:'0.7rem 0.8rem' }}>
+                    <div style={{ fontSize:'.8rem', fontWeight:700, color:'#111827' }}>
+                      Termos: {c.termsAccepted ? 'Sim' : 'Não'} · LGPD: {c.dataProcessing ? 'Sim' : 'Não'} · Imagem: {c.imageUse ? 'Sim' : 'Não'}
+                    </div>
+                    <div style={{ fontSize:'.72rem', color:'#6B7280' }}>Registrado em {fmt(c.recordedAt)} {c.ipAddress ? `· IP ${c.ipAddress}` : ''}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
         )}
       </div>
     </div>

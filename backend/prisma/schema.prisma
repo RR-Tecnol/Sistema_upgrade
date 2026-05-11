@@ -2,7 +2,9 @@
 // Learn more: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  /// Linux/macOS/Windows no mesmo repo — após alterar: `npx prisma generate`
+  binaryTargets = ["native", "windows"]
 }
 
 datasource db {
@@ -15,12 +17,35 @@ datasource db {
 // ============================================
 
 enum UserRole {
+  IT_ADMIN     // Super-admin TI: acesso cross-role a todas as áreas
   ADMIN
   COORDINATOR
   FINANCIAL
   TEACHER
   STUDENT
   DRIVER
+}
+
+enum CertificateTemplateScope {
+  GLOBAL
+  COURSE
+  STATE
+  COURSE_STATE
+  /// Uma linha = um ficheiro da pasta public (import); key única por ficheiro
+  PUBLIC_FILE
+}
+
+enum CertificateTemplateType {
+  PDF_BASE
+  HTML
+}
+
+enum CertificateTemplateStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+  ARCHIVED
 }
 
 enum Gender {
@@ -120,6 +145,14 @@ enum ClassStatus {
   CANCELLED
 }
 
+/// Dias úteis vs. fins de semana para contagem de aulas previstas (certificado / alertas).
+enum ClassWeekendPolicy {
+  FOLLOW_SCHEDULE
+  WEEKDAYS_ONLY
+  ALL_WEEKENDS
+  SELECT_WEEKENDS
+}
+
 enum Period {
   MORNING
   AFTERNOON
@@ -193,6 +226,18 @@ enum NotificationType {
   JUSTIFICATION_APPROVED
   JUSTIFICATION_REJECTED
   GENERAL_ANNOUNCEMENT
+  FEEDBACK_INVITATION
+  FEEDBACK_REMINDER
+  FEEDBACK_CONTENT_APPROVED
+  FEEDBACK_PIX_APPROVED
+  FEEDBACK_PIX_REJECTED
+  FEEDBACK_PIX_REVERTED
+  NEW_STUDENT_REGISTRATION
+  REIMBURSEMENT_REQUESTED
+  REIMBURSEMENT_APPROVED
+  REIMBURSEMENT_REJECTED
+  TRUCK_MAINTENANCE_ALERT
+  TRIP_SCHEDULED
 }
 
 enum NotificationChannel {
@@ -262,6 +307,15 @@ model User {
   active    Boolean  @default(true)
   twoFactorEnabled Boolean @default(false)  // S3-03: Google Authenticator
   twoFactorSecret  String?                  // segredo TOTP — armazenado criptografado
+
+  // ── MFA: Email OTP (novo) ─────────────────────────────────────────────────
+  emailOtpHash         String?    // SHA-256 do código de 6 dígitos
+  emailOtpExpiresAt    DateTime?  // expira em 10 minutos
+  emailOtpAttempts     Int        @default(0)  // máx 3 tentativas → código invalidado
+
+  // ── MFA: Setup obrigatório de TOTP para staff (novo) ────────────────────
+  requiresTwoFactorSetup  Boolean  @default(false)  // true = forçar setup no próximo login
+  requiresPasswordChange  Boolean  @default(false)  // true = forçar troca de e-mail+senha (exclusivo IT_ADMIN seed)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -276,6 +330,8 @@ model User {
   justificationsReviewed AttendanceJustification[] @relation("JustificationReviewer")
   materialsUploaded Material[] @relation("MaterialUploader")
   materialComments  MaterialComment[]
+  employeeRegistrationTokensCreated EmployeeRegistrationToken[] @relation("EmployeeTokenCreator")
+  employeeRegistrationsReviewed    EmployeeRegistrationRequest[] @relation("EmployeeRegistrationReviewer")
   certificatesIssued Certificate[] @relation("CertificateIssuer")
   certificatesCancelled Certificate[] @relation("CertificateCanceller")
   expensesCreated   Expense[] @relation("ExpenseCreator")
@@ -290,11 +346,72 @@ model User {
   tripsAsDriver     Trip[]    @relation("TripDriver") // EXEC-02
   absences          Absence[]                          // Módulo de imprevistos
   preferences       UserPreferences?
-  employeeAttendancesRegistered EmployeeAttendance[] @relation("EmployeeAttendanceRegistrar") // PASSO 3.2                   // PASSO 1.3: preferências de UI por usuário
+  employeeAttendancesRegistered EmployeeAttendance[] @relation("EmployeeAttendanceRegistrar") // PASSO 3.2
+  teacherCheckins   TeacherCheckin[]                                                            // PASSO 3.7: registro de ponto
+  driverCheckins    DriverCheckin[]                                                             // PASSO 4.2: registro de ponto do motorista
+  driverLocations   DriverLocation[]                                                            // F1.3: rastreamento GPS motorista
+  certificateTemplateVersionsCreated  CertificateTemplateVersion[] @relation("CertificateTemplateVersionCreator")
+  certificateTemplateVersionsApproved CertificateTemplateVersion[] @relation("CertificateTemplateVersionApprover")
 
   @@index([email])
   @@index([role])
   @@map("users")
+}
+
+model CertificateTemplate {
+  id         String                   @id @default(uuid())
+  key        String                   @unique
+  scope      CertificateTemplateScope
+  courseId   String?
+  state      String?
+  isActive   Boolean                  @default(true)
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  course          Course?                       @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  versions        CertificateTemplateVersion[]
+  currentVersionId String?                   @unique
+  currentVersion  CertificateTemplateVersion?  @relation("CertificateTemplateCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+
+  @@index([scope])
+  @@index([courseId])
+  @@index([state])
+  @@map("certificate_templates")
+}
+
+model CertificateTemplateVersion {
+  id                String                    @id @default(uuid())
+  templateId        String
+  version           Int
+  title             String
+  templateType      CertificateTemplateType
+  htmlContent       String?
+  cssContent        String?
+  pdfPath           String?
+  placeholders      Json?
+  notes             String?
+  /// Textos opcionais sobrepostos no PDF (JSON: line1Prefix, line1Suffix, line2, line3)
+  pdfTextOverrides  Json?
+  /// Posições em pt (1/72") para sobreposição no PDF_BASE; substitui variáveis de ambiente globais.
+  coordinateOverrides Json?
+  status            CertificateTemplateStatus @default(DRAFT)
+  createdById       String
+  approvedById      String?
+  approvedAt        DateTime?
+  publishedAt       DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  template          CertificateTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy         User                      @relation("CertificateTemplateVersionCreator", fields: [createdById], references: [id])
+  approvedBy        User?                     @relation("CertificateTemplateVersionApprover", fields: [approvedById], references: [id])
+  currentForTemplate CertificateTemplate?     @relation("CertificateTemplateCurrentVersion")
+  issuedCertificates  Certificate[]
+
+  @@unique([templateId, version])
+  @@index([templateId])
+  @@index([status])
+  @@map("certificate_template_versions")
 }
 
 model RefreshToken {
@@ -315,8 +432,7 @@ model Student {
   id                String                  @id @default(uuid())
   userId            String                  @unique
   cpf               String                  @unique
-  rg                String
-  rgIssuer          String
+  documents         Json?
   birthDate         DateTime
   gender            Gender
   raceColor         RaceColor
@@ -341,6 +457,9 @@ model Student {
   enrollments       Enrollment[]
   attendances       Attendance[]
   certificates      Certificate[]
+  courseFeedbacks   CourseFeedback[]
+  /// Histórico de consentimentos declarados (LGPD) — auditável por aluno
+  legalConsents     StudentLegalConsent[]
 
   @@index([cpf])
   @@index([userId])
@@ -415,7 +534,7 @@ model Teacher {
   id               String       @id @default(uuid())
   userId           String       @unique
   cpf              String       @unique
-  rg               String
+  documents        Json?
   birthDate        DateTime
   photoUrl         String?
   education        String
@@ -442,6 +561,26 @@ model Teacher {
   @@map("teachers")
 }
 
+/// White-label: marca, logo, site, assinatura PAdES (caminho do .pfx no servidor)
+model Institution {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  name         String
+  shortName    String?
+  logoUrl      String?
+  siteUrl      String?
+  primaryColor String?
+  /// Caminho absoluto/relativo ao processo; senha: CERT_SIGN_PASSWORD (ou CERT_SIGN_PASSWORD_{SLUG} em MAIÚSCULAS)
+  signPfxPath  String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  courses Course[]
+
+  @@map("institutions")
+}
+
 model Course {
   id                 String         @id @default(uuid())
   name               String
@@ -455,17 +594,21 @@ model Course {
   availableInPI      Boolean        @default(true)
   isMulticourse      Boolean        @default(false)
   active             Boolean        @default(true)
+  institutionId      String
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
   // Relations
-  modules           CourseModule[]
-  teachers          TeacherCourse[]
-  classes           Class[]
-  materials         Material[]
+  institution        Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  modules            CourseModule[]
+  teachers           TeacherCourse[]
+  classes            Class[]
+  materials          Material[]
+  certificateTemplates CertificateTemplate[]
 
   @@index([name])
   @@index([active])
+  @@index([institutionId])
   @@map("courses")
 }
 
@@ -583,13 +726,17 @@ model City {
   name      String
   state     String
   ibgeCode  String?
+  latitude  Float?   // F1.1: geocodificado via Nominatim (backend) ao criar cidade
+  longitude Float?   // F1.1: zero chamadas externas após seed inicial
   createdAt DateTime @default(now())
 
   // Relations
   classes          Class[]
+  classesAsOrigin  Class[]  @relation("ClassOriginCity")
   tripsOrigin      Trip[]  @relation("TripOrigin")
   tripsDestination Trip[]  @relation("TripDestination")
   acoes            Acao[]
+  acoesAsOrigin    Acao[]  @relation("AcaoOriginCity")
 
   @@unique([name, state])
   @@index([state])
@@ -613,6 +760,25 @@ model Class {
   status               ClassStatus @default(PLANNED)
   enrollmentOpenDate   DateTime?
   enrollmentCloseDate  DateTime?
+  // ── Tipo de rota (REQ-ROUTE-2026) ──────────────────────────────────────────
+  // INTERCIDADE: a Carreta-Escola parte de originCity e opera em city (destino).
+  // INTRAURBANA: o curso ocorre dentro da mesma cidade; originNeighborhood →
+  //              destinationNeighborhood descrevem o percurso intra-municipal.
+  routeType               String    @default("INTERCIDADE") // "INTERCIDADE" | "INTRAURBANA"
+  originCityId            String?   // Cidade de origem (apenas intercidade)
+  originNeighborhood      String?   // Bairro/ponto de partida (apenas intraurbana)
+  destinationNeighborhood String?   // Bairro/ponto de chegada (apenas intraurbana)
+  // ── Local específico onde a turma ocorre fisicamente (REQ-LOCAL-2026) ──
+  // Campos opcionais para não quebrar dados existentes. Devem ser preenchidos
+  // pelo admin para que o motorista (Trip) e o aluno (cursos públicos) saibam
+  // exactamente onde ir, com endereço estruturado e GPS.
+  locationName         String?     // Ex: "Escola Municipal Castro Alves"
+  locationAddress      String?     // Ex: "Rua das Flores, 123 - Centro"
+  locationReference    String?     // Ex: "Próximo ao mercado, portão azul"
+  locationLatitude     Float?      // GPS — pode ser preenchido via Nominatim ou manual
+  locationLongitude    Float?
+  weekendPolicy        ClassWeekendPolicy @default(FOLLOW_SCHEDULE)
+  weekendExtraDates    Json?
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
 
@@ -620,6 +786,7 @@ model Class {
   course      Course           @relation(fields: [courseId], references: [id])
   group       Group            @relation(fields: [groupId], references: [id])
   city        City             @relation(fields: [cityId], references: [id])
+  originCity  City?            @relation("ClassOriginCity", fields: [originCityId], references: [id])
   truck       Truck?           @relation(fields: [truckId], references: [id])
   teachers    ClassTeacher[]
   schedules   ClassSchedule[]
@@ -629,6 +796,7 @@ model Class {
   certificates Certificate[]
   acaoTurmas  AcaoTurma[]      @relation("ClassAcaoTurmas")
   holidays    ClassHoliday[]   // REQ-08: feriados/imprevistos da turma
+  courseFeedbacks CourseFeedback[]
 
   @@index([courseId])
   @@index([groupId])
@@ -689,6 +857,7 @@ model Enrollment {
   reviewer  User?                @relation("EnrollmentReviewer", fields: [reviewedBy], references: [id])
   documents EnrollmentDocument[]
   consents  EnrollmentConsent?
+  studentLegalConsents StudentLegalConsent[]
 
   @@index([studentId])
   @@index([classId])
@@ -717,6 +886,8 @@ model EnrollmentConsent {
   imageUse               Boolean  @default(false)
   termsAccepted          Boolean  @default(false)
   privacyPolicyAccepted  Boolean  @default(false)
+  /// Compromisso de frequência mínima (ex.: 75%) declarado na inscrição
+  attendanceCommitment   Boolean  @default(false)
   consentDate            DateTime @default(now())
   ipAddress              String?
   userAgent              String?
@@ -724,6 +895,27 @@ model EnrollmentConsent {
   enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
   @@map("enrollment_consents")
+}
+
+/// Consentimentos LGPD vinculados ao perfil do aluno (histórico; cada registo pode referir-se a uma inscrição)
+model StudentLegalConsent {
+  id                      String   @id @default(uuid())
+  studentId               String
+  enrollmentId            String?
+  termsAccepted           Boolean
+  dataProcessingConsent   Boolean
+  imageUseAuthorization   Boolean
+  attendanceCommitment    Boolean
+  privacyPolicyAccepted   Boolean
+  recordedAt              DateTime @default(now())
+  ipAddress               String?
+  userAgent               String?
+
+  student    Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, recordedAt])
+  @@map("student_legal_consents")
 }
 
 model Attendance {
@@ -825,6 +1017,9 @@ model Certificate {
   id                 String            @id @default(uuid())
   studentId          String
   classId            String
+  /// Versão do modelo congelada na emissão (imutabilidade: alterações no template não mudam PDF já emitido)
+  templateVersionId  String?
+  /// Código opaco único em toda a base; o QR do PDF codifica a URL de verificação com este valor (um certificado = um código).
   verificationCode   String            @unique
   qrCodeUrl          String?
   fileUrl            String
@@ -836,15 +1031,20 @@ model Certificate {
   cancelledBy        String?
 
   // Relations
-  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  class     Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
-  issuer    User    @relation("CertificateIssuer", fields: [issuedBy], references: [id])
-  canceller User?   @relation("CertificateCanceller", fields: [cancelledBy], references: [id])
+  student          Student                    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class            Class                      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  issuer           User                       @relation("CertificateIssuer", fields: [issuedBy], references: [id])
+  canceller        User?                      @relation("CertificateCanceller", fields: [cancelledBy], references: [id])
+  courseFeedback   CourseFeedback?
+  templateVersion  CertificateTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
 
+  /// Um registo de certificado por par aluno+turma (evita duplicar emissão / QR partilhado entre alunos da mesma turma).
+  @@unique([studentId, classId])
   @@index([studentId])
   @@index([classId])
   @@index([verificationCode])
   @@index([status])
+  @@index([templateVersionId])
   @@map("certificates")
 }
 
@@ -859,8 +1059,23 @@ model Trip {
   driverName          String
   driverPhone         String?
   driverUserId        String?   // FK para User com role DRIVER (adicionado EXEC-02)
+  originCep           String?
+  destinationCep      String?
+  originLatitude      Float?
+  originLongitude     Float?
+  destinationLatitude Float?
+  destinationLongitude Float?
   kmStart             Int?
   kmEnd               Int?
+  gpsDistanceKm       Float?    // Distância rastreada pelo sistema
+  startOdometerPhotoUrl String? // URL da foto comprobatória do painel no início
+  endOdometerPhotoUrl   String? // URL da foto comprobatória do painel no fim
+  driverDecision      String    @default("PENDING") // PENDING | ACCEPTED | REJECTED
+  driverDecisionAt    DateTime?
+  driverDecisionReason String?
+  rejectionPenalty    Decimal?  @db.Decimal(10, 2)
+  rejectionPenaltyBy  String?
+  rejectionPenaltyAt  DateTime?
   status              TripStatus @default(PLANNED)
   notes               String?
   createdAt           DateTime   @default(now())
@@ -872,11 +1087,40 @@ model Trip {
   destinationCity City     @relation("TripDestination", fields: [destinationCityId], references: [id])
   driverUser      User?    @relation("TripDriver", fields: [driverUserId], references: [id])
   expenses        Expense[]
+  locations       DriverLocation[] // F1.4: trilha de localização do motorista
 
   @@index([truckId])
   @@index([status])
   @@index([driverUserId])
   @@map("trips")
+}
+
+// ============================================
+// F1.3: RASTREAMENTO DE LOCALIZAÇÃO DO MOTORISTA
+// Armazena posições GPS enviadas pelo portal do motorista.
+// Retenção: 7 dias — job de cleanup automático (LGPD).
+// source: 'checkin' (ao bater ponto) | 'polling' (a cada 3min) | 'batch' (offline recovery)
+// ============================================
+model DriverLocation {
+  id           String   @id @default(uuid())
+  driverUserId String
+  tripId       String?  // qual viagem está fazendo — null se fora de viagem ativa
+  latitude     Float
+  longitude    Float
+  accuracy     Float?   // precisão GPS em metros (do browser)
+  speed        Float?   // velocidade em km/h (calculada pelo browser via Geolocation API)
+  heading      Float?   // direção em graus 0-360 (0=Norte)
+  source       String   @default("polling") // checkin | polling | batch
+  capturedAt   DateTime // momento real da captura no device (suporte a offline batch)
+  createdAt    DateTime @default(now())
+
+  user User  @relation(fields: [driverUserId], references: [id], onDelete: Cascade)
+  trip Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([driverUserId, capturedAt])
+  @@index([tripId])
+  @@index([capturedAt]) // para job de cleanup por data
+  @@map("driver_locations")
 }
 
 model Expense {
@@ -1029,7 +1273,7 @@ model Employee {
   role              EmployeeRole
   department        EmployeeDepartment
   cpf               String?            @unique
-  rg                String?
+  documents         Json?
   phone             String?
   email             String?            @unique
   specialty         String?
@@ -1074,10 +1318,67 @@ model EmployeeAttendance {
   updatedAt      DateTime  @updatedAt
   employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   registrar      User      @relation("EmployeeAttendanceRegistrar", fields: [registeredBy], references: [id])
+  
   @@unique([employeeId, date])
   @@index([employeeId])
   @@index([date])
   @@map("employee_attendances")
+}
+
+// ============================================
+// CADASTRO SEGURO DE FUNCIONÁRIOS
+// ============================================
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model EmployeeRegistrationToken {
+  id           String       @id @default(uuid())
+  token        String       @unique
+  role         EmployeeRole
+  department   EmployeeDepartment
+  createdBy    String
+  expiresAt    DateTime
+  used         Boolean      @default(false)
+  revoked      Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+
+  creator      User         @relation("EmployeeTokenCreator", fields: [createdBy], references: [id])
+  request      EmployeeRegistrationRequest?
+
+  @@index([token])
+  @@map("employee_registration_tokens")
+}
+
+model EmployeeRegistrationRequest {
+  id           String       @id @default(uuid())
+  tokenId      String       @unique
+  status       RegistrationStatus @default(PENDING)
+  
+  // Dados Comuns base (para exibição rápida)
+  name         String
+  cpf          String       @unique
+  email        String       @unique
+  phone        String
+  birthDate    DateTime?
+  
+  // Payload JSON estruturado com os dados específicos
+  submittedData Json
+  
+  rejectionReason String?
+  reviewedBy   String?
+  reviewedAt   DateTime?
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  token        EmployeeRegistrationToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  reviewer     User?        @relation("EmployeeRegistrationReviewer", fields: [reviewedBy], references: [id])
+
+  @@map("employee_registration_requests")
 }// ============================================
 // MODELOS DE AÇÕES (OPERAÇÕES DE CAMPO)
 // ============================================
@@ -1092,19 +1393,31 @@ model Acao {
   status              AcaoStatus @default(PLANEJADA)
   dataInicio          DateTime
   dataFim             DateTime
-  localExecucao       String?
+  localExecucao       String?    // Nome do local (mantido — campo legado ja em uso)
+  // ── Detalhes adicionais do local (REQ-LOCAL-2026) ──
+  // Aditivos para que turmas filhas herdem esse local automaticamente.
+  localEndereco       String?    // Ex: "Rua das Flores, 123 - Centro"
+  localReferencia     String?    // Ex: "Próximo ao mercado"
+  localLatitude       Float?
+  localLongitude      Float?
   distanciaKm         Decimal?   @db.Decimal(10, 2)
   precoCombustivelL   Decimal?   @db.Decimal(10, 2)
   autonomiaKmL        Decimal?   @db.Decimal(10, 2)
+  // ── Tipo de rota (REQ-ROUTE-2026) ──────────────────────────────────────────
+  routeType               String    @default("INTERCIDADE") // "INTERCIDADE" | "INTRAURBANA"
+  originCidadeId          String?   // Cidade de origem (apenas intercidade)
+  originNeighborhood      String?   // Bairro/ponto de partida (apenas intraurbana)
+  destinationNeighborhood String?   // Bairro/ponto de chegada (apenas intraurbana)
   observacoes         String?
   permitirInscricoes  Boolean    @default(true)
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 
   // Relations
-  cidade  City?  @relation(fields: [cidadeId], references: [id], onDelete: SetNull)
-  grupo   Group  @relation(fields: [grupoId], references: [id])
-  carreta Truck? @relation("TruckAcoes", fields: [carretaId], references: [id])
+  cidade        City?  @relation(fields: [cidadeId], references: [id], onDelete: SetNull)
+  originCidade  City?  @relation("AcaoOriginCity", fields: [originCidadeId], references: [id])
+  grupo         Group  @relation(fields: [grupoId], references: [id])
+  carreta       Truck? @relation("TruckAcoes", fields: [carretaId], references: [id])
 
   turmas          AcaoTurma[]
   custos          AcaoCusto[]
@@ -1194,6 +1507,7 @@ model ContaPagar {
   updatedAt        DateTime          @updatedAt
 
   acao Acao? @relation(fields: [acaoId], references: [id], onDelete: SetNull)
+  courseFeedback CourseFeedback?
 
   @@index([status])
   @@index([tipo_conta])
@@ -1235,6 +1549,8 @@ model ClassHoliday {
   date        DateTime // Data do feriado/imprevisto
   reason      String   // Descrição: "Feriado Municipal", "Falta de energia", etc.
   registeredBy String  // userId do professor/admin que registrou
+  /// UX-15: `Class.endDate` imediatamente antes de aplicar este feriado (restauração exacta ao remover)
+  endDateBeforePush DateTime?
   active      Boolean  @default(true) // Soft Delete (02_LIVRO_DE_REGRAS.md)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1320,7 +1636,7 @@ model Absence {
   documentUrl   String?       // URL do atestado/documento (MinIO)
   status        AbsenceStatus @default(PENDING)
   adminNote     String?       // Observação do ADM ao validar/rejeitar
-  penalty       Decimal?      @db.Decimal(10, 2) // Valor de retenção se penalizado
+  penalty       Decimal?      @db.Decimal(10, 2) // Colaboradores: R$ retidos | Alunos (PENALIZED): % do período (= 100×dias_penalidade/totalDiasTurma neste registo)
   reviewedBy    String?       // userId do admin que revisou
   reviewedAt    DateTime?     // Quando foi revisado
   active        Boolean       @default(true)  // PASSO 3.6: soft delete
@@ -1361,5 +1677,174 @@ model UserPreferences {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_preferences")
+}
+
+// ============================================
+// PASSO 3.7: REGISTRO DE PONTO DO PROFESSOR
+// Armazena os check-ins diários do professor
+// ============================================
+
+model TeacherCheckin {
+  id        String   @id @default(uuid())
+  userId    String
+  checkedAt DateTime @default(now())
+  date      String   // YYYY-MM-DD para facilitar busca por dia
+  note      String?  // observação opcional
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("teacher_checkins")
+}
+
+// ============================================
+// PASSO 4.2: REGISTRO DE PONTO DO MOTORISTA
+// Idêntico ao TeacherCheckin mas para motoristas.
+// Ao criar, sincroniza EmployeeAttendance automaticamente.
+// ============================================
+
+model DriverCheckin {
+  id        String   @id @default(uuid())
+  userId    String
+  checkedAt DateTime @default(now())
+  date      String   // YYYY-MM-DD para facilitar busca por dia
+  note      String?  // observação opcional
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("driver_checkins")
+}
+
+
+// ============================================
+// FEEDBACK PÓS-CURSO + RECOMPENSA PIX
+// Aluno responde pesquisa após conclusão do curso.
+// Admin aprova/rejeita/reverte. Aprovação gera ContaPagar automático.
+// ============================================
+
+enum FeedbackStatus {
+  PENDING_STUDENT_RESPONSE
+  SUBMITTED
+  CONTENT_APPROVED
+  APPROVED
+  REJECTED
+  REVERTED
+  EXPIRED
+}
+
+/// Pagamento em massa R$ 50 (lote banco) — independente de ContaPagar individual
+enum FeedbackRewardStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum FeedbackCurrentStatus {
+  EMPLOYED_CLT
+  EMPLOYED_PJ
+  SELF_EMPLOYED
+  STUDYING
+  UNEMPLOYED_LOOKING
+  OTHER
+}
+
+enum PixKeyType {
+  CPF
+  EMAIL
+  PHONE
+  RANDOM
+}
+
+model CourseFeedback {
+  id                    String                 @id @default(uuid())
+  studentId             String
+  classId               String
+  certificateId         String                 @unique
+  status                FeedbackStatus         @default(PENDING_STUDENT_RESPONSE)
+
+  // Ratings (1-5, opcionais enquanto PENDING_STUDENT_RESPONSE)
+  ratingCourse          Int?
+  ratingSystem          Int?
+  ratingManagement      Int?
+  ratingTeachers        Int?
+  ratingGeneral         Int?
+
+  // Comentários livres
+  commentPositive       String?
+  commentImprovement    String?
+  commentGeneral        String?
+
+  // Situação atual + foto obrigatória no submit
+  currentStatus         FeedbackCurrentStatus?
+  currentStatusDetails  String?
+  currentPhotoUrl       String?
+  currentVideoUrl       String?
+
+  // PIX
+  pixKeyType            PixKeyType?
+  pixKey                String?
+  pixAmount             Decimal?               @db.Decimal(10, 2)
+
+  // Convite multi-canal
+  invitedChannels       String[]
+  invitedAt             DateTime               @default(now())
+  lastReminderAt        DateTime?
+  reminderCount         Int                    @default(0)
+  expiresAt             DateTime?
+
+  // Submissão
+  submittedAt           DateTime?
+
+  /// O aluno confirmou divulgação social (clique em LinkedIn/WhatsApp) — requisito do prêmio PIX
+  sharedOnSocial        Boolean                @default(false)
+
+  /// Plataforma onde o aluno declarou ter postado: 'LINKEDIN' | 'WHATSAPP'
+  socialPostPlatform    String?
+  /// URL do post real (obrigatório p/ LinkedIn; opcional p/ WhatsApp Status)
+  socialPostUrl         String?
+  /// MinIO key do screenshot/print do post (obrigatório para o admin verificar)
+  socialPostProofUrl    String?
+  /// Quando o aluno declarou ter postado
+  socialPostedAt        DateTime?
+
+  /// Recompensa (PIX em lote): pendente / pago / cancelado
+  rewardStatus            FeedbackRewardStatus  @default(PENDING)
+  rewardPaidAt            DateTime?
+  rewardPaymentReference  String?
+
+  // Auditoria admin
+  reviewedBy            String?
+  reviewedAt            DateTime?
+  contentApprovedAt     DateTime?
+  contentApprovedBy     String?
+  /// Incrementa em cada envio válido pelo aluno (primeiro ou reenvio após rejeição)
+  studentSubmitSequence Int                   @default(0)
+  /// True só no ciclo em que o aluno enviou de novo depois de REJECTED
+  resubmittedAfterReject Boolean              @default(false)
+  rejectionHistoryJson Json?
+  rejectionReason       String?
+  revertedBy            String?
+  revertedAt            DateTime?
+  revertReason          String?
+
+  // Vínculo com ContaPagar gerada
+  contaPagarId          String?                @unique
+
+  active                Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  student               Student                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class                 Class                  @relation(fields: [classId], references: [id])
+  certificate           Certificate            @relation(fields: [certificateId], references: [id])
+  contaPagar            ContaPagar?            @relation(fields: [contaPagarId], references: [id])
+
+  @@index([studentId])
+  @@index([classId])
+  @@index([status])
+  @@index([invitedAt])
+  @@index([rewardStatus])
+  @@map("course_feedbacks")
 }
 

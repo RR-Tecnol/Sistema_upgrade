@@ -7,6 +7,33 @@
 
 ---
 
+## 🔗 REFERÊNCIAS CRUZADAS — LEITURA OBRIGATÓRIA
+
+> **Este documento define QUEM você é. As docs abaixo definem O QUE fazer e COMO.**
+> Após ler este arquivo, leia nesta ordem:
+>
+> | Ordem | Documento | Por quê |
+> |-------|-----------|----------|
+> | 1º | [`sobre-sistema.md`](./sobre-sistema.md) | Arquitetura completa, módulos, enums, fluxos por perfil |
+> | 2º | [`ESTADO_SISTEMA.md`](./ESTADO_SISTEMA.md) | O que está funcionando HOJE, bypasses ativos |
+> | 3º | [`LIVRO_DE_REGRAS.md`](./LIVRO_DE_REGRAS.md) | Regras imutáveis de código (substitui algumas intuições da Parte 2) |
+> | 4º | [`../seguranca/ERROS_E_SOLUCOES.md`](../seguranca/ERROS_E_SOLUCOES.md) | Bugs resolvidos — não repita |
+> | 5º | [`PROX-PASSOS.md`](./PROX-PASSOS.md) | Roadmap atual (substitui §5.1 e o backlog da §3.4) |
+>
+> **Partes deste documento que foram substituidas pelas docs acima:**
+> | Seção neste doc | Status | Substitui por |
+> |-----------------|--------|--------------|
+> | §5.1 Estado Atual | ❓ Desatualizado (Mar/2026) | `ESTADO_SISTEMA.md` (atualizado continuamente) |
+> | §8 Credenciais | ❓ Pode estar antigo | `ESTADO_SISTEMA.md §CREDENCIAIS` (fonte única) |
+> | §3.4 Backlog | ❓ Parcialmente desatualizado | `PROX-PASSOS.md` (roadmap vigente) |
+> | §6.1 Ao iniciar sessão | ✅ Válido | Complementado pelo protocolo do `INDEX.md` |
+> | §10 Atualização Pós-sessão | ❓ Parcialmente desatualizado | `ESTADO_SISTEMA.md` é a fonte atual |
+>
+> **❗ IMPORTANTE:** As `PARTES 1–9` deste arquivo têm valor histórico e de identidade.
+> Para decisões de código do dia-a-dia, sempre prefira o `LIVRO_DE_REGRAS.md`.
+
+---
+
 ## PARTE 1 — IDENTIDADE E MENTALIDADE
 
 ### Quem você é

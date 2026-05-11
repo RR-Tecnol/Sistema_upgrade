@@ -2,6 +2,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '@/lib/api/client';
 import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
+import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 
 interface AuditLog {
     id: string;
@@ -43,6 +47,7 @@ export default function HistoricoPage() {
     const [filterFrom, setFilterFrom] = useState('');
     const [filterTo, setFilterTo] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [listViewMode, setListViewMode] = usePersistedAdminViewMode('admin:historico:list', 'table');
 
     useEffect(() => {
         const t = setTimeout(() => setDebouncedSearch(search), 450);
@@ -71,23 +76,21 @@ export default function HistoricoPage() {
     useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
     const TABLES = ['users', 'enrollments', 'employees', 'trips', 'classes', 'reimbursements', 'certificates', 'notifications'];
+    const registrosFiltrados = logs.length;
 
     return (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {/* Hero Header */}
-            <div style={{
-                position: 'relative', borderRadius: 20, overflow: 'hidden',
-                background: 'linear-gradient(135deg, #0A0A0A 0%, #1C1C2E 50%, #0A0A0A 100%)',
-                border: '1px solid rgba(255,214,0,0.15)', padding: '1.75rem 2rem',
-                boxShadow: '0 0 50px rgba(255,214,0,0.04)',
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 11, background: 'linear-gradient(135deg,#FFD600,#B89B00)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', boxShadow: '0 0 18px rgba(255,214,0,0.4)' }}>📋</div>
-                    <div>
-                        <h1 style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.5rem', letterSpacing: '0.1em', color: '#FFFFFF', textShadow: '0 0 24px rgba(255,214,0,0.35)', margin: 0 }}>HISTÓRICO DE ATIVIDADES</h1>
-                        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', letterSpacing: '0.1em', margin: '0.2rem 0 0' }}>AUDITORIA DO SISTEMA — {total} REGISTRO{total !== 1 ? 'S' : ''}</p>
-                    </div>
-                </div>
+            <AdminHeaderHero
+                title="HISTÓRICO DE ATIVIDADES"
+                subtitle={`Auditoria do sistema — ${total} registro${total !== 1 ? 's' : ''}`}
+                badge="Rastreabilidade administrativa"
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
+                <AnimatedKpiCard label="Registros Totais" value={total} color="#FFD600" bg="#FFFDE7" border="#FEF08A" />
+                <AnimatedKpiCard label="Registros na Página" value={registrosFiltrados} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" delayMs={60} />
+                <AnimatedKpiCard label="Página Atual" value={page} color="#7C3AED" bg="#F5F3FF" border="#DDD6FE" delayMs={120} />
+                <AnimatedKpiCard label="Total de Páginas" value={totalPages} color="#059669" bg="#F0FDF4" border="#BBF7D0" delayMs={180} />
             </div>
 
             {/* Filtros */}
@@ -106,6 +109,9 @@ export default function HistoricoPage() {
                 {(search || filterTable || filterFrom || filterTo) && (
                     <button className="btn-ghost" onClick={() => { setSearch(''); setFilterTable(''); setFilterFrom(''); setFilterTo(''); setPage(1); }} style={{ fontSize: '0.78rem', padding: '0.45rem 0.85rem', color: '#6B7280' }}>✕ Limpar</button>
                 )}
+                <div style={{ marginLeft: 'auto' }}>
+                    <AdminViewModeToggle mode={listViewMode} onChange={setListViewMode} />
+                </div>
             </div>
 
             {/* Tabela */}
@@ -122,6 +128,28 @@ export default function HistoricoPage() {
                     </div>
                 ) : (
                     <>
+                        {listViewMode === 'card' ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, padding: 14 }}>
+                                {logs.map((log, i) => {
+                                    const style = getActionStyle(log.action);
+                                    return (
+                                        <div key={log.id} className="adm-kpi-card adm-scale-in" style={{ animationDelay: `${i * 18}ms`, background: '#fff', borderStyle: 'solid', borderWidth: '1px 1px 1px 4px', borderLeftColor: style.color, borderTopColor: '#E5E7EB', borderRightColor: '#E5E7EB', borderBottomColor: '#E5E7EB' }}>
+                                            <div className="adm-kpi-grid" />
+                                            <div style={{ position: 'relative', zIndex: 1, padding: '12px 14px' }}>
+                                                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: '#6B7280', marginBottom: 8 }}>{fmtDate(log.createdAt)}</div>
+                                                <span style={{ display: 'inline-block', padding: '0.2rem 0.55rem', borderRadius: 100, background: style.bg, color: style.color, fontSize: '0.62rem', fontWeight: 800 }}>{log.action}</span>
+                                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginTop: 10 }}>{log.tableName}</div>
+                                                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#9CA3AF', marginTop: 4 }}>{log.recordId ? log.recordId.substring(0, 8) + '…' : '—'}</div>
+                                                <div style={{ marginTop: 10, fontSize: '0.76rem', color: '#374151' }}>
+                                                    {log.user ? <><strong>{log.user.name}</strong> <span style={{ color: '#9CA3AF' }}>({log.user.role})</span></> : 'Sistema'}
+                                                </div>
+                                                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#9CA3AF', marginTop: 6 }}>IP: {log.ipAddress || '—'}</div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
                         <table className="data-table">
                             <thead>
                                 <tr>
@@ -166,6 +194,7 @@ export default function HistoricoPage() {
                                 })}
                             </tbody>
                         </table>
+                        )}
 
                         {/* Paginação */}
                         {totalPages > 1 && (

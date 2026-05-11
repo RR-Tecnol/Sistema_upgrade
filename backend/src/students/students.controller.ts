@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
+import { UpdateStudentPasswordDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { StudentGuard } from '../auth/guards/student.guard';
 
@@ -33,7 +34,7 @@ export class StudentsController {
     @ApiResponse({ status: 400, description: 'Current password is incorrect' })
     async updatePassword(
         @Request() req: any,
-        @Body() body: { currentPassword: string; newPassword: string },
+        @Body() body: UpdateStudentPasswordDto,
     ) {
         return this.studentsService.updatePassword(
             req.user.id,
@@ -80,5 +81,12 @@ export class StudentsController {
     @ApiResponse({ status: 200, description: 'Resumo com totalClasses, presentCount, absentCount, rate' })
     async getAttendanceSummary(@Request() req: any) {
         return this.studentsService.getAttendanceSummary(req.user.id);
+    }
+
+    @Get('me/certificate-progress')
+    @ApiOperation({ summary: 'Progresso de frequência por turma (elegibilidade ao certificado, 75%)' })
+    @ApiResponse({ status: 200, description: 'Itens por turma com presenças, faltas e nível de risco' })
+    async getCertificateProgress(@Request() req: any) {
+        return this.studentsService.getCertificateAttendanceProgress(req.user.id);
     }
 }

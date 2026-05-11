@@ -6,6 +6,30 @@
 
 ---
 
+## 🔗 REFERÊNCIAS CRUZADAS
+
+> **Quando ler este documento:**
+> Antes de propor qualquer mudança arquitetural significativa (troca de framework, banco, auth, storage, etc.).
+> Cada decisão aqui tomou horas de pesquisa — leia antes de reinventar.
+>
+> **Ler antes deste:**
+> - [`sobre-sistema.md §2`](./sobre-sistema.md) — stack atual e versões exatas
+> - [`LIVRO_DE_REGRAS.md`](./LIVRO_DE_REGRAS.md) — regras derivadas destas decisões
+>
+> **Mapeamento decisão → regra:**
+> | Decisão | Regra no LIVRO_DE_REGRAS |
+> |---------|-------------------------|
+> | #2 Prisma Decimal (nunca Float) | §3 — "Valores monetários sempre Decimal" |
+> | #3 MinIO Presigned URLs | §4 — "Uploads via MinIO" |
+> | #5 Soft Delete | §3 — "Nunca DELETE direto" |
+> | #6 JWT duplo | §5 — "Segurança e Auth" |
+> | #8 Singleton MinIO | ERROS#BUG-MINIO-01 |
+> | #9 req.user.id (nunca sub) | §2 — "Controllers NestJS" |
+> | #11 $transaction no enrollment | ERROS#BUG-CONCURRENT-01 |
+> | #12 Porta 3001 | `SETUP.md` + `ESTADO_SISTEMA.md` §INFRAESTRUTURA |
+
+---
+
 ## 1. Stack: NestJS 10 + Next.js 14 (App Router)
 
 **Contexto:** Sistema B2G para 3 perfis radicalmente diferentes (Admin, Professor, Aluno cidadão).

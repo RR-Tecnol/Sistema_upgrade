@@ -3,8 +3,11 @@ import {
     UseGuards, Request, Query, ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+const NOTIFICATION_TYPE_VALUES = new Set<string>(Object.values(NotificationType));
 
 /**
  * Notificações persistidas — GET/PATCH/DELETE
@@ -24,19 +27,31 @@ export class NotificationsController {
     /** GET /notifications — lista notificações do usuário logado */
     @Get()
     @ApiOperation({ summary: 'Listar notificações do usuário logado (paginado)' })
-    @ApiQuery({ name: 'unreadOnly', required: false, type: Boolean })
+    @ApiQuery({ name: 'unreadOnly', required: false, type: Boolean, description: 'true = só não lidas' })
+    @ApiQuery({ name: 'read', required: false, type: Boolean, description: 'Compat FE: read=false equivale a unreadOnly=true' })
+    @ApiQuery({ name: 'type', required: false, enum: NotificationType, description: 'Filtrar por tipo (ex.: CERTIFICATE_AVAILABLE)' })
     @ApiQuery({ name: 'page', required: false, type: Number })
     @ApiQuery({ name: 'limit', required: false, type: Number })
     async findAll(
         @Request() req: any,
         @Query('unreadOnly') unreadOnly?: string,
+        @Query('read') read?: string,
+        @Query('type') type?: string,
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
         @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit = 20,
     ) {
         const userId = req.user.id;
         const where: any = { userId };
-        // Não lidas = readAt é null
-        if (unreadOnly === 'true') where.readAt = null;
+        // Não lidas: unreadOnly=true OU read=false (portal aluno envia read=false)
+        const wantsUnread =
+            unreadOnly === 'true' ||
+            read === 'false' ||
+            read === '0';
+        if (wantsUnread) where.readAt = null;
+
+        if (type && NOTIFICATION_TYPE_VALUES.has(type)) {
+            where.type = type as NotificationType;
+        }
 
         const [items, total, unreadCount] = await Promise.all([
             this.prisma.notification.findMany({

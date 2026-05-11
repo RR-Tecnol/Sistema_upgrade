@@ -5,6 +5,7 @@ import { trucksApi, Truck } from '@/lib/api/trucks';
 import Link from 'next/link';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { toast } from '@/components/ui/Toast';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 
 // ── Keyframes CSS ─────────────────────────────────────────────────────────────
 
@@ -63,8 +64,12 @@ function KpiCard({ label, icon, value, color, delay = 0 }:
             style={{
                 position: 'relative', overflow: 'hidden', borderRadius: 18, padding: '22px 24px',
                 background: '#fff',
-                border: `1px solid ${hov ? color + '70' : color + '25'}`,
-                borderLeft: `4px solid ${color}`,
+                borderStyle: 'solid',
+                borderWidth: '1px 1px 1px 4px',
+                borderTopColor: `${hov ? color + '70' : color + '25'}`,
+                borderRightColor: `${hov ? color + '70' : color + '25'}`,
+                borderBottomColor: `${hov ? color + '70' : color + '25'}`,
+                borderLeftColor: color,
                 boxShadow: hov ? `0 0 28px ${color}22, 0 8px 24px rgba(0,0,0,.08)` : `0 2px 8px rgba(0,0,0,.06)`,
                 transition: 'all .3s cubic-bezier(.175,.885,.32,1.275)',
                 transform: hov ? 'perspective(500px) rotateX(-3deg) translateY(-4px) scale(1.02)' : 'none',
@@ -145,8 +150,12 @@ function TruckCard({ truck, onDelete }: { truck: Truck; onDelete: (id: string) =
             style={{
                 position: 'relative', overflow: 'hidden', borderRadius: 20,
                 background: '#fff',
-                border: `1px solid ${hov ? accentColor + '55' : accentColor + '20'}`,
-                borderLeft: `4px solid ${accentColor}`,
+                borderStyle: 'solid',
+                borderWidth: '1px 1px 1px 4px',
+                borderTopColor: `${hov ? accentColor + '55' : accentColor + '20'}`,
+                borderRightColor: `${hov ? accentColor + '55' : accentColor + '20'}`,
+                borderBottomColor: `${hov ? accentColor + '55' : accentColor + '20'}`,
+                borderLeftColor: accentColor,
                 boxShadow: hov
                     ? `0 0 24px ${accentColor}18, 0 12px 32px rgba(0,0,0,.1)`
                     : `0 2px 8px rgba(0,0,0,.06)`,
@@ -359,33 +368,36 @@ export default function CarretasPage() {
             <style>{CARRETAS_CSS}</style>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-                {/* ── HEADER ── */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', animation: 'cr-fade-up .4s both' }}>
-                    <div>
-                        <h1 style={{
-                            fontFamily: 'Orbitron, sans-serif', fontSize: '2rem', fontWeight: 900,
-                            letterSpacing: '0.08em', marginBottom: '0.3rem',
-                            background: 'linear-gradient(135deg,#FFD600,#E6A800)',
-                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                            backgroundClip: 'text',
-                        }}>CARRETAS</h1>
-                        <p style={{ color: '#9CA3AF', fontSize: '0.82rem' }}>Gerencie a frota de unidades móveis do programa</p>
-                    </div>
-                    <Link href="/admin/carretas/nova" style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 8,
-                        padding: '10px 22px', borderRadius: 12, textDecoration: 'none',
-                        background: 'linear-gradient(135deg,#FFD600,#E6A800)',
-                        color: '#000', fontWeight: 800, fontSize: '0.82rem',
-                        fontFamily: 'Orbitron, sans-serif', letterSpacing: '.04em',
-                        boxShadow: '0 0 18px rgba(255,214,0,.4), 0 4px 12px rgba(0,0,0,.12)',
-                        transition: 'box-shadow .25s',
-                    }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 0 28px rgba(255,214,0,.65)'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 0 18px rgba(255,214,0,.4), 0 4px 12px rgba(0,0,0,.12)'}
-                    >
-                        ⚡ Nova Carreta
-                    </Link>
-                </div>
+                <AdminHeaderHero
+                    title="CARRETAS"
+                    subtitle="Gerencie a frota de unidades móveis do programa"
+                    badge="Operação logística"
+                    rightSlot={(
+                        <Link
+                            href="/admin/carretas/nova"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '10px 22px',
+                                borderRadius: 12,
+                                textDecoration: 'none',
+                                background: 'linear-gradient(135deg,#FFD600,#E6A800)',
+                                color: '#000',
+                                fontWeight: 800,
+                                fontSize: '0.82rem',
+                                fontFamily: 'Orbitron, sans-serif',
+                                letterSpacing: '.04em',
+                                boxShadow: '0 0 18px rgba(255,214,0,.4), 0 4px 12px rgba(0,0,0,.12)',
+                                transition: 'box-shadow .25s',
+                            }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 0 28px rgba(255,214,0,.65)'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 0 18px rgba(255,214,0,.4), 0 4px 12px rgba(0,0,0,.12)'}
+                        >
+                            ⚡ Nova Carreta
+                        </Link>
+                    )}
+                />
 
                 {/* ── KPIs ── */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '1rem' }}>

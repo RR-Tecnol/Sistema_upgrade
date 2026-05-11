@@ -6,6 +6,8 @@ import Sidebar from '@/components/admin/Sidebar';
 import Header from '@/components/admin/Header';
 import { ToastContainer } from '@/components/ui/Toast';
 import Tutorial, { TutorialButton } from '@/components/ui/Tutorial';
+import { ConfirmModalRoot } from '@/components/ui/ConfirmModal';
+import { useAnimacoes } from '@/hooks/useAnimacoes';
 
 const ADMIN_STEPS = [
     { icon: '⚙️', title: 'Bem-vindo ao Painel Administrativo', description: 'Central de controle do Sistema Qualifica. Gerencie alunos, turmas, funcionários, finanças, frequência e muito mais.' },
@@ -21,10 +23,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     const [ready, setReady] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [showTutorial, setShowTutorial] = useState(false);
+    useAnimacoes(); // ANIMACOES: aplica preferência do usuário
 
     useEffect(() => {
-        // BUG-01: Verificar token no localStorage antes de renderizar
-        const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+        // SEGURANÇA: sessionStorage (isolado por aba) com fallback legacy localStorage
+        const token = sessionStorage.getItem('token') || sessionStorage.getItem('access_token') || localStorage.getItem('token') || localStorage.getItem('access_token');
         if (!token) {
             router.replace('/login');
             return;
@@ -49,17 +52,20 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
 
     return (
-        <div className="admin-layout">
+        <>
             <ToastContainer />
+            <ConfirmModalRoot />
             <Tutorial storageKey="tutorial-admin-v1" steps={ADMIN_STEPS} portalName="Painel Administrativo" forceOpen={showTutorial} onClose={() => setShowTutorial(false)} />
             <TutorialButton onClick={() => setShowTutorial(true)} />
-            <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-            <div className="admin-main">
-                <Header onMenuToggle={() => setSidebarOpen(s => !s)} />
-                <main className="admin-content custom-scrollbar">
-                    {children}
-                </main>
+            <div className="admin-layout">
+                <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+                <div className="admin-main">
+                    <Header onMenuToggle={() => setSidebarOpen(s => !s)} />
+                    <main className="admin-content custom-scrollbar">
+                        {children}
+                    </main>
+                </div>
             </div>
-        </div>
+        </>
     );
 }

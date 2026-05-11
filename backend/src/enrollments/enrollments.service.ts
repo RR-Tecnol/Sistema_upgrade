@@ -1,17 +1,25 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { UpdateEnrollmentDto, EnrollmentStatus } from './dto/update-enrollment.dto';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { NotificationsSenderService } from '../notifications/notifications-sender.service';
+
+/** Metadados opcionais da requisição pública (LGPD — prova de quando/como o consentimento foi recolhido) */
+export type PublicEnrollmentRequestMeta = {
+    ipAddress?: string;
+    userAgent?: string;
+};
 
 @Injectable()
 export class EnrollmentsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly notifications: NotificationsGateway,
+        private readonly notificationsSender: NotificationsSenderService,
     ) { }
 
     async adminEnroll(studentId: string, classId: string) {
@@ -27,10 +35,10 @@ export class EnrollmentsService {
         const existing = await this.prisma.enrollment.findFirst({ where: { studentId, classId } });
         if (existing) throw new ConflictException('Aluno já inscrito nesta turma');
 
-        // 4. Create enrollment as APPROVED directly (admin action)
+        // 4. Criação manual também inicia em triagem (PENDING)
         const protocol = this.generateProtocol();
         const enrollment = await this.prisma.enrollment.create({
-            data: { studentId, classId, protocol, status: 'APPROVED' },
+            data: { studentId, classId, protocol, status: 'PENDING' },
             include: { student: { include: { user: true } }, class: { include: { course: true } } },
         });
 
@@ -40,14 +48,27 @@ export class EnrollmentsService {
                 enrollmentId: enrollment.id,
                 dataProcessing: true, imageUse: true,
                 termsAccepted: true, privacyPolicyAccepted: true,
+                attendanceCommitment: true,
                 consentDate: new Date(),
+            },
+        });
+
+        await this.prisma.studentLegalConsent.create({
+            data: {
+                studentId,
+                enrollmentId: enrollment.id,
+                termsAccepted: true,
+                dataProcessingConsent: true,
+                imageUseAuthorization: true,
+                attendanceCommitment: true,
+                privacyPolicyAccepted: true,
             },
         });
 
         return enrollment;
     }
 
-    async create(createEnrollmentDto: CreateEnrollmentDto) {
+    async create(createEnrollmentDto: CreateEnrollmentDto, meta?: PublicEnrollmentRequestMeta) {
         // Validações FORA da transação (leituras sem lock)
         const classData = await this.prisma.class.findUnique({
             where: { id: createEnrollmentDto.classId },
@@ -73,7 +94,7 @@ export class EnrollmentsService {
         // ── TRANSAÇÃO ATÔMICA ──────────────────────────────────
         // Re-verifica vagas DENTRO da transação para eliminar
         // race condition TOCTOU entre check e insert.
-        const enrollment = await this.prisma.$transaction(async (tx) => {
+        const { enrollment, reusedExistingStudentAccount } = await this.prisma.$transaction(async (tx) => {
 
             // Re-verificar vagas com lock implícito do Prisma
             const freshClass = await tx.class.findUnique({
@@ -89,6 +110,8 @@ export class EnrollmentsService {
             let student = await tx.student.findUnique({
                 where: { cpf: createEnrollmentDto.cpf },
             });
+            /** Já existia aluno com este CPF — não se criou User/senha nova; só nova inscrição na turma */
+            const reusedExistingStudentAccount = !!student;
 
             if (!student) {
                 const user = await tx.user.create({
@@ -98,15 +121,14 @@ export class EnrollmentsService {
                         phone: createEnrollmentDto.phone,
                         role: 'STUDENT',
                         active: true,
-                        password: await this.hashPassword(this.generateTemporaryPassword()),
+                        // Usa a senha definida pelo próprio aluno no formulário
+                        password: await this.hashPassword(createEnrollmentDto.password),
                     },
                 });
                 student = await tx.student.create({
                     data: {
                         userId: user.id,
                         cpf: createEnrollmentDto.cpf,
-                        rg: createEnrollmentDto.rg,
-                        rgIssuer: createEnrollmentDto.rgIssuer,
                         birthDate: new Date(createEnrollmentDto.birthDate),
                         gender: createEnrollmentDto.gender,
                         raceColor: createEnrollmentDto.raceColor,
@@ -117,6 +139,7 @@ export class EnrollmentsService {
                         birthCity: createEnrollmentDto.birthCity,
                         birthState: createEnrollmentDto.birthState,
                         socialName: createEnrollmentDto.socialName,
+                        documents: createEnrollmentDto.documents || {},
                     },
                 });
                 await tx.studentContact.create({
@@ -182,7 +205,7 @@ export class EnrollmentsService {
                 },
             });
 
-            // Criar consent DENTRO da transação
+            // Consentimento da inscrição (por turma) + registo no perfil do aluno (LGPD)
             await tx.enrollmentConsent.create({
                 data: {
                     enrollmentId: newEnrollment.id,
@@ -190,11 +213,28 @@ export class EnrollmentsService {
                     imageUse: createEnrollmentDto.imageUseAuthorization,
                     termsAccepted: createEnrollmentDto.termsAccepted,
                     privacyPolicyAccepted: createEnrollmentDto.dataProcessingConsent,
+                    attendanceCommitment: createEnrollmentDto.attendanceCommitment,
                     consentDate: new Date(),
+                    ipAddress: meta?.ipAddress,
+                    userAgent: meta?.userAgent,
                 },
             });
 
-            return newEnrollment;
+            await tx.studentLegalConsent.create({
+                data: {
+                    studentId: student.id,
+                    enrollmentId: newEnrollment.id,
+                    termsAccepted: createEnrollmentDto.termsAccepted,
+                    dataProcessingConsent: createEnrollmentDto.dataProcessingConsent,
+                    imageUseAuthorization: createEnrollmentDto.imageUseAuthorization,
+                    attendanceCommitment: createEnrollmentDto.attendanceCommitment,
+                    privacyPolicyAccepted: createEnrollmentDto.dataProcessingConsent,
+                    ipAddress: meta?.ipAddress,
+                    userAgent: meta?.userAgent,
+                },
+            });
+
+            return { enrollment: newEnrollment, reusedExistingStudentAccount };
         }); // ── FIM DA TRANSAÇÃO ──────────────────────────────────
 
         // Notificação WS FORA da transação
@@ -206,9 +246,17 @@ export class EnrollmentsService {
                 cidade: (enrollment.class as any)?.city?.name,
                 timestamp: new Date().toISOString(),
             });
+
+            if (enrollment.student?.user?.name) {
+                await this.notificationsSender.newStudentRegistration(enrollment.student.user.name);
+            }
         } catch { /* WS opcional — nunca bloqueia a inscrição */ }
 
-        return enrollment;
+        return {
+            ...enrollment,
+            protocol: enrollment.protocol,
+            reusedExistingStudentAccount,
+        };
     }
 
     async findAll(filters?: {
@@ -240,12 +288,15 @@ export class EnrollmentsService {
                 student: {
                     include: {
                         user: true,
+                        contact: { select: { email: true, phone: true } },
+                        address: { select: { city: true, state: true } },
                     },
                 },
                 class: {
                     include: {
                         course: true,
                         city: true,
+                        group: { select: { name: true, state: true } },
                     },
                 },
             },
@@ -255,7 +306,7 @@ export class EnrollmentsService {
         });
     }
 
-    async findOne(id: string) {
+    async findOne(id: string, requesterId?: string, requesterRole?: string) {
         const enrollment = await this.prisma.enrollment.findUnique({
             where: { id },
             include: {
@@ -284,15 +335,22 @@ export class EnrollmentsService {
             throw new NotFoundException('Matrícula não encontrada');
         }
 
+        // VULN-09: verificação de propriedade — aluno só vê a própria inscrição
+        // Admin, Coordinator, Teacher podem ver qualquer inscrição
+        const allowedRoles = ['ADMIN', 'COORDINATOR', 'TEACHER', 'FINANCIAL'];
+        if (requesterId && requesterRole && !allowedRoles.includes(requesterRole)) {
+            const isOwner = enrollment.student?.user?.id === requesterId;
+            if (!isOwner) {
+                throw new ForbiddenException('Você não tem permissão para visualizar esta inscrição');
+            }
+        }
+
         return enrollment;
     }
 
     async approve(id: string, userId: string, notes?: string) {
         const enrollment = await this.findOne(id);
-
-        if (enrollment.status !== 'PENDING' && enrollment.status !== 'WAITLIST') {
-            throw new BadRequestException('Apenas matrículas pendentes ou em lista de espera podem ser aprovadas');
-        }
+        const reviewer = await this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
 
         const updated = await this.prisma.enrollment.update({
             where: { id },
@@ -323,7 +381,19 @@ export class EnrollmentsService {
                 studentName: updated.student?.user?.name,
                 courseName: (updated.class as any)?.course?.name,
                 timestamp: new Date().toISOString(),
+                actorName: reviewer?.name ?? undefined,
+                actorUserId: userId,
             });
+
+            // Dispara notificação no banco para o Aluno
+            if (updated.student?.userId) {
+                await this.notificationsSender.enrollmentApproved(
+                    updated.student.userId,
+                    (updated.class as any)?.course?.name || 'Curso',
+                    userId,
+                    reviewer?.name || undefined,
+                );
+            }
         } catch { /* WS opcional */ }
 
         return updated;
@@ -331,10 +401,7 @@ export class EnrollmentsService {
 
     async reject(id: string, userId: string, rejectionReason: string) {
         const enrollment = await this.findOne(id);
-
-        if (enrollment.status !== 'PENDING' && enrollment.status !== 'WAITLIST') {
-            throw new BadRequestException('Apenas matrículas pendentes ou em lista de espera podem ser rejeitadas');
-        }
+        const reviewer = await this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
 
         const updated = await this.prisma.enrollment.update({
             where: { id },
@@ -351,24 +418,40 @@ export class EnrollmentsService {
                         contact: true,
                     },
                 },
+                class: {
+                    include: {
+                        course: true,
+                    },
+                },
             },
         });
 
-        // TODO: Send rejection notification
-        // PASSO 3.1: notificar o aluno que a inscrição foi rejeitada
         try {
             this.notifications.notifyAdmins('inscricao_rejeitada', {
                 studentName: updated.student?.user?.name,
+                courseName: (updated.class as any)?.course?.name,
                 rejectionReason,
                 timestamp: new Date().toISOString(),
+                actorName: reviewer?.name ?? undefined,
+                actorUserId: userId,
             });
+
+            if (updated.student?.userId) {
+                await this.notificationsSender.enrollmentRejected(
+                    updated.student.userId,
+                    (updated as any).class?.course?.name || 'Curso',
+                    rejectionReason,
+                    userId,
+                    reviewer?.name || undefined,
+                );
+            }
         } catch { /* WS nunca bloqueia */ }
 
         return updated;
     }
 
     async requestCorrection(id: string, correctionDetails: string) {
-        const enrollment = await this.findOne(id);
+        await this.findOne(id);
 
         const updated = await this.prisma.enrollment.update({
             where: { id },
@@ -392,11 +475,7 @@ export class EnrollmentsService {
     }
 
     async moveToWaitlist(id: string, userId: string, reason?: string) {
-        const enrollment = await this.findOne(id);
-
-        if (enrollment.status !== 'PENDING' && enrollment.status !== 'APPROVED') {
-            throw new BadRequestException('Apenas matrículas pendentes ou aprovadas podem ser movidas para lista de espera');
-        }
+        await this.findOne(id);
 
         const updated = await this.prisma.enrollment.update({
             where: { id },
@@ -424,6 +503,32 @@ export class EnrollmentsService {
         // TODO: Send waitlist notification
 
         return updated;
+    }
+
+    async confirmEnrollment(id: string, userId: string) {
+        await this.findOne(id);
+        return this.prisma.enrollment.update({
+            where: { id },
+            data: { status: 'ENROLLED', reviewedAt: new Date(), reviewedBy: userId },
+            include: { student: { include: { user: true } }, class: { include: { course: true } } },
+        });
+    }
+
+    async moveToPending(id: string, userId: string, notes?: string) {
+        await this.findOne(id);
+        return this.prisma.enrollment.update({
+            where: { id },
+            data: {
+                status: 'PENDING',
+                reviewedAt: new Date(),
+                reviewedBy: userId,
+                ...(notes ? { notes } : {}),
+            },
+            include: {
+                student: { include: { user: true, contact: true } },
+                class: { include: { course: true } },
+            },
+        });
     }
 
     async getWaitlist(classId: string) {

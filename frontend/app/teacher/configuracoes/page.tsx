@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { CameraIcon, UserCircleIcon, BellIcon, ShieldCheckIcon, Cog6ToothIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import api from '@/lib/api/client';
 import { useAuthStore } from '@/stores/useAuthStore';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AuthenticatorSettingsTotpBlock from '@/components/auth/AuthenticatorSettingsTotpBlock';
+import ChangePasswordSettingsPanel from '@/components/auth/ChangePasswordSettingsPanel';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
     return (
@@ -56,6 +59,12 @@ export default function TeacherConfiguracoes() {
     const [cfg, setCfg] = useState({ nome: '', email: '', notifEmail: true, notifFrequencia: true, notifReembolsos: true, logAcesso: true, animacoes: true, fonteGrande: false });
 
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const t = new URLSearchParams(window.location.search).get('tab');
+        if (t === 'seguranca') setTab('seguranca');
+    }, []);
+
+    useEffect(() => {
         Promise.all([
             api.get('/users/me'),
             api.get('/users/me/preferences').catch(() => null),
@@ -73,6 +82,7 @@ export default function TeacherConfiguracoes() {
                     fonteGrande: prefRes.data.fonteGrande,
                 } : {}),
             }));
+            setDoisFatores(!!p.twoFactorEnabled);
             // BUG-07: não usar localStorage.setItem('user') — Zustand persiste em auth-storage
         }).catch(() => {
             if (authUser) { setUser(authUser); setCfg(c => ({ ...c, nome: authUser.name || '', email: authUser.email || '' })); }
@@ -102,17 +112,18 @@ export default function TeacherConfiguracoes() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }} className="animate-fade-in">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '2rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '0.3rem' }}>CONFIGURAÇÕES</h1>
-                    <p style={{ color: '#9CA3AF', fontSize: '0.82rem' }}>Personalize sua experiência no portal do professor</p>
-                </div>
-                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-                    {saved && <div className="animate-scale-in" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.9rem', borderRadius: 9, background: '#DCFCE7', border: '1px solid #BBF7D0', color: '#059669', fontSize: '0.78rem', fontWeight: 700 }}><CheckCircleIcon style={{ width: 14, height: 14 }} /> Salvo!</div>}
-                    {saveError && <div className="animate-scale-in" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.9rem', borderRadius: 9, background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', fontSize: '0.78rem', fontWeight: 700 }}><ExclamationTriangleIcon style={{ width: 14, height: 14 }} /> Erro ao salvar.</div>}
-                    <button onClick={handleSave} className="btn-primary">Salvar Alterações</button>
-                </div>
-            </div>
+            <AdminHeaderHero
+                title="CONFIGURAÇÕES"
+                subtitle="Personalize sua experiência no portal do professor"
+                badge="PROFESSOR"
+                rightSlot={(
+                    <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                        {saved && <div className="animate-scale-in" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.9rem', borderRadius: 9, background: '#DCFCE7', border: '1px solid #BBF7D0', color: '#059669', fontSize: '0.78rem', fontWeight: 700 }}><CheckCircleIcon style={{ width: 14, height: 14 }} /> Salvo!</div>}
+                        {saveError && <div className="animate-scale-in" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.9rem', borderRadius: 9, background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', fontSize: '0.78rem', fontWeight: 700 }}><ExclamationTriangleIcon style={{ width: 14, height: 14 }} /> Erro ao salvar.</div>}
+                        <button onClick={handleSave} className="btn-primary">Salvar Alterações</button>
+                    </div>
+                )}
+            />
 
             <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #E5E7EB', padding: '0.5rem', display: 'flex', gap: '0.25rem', flexWrap: 'wrap', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
                 {TABS.map(t => { const Icon = t.icon; const active = tab === t.id; return (
@@ -167,24 +178,39 @@ export default function TeacherConfiguracoes() {
                 <div className="animate-fade-in">
                     <div style={SECTION}>
                         <div style={SECTION_TITLE}>Acesso e Segurança</div>
+                        <div style={{ marginBottom: '1.35rem', paddingBottom: '1.35rem', borderBottom: '1px solid #F3F4F6' }}>
+                            <div style={{ ...SECTION_TITLE, marginBottom: '0.65rem' }}>Alterar senha</div>
+                            <ChangePasswordSettingsPanel />
+                        </div>
                         <SettingRow label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
                             {twoFAStep === 'idle' && !doisFatores && (
-                                <button onClick={async () => { setTwoFAError(''); setTwoFALoading(true); try { const res = await api.post('/auth/2fa/generate'); setQrCodeUrl(res.data.qrCodeDataUrl || res.data.qrCode || ''); setTwoFAStep('setup'); } catch (e: any) { setTwoFAError(e?.response?.data?.message || 'Erro ao gerar QR Code'); } finally { setTwoFALoading(false); } }} disabled={twoFALoading} style={{ padding: '0.45rem 1.1rem', borderRadius: 8, border: '1.5px solid #0891B2', background: twoFALoading ? '#E5E7EB' : '#F0F9FF', color: '#0891B2', fontWeight: 700, fontSize: '0.82rem', cursor: twoFALoading ? 'not-allowed' : 'pointer' }}>
+                                <button onClick={async () => { setTwoFAError(''); setTwoFALoading(true); try { const res = await api.post('/auth/2fa/generate'); const qr = res.data?.qrCodeDataUrl || res.data?.qrCode || ''; if (!qr) throw new Error('QR Code não retornado pelo servidor.'); setQrCodeUrl(qr); setTwoFAStep('setup'); } catch (e: any) { const status = e?.response?.status; if (status === 401 || status === 403) setTwoFAError('Sessão expirada ou sem permissão. Faça login novamente.'); else setTwoFAError(e?.response?.data?.message || e?.message || 'Erro ao gerar QR Code'); } finally { setTwoFALoading(false); } }} disabled={twoFALoading} style={{ padding: '0.45rem 1.15rem', borderRadius: 10, border: '2px solid #0F172A', background: twoFALoading ? '#E5E7EB' : '#FFD600', color: twoFALoading ? '#9CA3AF' : '#000', fontWeight: 800, fontSize: '0.82rem', cursor: twoFALoading ? 'not-allowed' : 'pointer', boxShadow: twoFALoading ? 'none' : '0 4px 12px rgba(255,214,0,0.35)' }}>
                                     {twoFALoading ? 'Gerando...' : '🔐 Ativar 2FA'}
                                 </button>
                             )}
+                            {twoFAStep === 'idle' && !doisFatores && twoFAError && (
+                                <div style={{ marginTop: '0.45rem', fontSize: '0.72rem', color: '#EF4444', maxWidth: 280, textAlign: 'right' }}>{twoFAError}</div>
+                            )}
                             {twoFAStep === 'setup' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-end' }}>
-                                    {qrCodeUrl && <div style={{ textAlign: 'center', padding: '0.75rem', background: '#fff', borderRadius: 10, border: '2px solid #BAE6FD' }}><img src={qrCodeUrl} alt="QR Code 2FA" style={{ width: 140, height: 140, display: 'block' }} /><div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 6 }}>Escaneie com Google Authenticator ou Authy</div></div>}
-                                    <input type="text" inputMode="numeric" maxLength={6} placeholder="Código de 6 dígitos" value={totpToken} onChange={e => setTotpToken(e.target.value.replace(/\D/g, '').slice(0, 6))} style={{ width: 160, padding: '0.5rem 0.75rem', borderRadius: 8, border: '1.5px solid #BAE6FD', background: '#F0F9FF', fontSize: '1.1rem', letterSpacing: '0.3em', textAlign: 'center', color: '#0891B2', fontWeight: 700, outline: 'none' }} />
-                                    {twoFAError && <div style={{ fontSize: '0.72rem', color: '#EF4444' }}>{twoFAError}</div>}
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <button onClick={() => { setTwoFAStep('idle'); setTotpToken(''); setTwoFAError(''); }} style={{ padding: '0.4rem 0.9rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#6B7280', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}>Cancelar</button>
-                                        <button disabled={totpToken.length !== 6 || twoFALoading} onClick={async () => { setTwoFAError(''); setTwoFALoading(true); try { await api.post('/auth/2fa/enable', { token: totpToken }); setDoisFatores(true); setTwoFAStep('active'); setTotpToken(''); } catch (e: any) { setTwoFAError(e?.response?.data?.message || 'Código inválido.'); } finally { setTwoFALoading(false); } }} style={{ padding: '0.4rem 1rem', borderRadius: 8, border: 'none', background: totpToken.length !== 6 || twoFALoading ? '#E5E7EB' : '#0891B2', color: totpToken.length !== 6 || twoFALoading ? '#9CA3AF' : '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: totpToken.length !== 6 || twoFALoading ? 'not-allowed' : 'pointer' }}>
-                                            {twoFALoading ? 'Ativando...' : 'Confirmar e Ativar'}
-                                        </button>
-                                    </div>
-                                </div>
+                                <AuthenticatorSettingsTotpBlock
+                                    variant="setup"
+                                    qrCodeUrl={qrCodeUrl}
+                                    value={totpToken}
+                                    onChange={setTotpToken}
+                                    error={twoFAError}
+                                    onCancel={() => { setTwoFAStep('idle'); setTotpToken(''); setTwoFAError(''); }}
+                                    onConfirm={async () => {
+                                        setTwoFAError(''); setTwoFALoading(true);
+                                        try {
+                                            await api.post('/auth/2fa/enable', { token: totpToken });
+                                            setDoisFatores(true); setTwoFAStep('active'); setTotpToken('');
+                                        } catch (e: any) {
+                                            setTwoFAError(e?.response?.data?.message || 'Código inválido.');
+                                        } finally { setTwoFALoading(false); }
+                                    }}
+                                    loading={twoFALoading}
+                                    confirmDisabled={totpToken.length !== 6}
+                                />
                             )}
                             {(twoFAStep === 'active' || (twoFAStep === 'idle' && doisFatores)) && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -193,17 +219,24 @@ export default function TeacherConfiguracoes() {
                                 </div>
                             )}
                             {twoFAStep === 'disabling' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', alignItems: 'flex-end' }}>
-                                    <div style={{ fontSize: '0.75rem', color: '#6B7280' }}>Digite o código para confirmar desativação</div>
-                                    <input type="text" inputMode="numeric" maxLength={6} placeholder="Código de 6 dígitos" value={twoFADisableToken} onChange={e => setTwoFADisableToken(e.target.value.replace(/\D/g, '').slice(0, 6))} style={{ width: 160, padding: '0.5rem 0.75rem', borderRadius: 8, border: '1.5px solid #FED7AA', background: '#FFF7ED', fontSize: '1.1rem', letterSpacing: '0.3em', textAlign: 'center', color: '#EA580C', fontWeight: 700, outline: 'none' }} />
-                                    {twoFAError && <div style={{ fontSize: '0.72rem', color: '#EF4444' }}>{twoFAError}</div>}
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <button onClick={() => { setTwoFAStep('idle'); setTwoFAError(''); setTwoFADisableToken(''); }} style={{ padding: '0.4rem 0.9rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#6B7280', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}>Cancelar</button>
-                                        <button disabled={twoFADisableToken.length !== 6 || twoFALoading} onClick={async () => { setTwoFAError(''); setTwoFALoading(true); try { await api.post('/auth/2fa/disable', { token: twoFADisableToken }); setDoisFatores(false); setTwoFAStep('idle'); setTwoFADisableToken(''); } catch (e: any) { setTwoFAError(e?.response?.data?.message || 'Código inválido.'); } finally { setTwoFALoading(false); } }} style={{ padding: '0.4rem 1rem', borderRadius: 8, border: 'none', background: twoFADisableToken.length !== 6 || twoFALoading ? '#E5E7EB' : '#EF4444', color: twoFADisableToken.length !== 6 || twoFALoading ? '#9CA3AF' : '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: twoFADisableToken.length !== 6 || twoFALoading ? 'not-allowed' : 'pointer' }}>
-                                            {twoFALoading ? 'Desativando...' : 'Confirmar Desativação'}
-                                        </button>
-                                    </div>
-                                </div>
+                                <AuthenticatorSettingsTotpBlock
+                                    variant="disabling"
+                                    value={twoFADisableToken}
+                                    onChange={setTwoFADisableToken}
+                                    error={twoFAError}
+                                    onCancel={() => { setTwoFAStep('idle'); setTwoFAError(''); setTwoFADisableToken(''); }}
+                                    onConfirm={async () => {
+                                        setTwoFAError(''); setTwoFALoading(true);
+                                        try {
+                                            await api.post('/auth/2fa/disable', { token: twoFADisableToken });
+                                            setDoisFatores(false); setTwoFAStep('idle'); setTwoFADisableToken('');
+                                        } catch (e: any) {
+                                            setTwoFAError(e?.response?.data?.message || 'Código inválido.');
+                                        } finally { setTwoFALoading(false); }
+                                    }}
+                                    loading={twoFALoading}
+                                    confirmDisabled={twoFADisableToken.length !== 6}
+                                />
                             )}
                         </SettingRow>
                         <SettingRow label="Log de Acessos" desc="Registrar histórico de entrada na plataforma"><Toggle checked={cfg.logAcesso} onChange={v => set('logAcesso', v)} /></SettingRow>

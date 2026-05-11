@@ -5,7 +5,43 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
-// ─── Driver: seus imprevistos ─────────────────────────────────────────────────
+// ─── Portal neutro: lista/cria imprevistos do próprio utilizador (aluno/prof/motorista) ──
+@ApiTags('absences')
+@Controller('absences')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('DRIVER', 'TEACHER', 'STUDENT')
+@ApiBearerAuth()
+export class PortalAbsencesController {
+    constructor(private readonly absencesService: AbsencesService) {}
+
+    @Get()
+    @ApiOperation({ summary: 'Lista imprevistos do utilizador autenticado (portal)' })
+    async findMine(@Request() req: any) {
+        return this.absencesService.findByUser(req.user.id);
+    }
+
+    @Get(':id/document-presigned-url')
+    @ApiOperation({ summary: 'URL assinada para visualizar documento / atestado (MinIO privado)' })
+    async getDocumentPresigned(
+        @Param('id') id: string,
+        @Request() req: any,
+    ) {
+        return this.absencesService.getDocumentPresignedViewUrl(id, req.user.id, req.user.role, {
+            adminRoute: false,
+        });
+    }
+
+    @Post()
+    @ApiOperation({ summary: 'Regista novo imprevisto (portal aluno/professor/motorista)' })
+    async create(
+        @Request() req: any,
+        @Body() body: { type: string; date: string; description: string; documentUrl?: string },
+    ) {
+        return this.absencesService.create(req.user.id, body);
+    }
+}
+
+// ─── Legado: mesmo comportamento que /absences (mantido para compatibilidade) ──
 @ApiTags('driver/absences')
 @Controller('driver/absences')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -50,6 +86,25 @@ export class AdminAbsencesController {
         return this.absencesService.findAll(status, userId);
     }
 
+    @Get(':id/student-penalty-preview')
+    @ApiOperation({
+        summary: '[Admin] Estima penalidade pedagógica (% de um dia sobre o período da turma) para alunos',
+    })
+    async studentPenaltyPreview(@Param('id') id: string) {
+        return this.absencesService.studentPenaltyPreviewByAbsenceId(id);
+    }
+
+    @Get(':id/document-presigned-url')
+    @ApiOperation({ summary: '[Admin] URL assinada para visualizar documento / atestado (MinIO privado)' })
+    async getDocumentPresignedAdmin(
+        @Param('id') id: string,
+        @Request() req: any,
+    ) {
+        return this.absencesService.getDocumentPresignedViewUrl(id, req.user.id, req.user.role, {
+            adminRoute: true,
+        });
+    }
+
     @Patch(':id/review')
     @ApiOperation({ summary: '[Admin] Valida, rejeita ou penaliza um imprevisto' })
     async review(
@@ -64,9 +119,10 @@ export class AdminAbsencesController {
     @Post()
     @ApiOperation({ summary: '[Admin] Cria imprevisto manualmente para um usuário (PASSO 3.6)' })
     async createByAdmin(
+        @Request() req: any,
         @Body() body: { userId: string; type: string; date: string; description: string; documentUrl?: string },
     ) {
-        return this.absencesService.createByAdmin(body.userId, body);
+        return this.absencesService.createByAdmin(body.userId, body, req.user.id);
     }
 
     // PASSO 3.6: Editar dados de um imprevisto

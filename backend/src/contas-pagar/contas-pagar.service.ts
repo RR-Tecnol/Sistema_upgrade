@@ -1,14 +1,45 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ContaPagarStatus, FeedbackRewardStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { CreateContaPagarDto } from './dto/create-conta-pagar.dto';
-import { ContaPagarStatus } from '@prisma/client';
 
 @Injectable()
 export class ContasPagarService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private readonly notifications: NotificationsGateway,
+    ) { }
+
+    private emitFinanceiroListagemRefresh(source: string, extra: Record<string, unknown> = {}) {
+        try {
+            this.notifications.notifyFinanceiroListagemRefresh({ source, ...extra });
+        } catch { /* WS nunca bloqueia */ }
+    }
+
+    /** Alinha CourseFeedback quando a conta é paga pela UI financeira (evita divergência com feedbacks.service). */
+    private async syncCourseFeedbackRewardPaidForConta(
+        contaPagarId: string,
+        tx?: Prisma.TransactionClient,
+    ) {
+        const client = tx ?? this.prisma;
+        const fb = await client.courseFeedback.findFirst({
+            where: { contaPagarId, active: true },
+            select: { id: true, rewardStatus: true },
+        });
+        if (!fb || fb.rewardStatus !== FeedbackRewardStatus.PENDING) return;
+        await client.courseFeedback.update({
+            where: { id: fb.id },
+            data: {
+                rewardStatus: FeedbackRewardStatus.PAID,
+                rewardPaidAt: new Date(),
+                rewardPaymentReference: `conta_pagar:${contaPagarId}`,
+            },
+        });
+    }
 
     async create(dto: CreateContaPagarDto) {
-        return this.prisma.contaPagar.create({
+        const created = await this.prisma.contaPagar.create({
             data: {
                 tipo_conta: dto.tipo_conta,
                 tipo_espontaneo: dto.tipo_espontaneo,
@@ -21,8 +52,13 @@ export class ContasPagarService {
                 cidade: dto.cidade,
                 acaoId: dto.acao_id || undefined,
             },
-            include: { acao: { select: { id: true, nome: true } } },
+            include: {
+                acao: { select: { id: true, nome: true } },
+                courseFeedback: { select: { currentPhotoUrl: true, socialPostProofUrl: true } },
+            },
         });
+        this.emitFinanceiroListagemRefresh('contas_pagar_create', { contaPagarId: created.id });
+        return created;
     }
 
     async findAll(filters?: {
@@ -49,21 +85,38 @@ export class ContasPagarService {
             where.OR = [
                 { descricao: { contains: filters.search, mode: 'insensitive' } },
                 { cidade: { contains: filters.search, mode: 'insensitive' } },
+                { observacoes: { contains: filters.search, mode: 'insensitive' } },
+                { tipo_conta: { contains: filters.search, mode: 'insensitive' } },
             ];
         }
 
         const [contas, total] = await Promise.all([
             this.prisma.contaPagar.findMany({
                 where,
-                orderBy: { data_vencimento: 'asc' },
-                include: { acao: { select: { id: true, nome: true } } },
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    acao: { select: { id: true, nome: true } },
+                    courseFeedback: {
+                        select: {
+                            id: true,
+                            status: true,
+                            resubmittedAfterReject: true,
+                            rejectionReason: true,
+                            studentSubmitSequence: true,
+                            currentPhotoUrl: true,
+                            socialPostProofUrl: true,
+                            student: { select: { user: { select: { name: true, email: true } } } },
+                        },
+                    },
+                },
             }),
             this.prisma.contaPagar.count({ where }),
         ]);
 
-        // KPIs por status
+        // KPIs por status — só contas ativas (excluídas não entram nos totais)
         const kpis = await this.prisma.contaPagar.groupBy({
             by: ['status'],
+            where: { active: true },
             _sum: { valor: true },
             _count: { _all: true },
         });
@@ -81,7 +134,21 @@ export class ContasPagarService {
     async findOne(id: string) {
         const conta = await this.prisma.contaPagar.findUnique({
             where: { id },
-            include: { acao: { select: { id: true, nome: true } } },
+            include: {
+                acao: { select: { id: true, nome: true } },
+                courseFeedback: {
+                    select: {
+                        id: true,
+                        status: true,
+                        resubmittedAfterReject: true,
+                        rejectionReason: true,
+                        studentSubmitSequence: true,
+                        currentPhotoUrl: true,
+                        socialPostProofUrl: true,
+                        student: { select: { user: { select: { name: true, email: true } } } },
+                    },
+                },
+            },
         });
         if (!conta) throw new NotFoundException('Conta não encontrada');
         return conta;
@@ -89,7 +156,7 @@ export class ContasPagarService {
 
     async update(id: string, dto: Partial<CreateContaPagarDto> & { data_pagamento?: string; status?: ContaPagarStatus }) {
         await this.findOne(id);
-        return this.prisma.contaPagar.update({
+        const result = await this.prisma.contaPagar.update({
             where: { id },
             data: {
                 ...(dto.tipo_conta !== undefined && { tipo_conta: dto.tipo_conta }),
@@ -104,43 +171,66 @@ export class ContasPagarService {
                 ...(dto.cidade !== undefined && { cidade: dto.cidade }),
                 ...(dto.acao_id !== undefined && { acaoId: dto.acao_id || null }),
             },
-            include: { acao: { select: { id: true, nome: true } } },
+            include: {
+                acao: { select: { id: true, nome: true } },
+                courseFeedback: { select: { currentPhotoUrl: true, socialPostProofUrl: true } },
+            },
         });
+        if (result.status === 'paga') {
+            await this.syncCourseFeedbackRewardPaidForConta(id);
+        }
+        this.emitFinanceiroListagemRefresh('contas_pagar_update', { contaPagarId: id });
+        return result;
     }
 
     async marcarComoPaga(id: string) {
         await this.findOne(id);
-        return this.prisma.contaPagar.update({
-            where: { id },
-            data: { status: 'paga', data_pagamento: new Date() },
+        const updated = await this.prisma.$transaction(async (tx) => {
+            const conta = await tx.contaPagar.update({
+                where: { id },
+                data: { status: 'paga', data_pagamento: new Date() },
+            });
+            await this.syncCourseFeedbackRewardPaidForConta(id, tx);
+            return conta;
         });
+        this.emitFinanceiroListagemRefresh('contas_pagar_marcar_paga', { contaPagarId: id });
+        return updated;
     }
 
     // PASSO 3.9: soft delete — nunca apaga fisicamente
     async remove(id: string) {
         await this.findOne(id);
-        return this.prisma.contaPagar.update({
+        const out = await this.prisma.contaPagar.update({
             where: { id },
             data: { active: false },
         });
+        this.emitFinanceiroListagemRefresh('contas_pagar_remove', { contaPagarId: id });
+        return out;
     }
 
     // PASSO 3.9: restaurar conta excluída
     async restore(id: string) {
         const conta = await this.prisma.contaPagar.findUnique({ where: { id } });
         if (!conta) throw new NotFoundException('Conta não encontrada');
-        return this.prisma.contaPagar.update({
+        const out = await this.prisma.contaPagar.update({
             where: { id },
             data: { active: true },
-            include: { acao: { select: { id: true, nome: true } } },
+            include: {
+                acao: { select: { id: true, nome: true } },
+                courseFeedback: { select: { currentPhotoUrl: true, socialPostProofUrl: true } },
+            },
         });
+        this.emitFinanceiroListagemRefresh('contas_pagar_restore', { contaPagarId: id });
+        return out;
     }
 
     async updateAnexo(id: string, comprovante_url: string) {
         await this.findOne(id);
-        return this.prisma.contaPagar.update({
+        const out = await this.prisma.contaPagar.update({
             where: { id },
             data: { comprovante_url },
         });
+        this.emitFinanceiroListagemRefresh('contas_pagar_update_anexo', { contaPagarId: id });
+        return out;
     }
 }

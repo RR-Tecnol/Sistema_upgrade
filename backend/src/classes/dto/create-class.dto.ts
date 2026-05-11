@@ -1,6 +1,7 @@
-import { IsString, IsNotEmpty, IsInt, IsEnum, IsOptional, IsDateString, Min, Length, Max } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { Period, ClassStatus } from '@prisma/client';
+import { IsString, IsNotEmpty, IsInt, IsEnum, IsOptional, IsDateString, IsNumber, Min, Length, Max, IsArray } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Period, ClassStatus, ClassWeekendPolicy } from '@prisma/client';
 
 export class CreateClassDto {
     @ApiProperty({ description: 'Course ID' })
@@ -84,4 +85,72 @@ export class CreateClassDto {
     @IsDateString()
     @IsOptional()
     enrollmentCloseDate?: string;
+
+    // ── Tipo de rota (REQ-ROUTE-2026) ─────────────────────────────────────────
+    @ApiPropertyOptional({ example: 'INTERCIDADE', enum: ['INTERCIDADE', 'INTRAURBANA'], description: 'Tipo de rota da turma' })
+    @IsString()
+    @IsOptional()
+    routeType?: 'INTERCIDADE' | 'INTRAURBANA';
+
+    @ApiPropertyOptional({ example: 'uuid-da-cidade-origem', description: 'Cidade de origem da Carreta-Escola (apenas intercidade)' })
+    @IsString()
+    @IsOptional()
+    originCityId?: string;
+
+    @ApiPropertyOptional({ example: 'Alto do Calhau', description: 'Bairro/ponto de partida (apenas intraurbana)' })
+    @IsString()
+    @IsOptional()
+    originNeighborhood?: string;
+
+    @ApiPropertyOptional({ example: 'Forquilha', description: 'Bairro/ponto de chegada (apenas intraurbana)' })
+    @IsString()
+    @IsOptional()
+    destinationNeighborhood?: string;
+
+    // ── Local específico onde a turma ocorre fisicamente (REQ-LOCAL-2026) ──
+    // Todos opcionais para não quebrar registos existentes; admin preenche depois.
+
+    @ApiPropertyOptional({ example: 'Escola Municipal Castro Alves', description: 'Nome do local físico onde a turma ocorre' })
+    @IsString()
+    @IsOptional()
+    locationName?: string;
+
+    @ApiPropertyOptional({ example: 'Rua das Flores, 123 - Centro', description: 'Endereço completo do local' })
+    @IsString()
+    @IsOptional()
+    locationAddress?: string;
+
+    @ApiPropertyOptional({ example: 'Próximo ao mercado, portão azul', description: 'Ponto de referência para localizar' })
+    @IsString()
+    @IsOptional()
+    locationReference?: string;
+
+    @ApiPropertyOptional({ example: -2.5307, description: 'Latitude GPS (decimal)' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    locationLatitude?: number;
+
+    @ApiPropertyOptional({ example: -44.3068, description: 'Longitude GPS (decimal)' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    locationLongitude?: number;
+
+    @ApiPropertyOptional({
+        enum: ClassWeekendPolicy,
+        description: 'Como contar fins de semana nos dias letivos previstos (frequência/certificado)',
+    })
+    @IsEnum(ClassWeekendPolicy)
+    @IsOptional()
+    weekendPolicy?: ClassWeekendPolicy;
+
+    @ApiPropertyOptional({
+        example: ['2026-05-10', '2026-05-24'],
+        description: 'Com weekendPolicy=SELECT_WEEKENDS: datas YYYY-MM-DD com aula ao fim de semana',
+    })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    weekendExtraDates?: string[];
 }

@@ -16,6 +16,8 @@ export interface Student {
     birthState?: string;
     socialName?: string;
     photoUrl?: string | null;
+    /** URLs de documentos da matrícula (RG, CPF, comprovantes, foto) — JSON no backend */
+    documents?: Record<string, string> | null;
     active: boolean;
     createdAt?: string;
     user: {
@@ -46,6 +48,7 @@ export interface Student {
     enrollments?: any[];
     attendances?: any[];
     certificates?: any[];
+    legalConsents?: Array<{ id: string; recordedAt?: string; consentType?: string }>;
     _count?: {
         enrollments: number;
     };
@@ -53,7 +56,7 @@ export interface Student {
 
 export interface StudentFilters {
     search?: string;
-    state?: 'MA' | 'PI';
+    state?: string;
     active?: boolean;
     page?: number;
     limit?: number;
@@ -61,10 +64,7 @@ export interface StudentFilters {
 
 export interface StudentStats {
     total: number;
-    byState: {
-        MA: number;
-        PI: number;
-    };
+    byState: Record<string, number>;
     activeEnrollments: number;
 }
 

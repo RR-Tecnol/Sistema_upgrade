@@ -18,169 +18,90 @@ export default function Step7Terms() {
             setError('Você deve aceitar todos os termos para continuar');
             return;
         }
-
         updateTerms(data);
         nextStep();
     };
 
-    return (
-        <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-white mb-6">Termos e Autorizações</h2>
+    const LABEL: React.CSSProperties = { display: 'block', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9CA3AF', marginBottom: '0.45rem' };
 
-            <div className="bg-yellow-500/20 border border-yellow-400/50 rounded-xl p-4 mb-6">
-                <p className="text-yellow-200 text-sm">
-                    ⚠️ <strong>Importante:</strong> Leia atentamente todos os termos antes de aceitar.
-                    Você deve concordar com todos para prosseguir com a inscrição.
+    const TermCard = ({ title, children, id, field, checked }: { title: string; children: React.ReactNode; id: string; field: keyof typeof data; checked: boolean }) => (
+        <div style={{
+            borderRadius: 14,
+            border: `1px solid ${checked ? 'rgba(5,150,105,0.4)' : 'rgba(255,255,255,0.07)'}`,
+            background: checked ? 'rgba(5,150,105,0.04)' : 'rgba(255,255,255,0.02)',
+            padding: '1.1rem 1.25rem',
+            transition: 'all 0.25s',
+        }}>
+            <h3 style={{ fontSize: '0.82rem', fontWeight: 800, color: checked ? '#34D399' : '#E5E7EB', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {checked ? '✅' : '⚪'} {title}
+            </h3>
+            <div style={{ color: '#6B7280', fontSize: '0.78rem', lineHeight: 1.6, marginBottom: '1rem' }}>
+                {children}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', paddingTop: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <input
+                    type="checkbox"
+                    id={id}
+                    checked={checked}
+                    onChange={(e) => handleChange(field, e.target.checked)}
+                    className="enroll-checkbox"
+                    style={{ marginTop: 2 }}
+                />
+                <label htmlFor={id} style={{ color: '#D1D5DB', fontSize: '0.84rem', cursor: 'pointer', lineHeight: 1.4 }}>
+                    {field === 'termsAccepted' && <>Li e aceito os <strong>Termos e Condições</strong> do programa</>}
+                    {field === 'dataProcessingConsent' && <>Autorizo o <strong>tratamento dos meus dados pessoais</strong> conforme descrito acima</>}
+                    {field === 'imageUseAuthorization' && <>Autorizo o <strong>uso da minha imagem</strong> para divulgação do programa</>}
+                    {field === 'attendanceCommitment' && <>Comprometo-me a <strong>manter a frequência mínima</strong> exigida</>}
+                </label>
+            </div>
+        </div>
+    );
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff', margin: '0 0 0.25rem' }}>Termos e Autorizações</h2>
+
+            {/* Warning */}
+            <div style={{ padding: '0.8rem 1rem', borderRadius: 10, background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                <p style={{ fontSize: '0.8rem', color: '#FCD34D', margin: 0 }}>
+                    ⚠️ <strong>Importante:</strong> Leia atentamente todos os termos antes de aceitar. Você deve concordar com todos para prosseguir com a inscrição.
                 </p>
             </div>
 
-            {/* Terms and Conditions */}
-            <div className="bg-white/5 rounded-xl p-6 border border-white/20 space-y-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Termos e Condições do Programa</h3>
+            {/* Terms card */}
+            <TermCard title="Termos e Condições do Programa" id="termsAccepted" field="termsAccepted" checked={data.termsAccepted || false}>
+                <p><strong style={{ color: '#9CA3AF' }}>1. OBJETIVO:</strong> O Programa Qualifica Maranhão e Piauí oferece cursos de qualificação profissional gratuitos.</p>
+                <p style={{ marginTop: '0.5rem' }}><strong style={{ color: '#9CA3AF' }}>2. COMPROMISSOS:</strong> Frequentar no mínimo 75% das aulas, participar das atividades, respeitar professores e colegas.</p>
+                <p style={{ marginTop: '0.5rem' }}><strong style={{ color: '#9CA3AF' }}>3. CERTIFICAÇÃO:</strong> Emitido apenas para alunos que cumprirem os requisitos de frequência e aproveitamento.</p>
+                <p style={{ marginTop: '0.5rem' }}><strong style={{ color: '#9CA3AF' }}>4. DESISTÊNCIA:</strong> Em caso de desistência, comunicar formalmente a coordenação do curso.</p>
+            </TermCard>
 
-                <div className="max-h-60 overflow-y-auto bg-black/20 rounded-lg p-4 text-purple-200 text-sm space-y-3">
-                    <p>
-                        <strong>1. OBJETIVO DO PROGRAMA:</strong> O Programa Qualifica Maranhão e Piauí tem como objetivo
-                        oferecer cursos de qualificação profissional gratuitos para a população dos estados do Maranhão e Piauí.
-                    </p>
-                    <p>
-                        <strong>2. COMPROMISSOS DO ALUNO:</strong> Ao se inscrever, o aluno se compromete a:
-                    </p>
-                    <ul className="list-disc list-inside ml-4 space-y-1">
-                        <li>Frequentar no mínimo 75% das aulas</li>
-                        <li>Participar ativamente das atividades propostas</li>
-                        <li>Respeitar os professores, colegas e equipe do programa</li>
-                        <li>Zelar pelo patrimônio e materiais disponibilizados</li>
-                    </ul>
-                    <p>
-                        <strong>3. CERTIFICAÇÃO:</strong> O certificado será emitido apenas para alunos que cumprirem
-                        os requisitos de frequência e aproveitamento.
-                    </p>
-                    <p>
-                        <strong>4. DESISTÊNCIA:</strong> Em caso de desistência, o aluno deve comunicar formalmente
-                        a coordenação do curso para que sua vaga possa ser disponibilizada para outro candidato.
-                    </p>
-                </div>
+            {/* LGPD */}
+            <TermCard title="Consentimento de Dados (LGPD)" id="dataProcessingConsent" field="dataProcessingConsent" checked={data.dataProcessingConsent || false}>
+                <p>De acordo com a LGPD (Lei nº 13.709/2018), seus dados pessoais serão usados exclusivamente para: processamento da inscrição, comunicação sobre o curso, emissão de certificados e estatísticas anonimizadas do programa.</p>
+            </TermCard>
 
-                <div className="flex items-start space-x-3 pt-4">
-                    <input
-                        type="checkbox"
-                        id="termsAccepted"
-                        checked={data.termsAccepted || false}
-                        onChange={(e) => handleChange('termsAccepted', e.target.checked)}
-                        className="mt-1 w-5 h-5 rounded border-white/20 bg-white/10 text-purple-600 focus:ring-2 focus:ring-purple-500"
-                    />
-                    <label htmlFor="termsAccepted" className="text-white cursor-pointer">
-                        Li e aceito os <strong>Termos e Condições</strong> do programa
-                    </label>
-                </div>
-            </div>
+            {/* Image use */}
+            <TermCard title="Autorização de Uso de Imagem" id="imageUseAuthorization" field="imageUseAuthorization" checked={data.imageUseAuthorization || false}>
+                <p>Durante o curso, poderão ser realizadas fotografias e filmagens para fins de divulgação do programa em materiais institucionais, redes sociais e relatórios.</p>
+            </TermCard>
 
-            {/* LGPD - Data Processing Consent */}
-            <div className="bg-white/5 rounded-xl p-6 border border-white/20 space-y-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Consentimento de Tratamento de Dados (LGPD)</h3>
+            {/* Attendance */}
+            <TermCard title="Compromisso de Frequência" id="attendanceCommitment" field="attendanceCommitment" checked={data.attendanceCommitment || false}>
+                <p>Para obter o certificado, é necessário ter no mínimo <strong style={{ color: '#FBBF24' }}>75% de frequência</strong> nas aulas. Faltas não justificadas podem resultar no desligamento do programa.</p>
+            </TermCard>
 
-                <div className="text-purple-200 text-sm space-y-3">
-                    <p>
-                        De acordo com a Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/2018), seus dados pessoais
-                        serão utilizados exclusivamente para:
-                    </p>
-                    <ul className="list-disc list-inside ml-4 space-y-1">
-                        <li>Processamento da sua inscrição no curso</li>
-                        <li>Comunicação sobre o andamento do curso</li>
-                        <li>Emissão de certificados</li>
-                        <li>Estatísticas e relatórios do programa (dados anonimizados)</li>
-                    </ul>
-                    <p>
-                        Seus dados serão armazenados de forma segura e não serão compartilhados com terceiros sem
-                        seu consentimento expresso.
-                    </p>
-                </div>
-
-                <div className="flex items-start space-x-3 pt-4">
-                    <input
-                        type="checkbox"
-                        id="dataProcessingConsent"
-                        checked={data.dataProcessingConsent || false}
-                        onChange={(e) => handleChange('dataProcessingConsent', e.target.checked)}
-                        className="mt-1 w-5 h-5 rounded border-white/20 bg-white/10 text-purple-600 focus:ring-2 focus:ring-purple-500"
-                    />
-                    <label htmlFor="dataProcessingConsent" className="text-white cursor-pointer">
-                        Autorizo o <strong>tratamento dos meus dados pessoais</strong> conforme descrito acima
-                    </label>
-                </div>
-            </div>
-
-            {/* Image Use Authorization */}
-            <div className="bg-white/5 rounded-xl p-6 border border-white/20 space-y-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Autorização de Uso de Imagem</h3>
-
-                <div className="text-purple-200 text-sm space-y-3">
-                    <p>
-                        Durante o curso, poderão ser realizadas fotografias e filmagens para fins de divulgação
-                        do programa em materiais institucionais, redes sociais e relatórios.
-                    </p>
-                </div>
-
-                <div className="flex items-start space-x-3 pt-4">
-                    <input
-                        type="checkbox"
-                        id="imageUseAuthorization"
-                        checked={data.imageUseAuthorization || false}
-                        onChange={(e) => handleChange('imageUseAuthorization', e.target.checked)}
-                        className="mt-1 w-5 h-5 rounded border-white/20 bg-white/10 text-purple-600 focus:ring-2 focus:ring-purple-500"
-                    />
-                    <label htmlFor="imageUseAuthorization" className="text-white cursor-pointer">
-                        Autorizo o <strong>uso da minha imagem</strong> para divulgação do programa
-                    </label>
-                </div>
-            </div>
-
-            {/* Attendance Commitment */}
-            <div className="bg-white/5 rounded-xl p-6 border border-white/20 space-y-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Compromisso de Frequência</h3>
-
-                <div className="text-purple-200 text-sm space-y-3">
-                    <p>
-                        Para obter o certificado, é necessário ter no mínimo <strong>75% de frequência</strong> nas aulas.
-                        Faltas não justificadas podem resultar no desligamento do programa.
-                    </p>
-                </div>
-
-                <div className="flex items-start space-x-3 pt-4">
-                    <input
-                        type="checkbox"
-                        id="attendanceCommitment"
-                        checked={data.attendanceCommitment || false}
-                        onChange={(e) => handleChange('attendanceCommitment', e.target.checked)}
-                        className="mt-1 w-5 h-5 rounded border-white/20 bg-white/10 text-purple-600 focus:ring-2 focus:ring-purple-500"
-                    />
-                    <label htmlFor="attendanceCommitment" className="text-white cursor-pointer">
-                        Comprometo-me a <strong>manter a frequência mínima</strong> exigida
-                    </label>
-                </div>
-            </div>
-
+            {/* Error */}
             {error && (
-                <div className="bg-red-500/20 border border-red-400/50 rounded-xl p-4">
-                    <p className="text-red-200 text-sm">{error}</p>
+                <div style={{ padding: '0.8rem 1rem', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                    <p style={{ color: '#F87171', fontSize: '0.82rem', margin: 0 }}>❌ {error}</p>
                 </div>
             )}
 
-            {/* Navigation Buttons */}
-            <div className="flex justify-between pt-6">
-                <button
-                    onClick={prevStep}
-                    className="px-8 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition-all duration-300"
-                >
-                    ← Voltar
-                </button>
-                <button
-                    onClick={handleNext}
-                    className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/50"
-                >
-                    Próximo →
-                </button>
+            {/* Nav */}
+            <div className="nav-row">
+                <button className="btn-back" onClick={prevStep}>← Voltar</button>
+                <button className="btn-next" onClick={handleNext}>Próximo →</button>
             </div>
         </div>
     );

@@ -6,6 +6,7 @@ import TeacherSidebar from '@/components/teacher/Sidebar';
 import TeacherHeader from '@/components/teacher/Header';
 import { ToastContainer } from '@/components/ui/Toast';
 import Tutorial, { TutorialButton } from '@/components/ui/Tutorial';
+import { useAnimacoes } from '@/hooks/useAnimacoes';
 
 const TEACHER_STEPS = [
     { icon: '👩‍🏫', title: 'Bem-vindo ao Portal do Professor', description: 'Registre a frequência de suas turmas, solicite reembolsos, registre imprevistos e acompanhe suas atividades.' },
@@ -21,9 +22,11 @@ export default function TeacherLayout({ children }: { children: ReactNode }) {
     const [ready, setReady] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [showTutorial, setShowTutorial] = useState(false);
+    useAnimacoes(); // ANIMACOES: aplica preferência do usuário
 
     useEffect(() => {
-        const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+        // SEGURANÇA: sessionStorage (isolado por aba) com fallback legacy localStorage
+        const token = sessionStorage.getItem('token') || sessionStorage.getItem('access_token') || localStorage.getItem('token') || localStorage.getItem('access_token');
         if (!token) {
             router.replace('/login');
             return;
@@ -48,17 +51,19 @@ export default function TeacherLayout({ children }: { children: ReactNode }) {
     }
 
     return (
-        <div className="admin-layout">
+        <>
             <ToastContainer />
             <Tutorial storageKey="tutorial-teacher-v1" steps={TEACHER_STEPS} portalName="Portal do Professor" forceOpen={showTutorial} onClose={() => setShowTutorial(false)} />
             <TutorialButton onClick={() => setShowTutorial(true)} />
-            <TeacherSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-            <div className="admin-main">
-                <TeacherHeader onMenuToggle={() => setSidebarOpen(s => !s)} />
-                <main className="admin-content custom-scrollbar">
-                    {children}
-                </main>
+            <div className="admin-layout">
+                <TeacherSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+                <div className="admin-main">
+                    <TeacherHeader onMenuToggle={() => setSidebarOpen(s => !s)} />
+                    <main className="admin-content custom-scrollbar">
+                        {children}
+                    </main>
+                </div>
             </div>
-        </div>
+        </>
     );
 }

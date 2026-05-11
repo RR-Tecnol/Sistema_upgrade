@@ -8,6 +8,9 @@ import { coursesApi, Course } from '@/lib/api/courses';
 import { groupsApi, Group } from '@/lib/api/groups';
 import { citiesApi, City } from '@/lib/api/cities';
 import { trucksApi, Truck } from '@/lib/api/trucks';
+import { AdminCreationSuccessScreen } from '@/components/admin/AdminCreationSuccessScreen';
+import { LocationFields, LocationFieldsValue } from '@/components/admin/LocationFields';
+import { RouteTypeSelector, RouteType } from '@/components/admin/RouteTypeSelector';
 import {
     AcademicCapIcon,
     MapPinIcon,
@@ -28,6 +31,13 @@ type Step = 1 | 2 | 3 | 4;
 interface FormState extends CreateClassDto {
     enrollmentOpenDate: string;
     enrollmentCloseDate: string;
+    routeType: RouteType;
+    originCityId?: string;
+    originNeighborhood?: string;
+    destinationNeighborhood?: string;
+    weekendPolicy: 'FOLLOW_SCHEDULE' | 'WEEKDAYS_ONLY' | 'ALL_WEEKENDS' | 'SELECT_WEEKENDS';
+    /** Texto livre: uma data YYYY-MM-DD por linha ou separadas por vírgula (fins de semana específicos). */
+    weekendExtraDatesRaw: string;
 }
 
 /* ──────────────── CONSTANTS ──────────────── */
@@ -140,6 +150,18 @@ export default function NovaTurmaPage() {
         vacancies: 30, reserveSlots: 0, truckId: undefined,
         status: 'PLANNED',
         enrollmentOpenDate: '', enrollmentCloseDate: '',
+        routeType: 'INTERCIDADE',
+        originCityId: undefined,
+        originNeighborhood: undefined,
+        destinationNeighborhood: undefined,
+        weekendPolicy: 'WEEKDAYS_ONLY',
+        weekendExtraDatesRaw: '',
+    });
+
+    // Local físico onde a turma ocorre — usado pelo motorista para navegação GPS
+    // e pelo aluno para saber onde ir. Todos opcionais (deploy-safe).
+    const [location, setLocation] = useState<LocationFieldsValue>({
+        name: null, address: null, reference: null, latitude: null, longitude: null,
     });
 
     /* load data */
@@ -205,7 +227,17 @@ export default function NovaTurmaPage() {
         }
         if (s === 2) {
             if (!form.groupId) e.groupId = 'Selecione o grupo';
-            if (!form.cityId) e.cityId = 'Selecione a cidade';
+            if (form.routeType === 'INTERCIDADE') {
+                if (!form.originCityId) e.originCityId = 'Selecione a cidade de origem';
+                if (!form.cityId) e.cityId = 'Selecione a cidade de destino';
+                if (form.originCityId && form.cityId && form.originCityId === form.cityId)
+                    e.cityId = 'Origem e destino não podem ser a mesma cidade';
+            }
+            if (form.routeType === 'INTRAURBANA') {
+                if (!form.cityId) e.cityId = 'Selecione a cidade';
+                if (!form.originNeighborhood?.trim()) e.originNeighborhood = 'Informe o bairro/ponto de origem';
+                if (!form.destinationNeighborhood?.trim()) e.destinationNeighborhood = 'Informe o bairro/ponto de destino';
+            }
         }
         if (s === 3) {
             if (!form.startDate) e.startDate = 'Data de início obrigatória';
@@ -224,21 +256,38 @@ export default function NovaTurmaPage() {
         setSubmitError(null);
         setSaving(true);
         try {
+            const extraDates = form.weekendExtraDatesRaw
+                .split(/[\n,;]+/)
+                .map(s => s.trim())
+                .filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s));
             const payload: CreateClassDto = {
                 courseId: form.courseId, groupId: form.groupId,
                 cityId: form.cityId, classIdentifier: form.classIdentifier,
                 startDate: form.startDate, endDate: form.endDate,
                 period: form.period, startTime: form.startTime, endTime: form.endTime,
                 vacancies: Number(form.vacancies),
-                reserveSlots: Number(form.reserveSlots ?? 0), // REQ-01
+                reserveSlots: Number(form.reserveSlots ?? 0),
                 truckId: form.truckId || undefined,
                 status: form.status as any,
                 enrollmentOpenDate: form.enrollmentOpenDate || undefined,
                 enrollmentCloseDate: form.enrollmentCloseDate || undefined,
+                // ── Tipo de rota (REQ-ROUTE-2026) ──
+                routeType: form.routeType,
+                originCityId: form.routeType === 'INTERCIDADE' ? (form.originCityId || undefined) : undefined,
+                originNeighborhood: form.routeType === 'INTRAURBANA' ? (form.originNeighborhood || undefined) : undefined,
+                destinationNeighborhood: form.routeType === 'INTRAURBANA' ? (form.destinationNeighborhood || undefined) : undefined,
+                // ── Local físico (REQ-LOCAL-2026) ──
+                locationName: location.name || undefined,
+                locationAddress: location.address || undefined,
+                locationReference: location.reference || undefined,
+                locationLatitude: location.latitude ?? undefined,
+                locationLongitude: location.longitude ?? undefined,
+                weekendPolicy: form.weekendPolicy,
+                weekendExtraDates: form.weekendPolicy === 'SELECT_WEEKENDS' && extraDates.length ? extraDates : undefined,
             };
-            await classesApi.create(payload);
+            const created = await classesApi.create(payload);
             setSuccess(true);
-            setTimeout(() => router.push('/admin/turmas'), 2000);
+            setTimeout(() => router.push(`/admin/turmas?created=1&createdClassId=${created.id}`), 2000);
         } catch (err: any) {
             const rawMsg = err?.response?.data?.message;
             const rawStr = Array.isArray(rawMsg) ? rawMsg.join(' · ') : (rawMsg || '');
@@ -263,17 +312,15 @@ export default function NovaTurmaPage() {
     };
 
     /* ── SUCCESS SCREEN ── */
-    if (success) return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '65vh' }}>
-            <div className="animate-scale-in" style={{ textAlign: 'center', padding: '3rem' }}>
-                <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#DCFCE7', border: '2px solid #BBF7D0', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-                    <CheckCircleIcon style={{ width: 40, height: 40, color: '#059669' }} />
-                </div>
-                <h2 style={{ fontFamily: 'Orbitron', fontSize: '1.25rem', fontWeight: 900, color: '#111827', marginBottom: '0.5rem' }}>TURMA CRIADA!</h2>
-                <p style={{ fontSize: '0.82rem', color: '#9CA3AF' }}>Redirecionando para a lista de turmas...</p>
-            </div>
-        </div>
-    );
+    if (success) {
+        return (
+            <AdminCreationSuccessScreen
+                title="TURMA CRIADA!"
+                entityName={form.classIdentifier}
+                redirectMessage="Redirecionando para a lista de turmas..."
+            />
+        );
+    }
 
     const activePeriod = PERIODS.find(p => p.value === form.period)!;
 
@@ -479,42 +526,55 @@ export default function NovaTurmaPage() {
                     {step === 2 && (
                         <div className="animate-fade-in" style={{ display: 'grid', gap: '1.25rem' }}>
                             <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: 0, padding: '0.6rem 0.9rem', background: '#F9FAFB', borderRadius: 8, borderLeft: '3px solid #FFD600' }}>
-                                Defina onde a Carreta-Escola irá operar — o grupo responsável, a cidade de destino e o veículo alocado.
+                                Defina o grupo responsável, o tipo de deslocamento e a rota da Carreta-Escola.
                             </p>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div>
-                                    <FSelect label="Grupo Responsável" required value={form.groupId} error={errors.groupId}
-                                        onChange={e => { set('groupId', e.target.value); set('cityId', ''); set('truckId', undefined); const g = groups.find(x => x.id === e.target.value); setSelectedGroup(g || null); }}>
-                                        <option value="">Selecione o grupo...</option>
-                                        {groups.map(g => (
-                                            <option key={g.id} value={g.id}>{g.name} — {g.state}</option>
-                                        ))}
-                                    </FSelect>
-                                </div>
-                                <div>
-                                    <FSelect label="Cidade de Destino" required value={form.cityId} error={errors.cityId}
-                                        onChange={e => set('cityId', e.target.value)}
-                                        disabled={!form.groupId}>
-                                        <option value="">{form.groupId ? 'Selecione a cidade...' : 'Selecione o grupo primeiro'}</option>
-                                        {filteredCities.map(c => (
-                                            <option key={c.id} value={c.id}>{c.name} — {c.state}</option>
-                                        ))}
-                                    </FSelect>
-                                </div>
-                            </div>
+                            {/* Grupo */}
+                            <FSelect label="Grupo Responsável" required value={form.groupId} error={errors.groupId}
+                                onChange={e => {
+                                    set('groupId', e.target.value);
+                                    set('cityId', '');
+                                    set('truckId', undefined);
+                                    setForm(f => ({ ...f, originCityId: undefined }));
+                                    const g = groups.find(x => x.id === e.target.value);
+                                    setSelectedGroup(g || null);
+                                }}>
+                                <option value="">Selecione o grupo...</option>
+                                {groups.map(g => (
+                                    <option key={g.id} value={g.id}>{g.name} — {g.state}</option>
+                                ))}
+                            </FSelect>
 
-                            {/* Truck selector */}
+                            {/* Seletor de Rota */}
+                            <RouteTypeSelector
+                                routeType={form.routeType || 'INTERCIDADE'}
+                                originCityId={form.originCityId}
+                                cityId={form.cityId}
+                                originNeighborhood={form.originNeighborhood}
+                                destinationNeighborhood={form.destinationNeighborhood}
+                                cities={filteredCities}
+                                errors={errors}
+                                onChange={patch => setForm(f => ({
+                                    ...f,
+                                    ...patch,
+                                    cityId: patch.cityId !== undefined ? patch.cityId : f.cityId,
+                                }))}
+                            />
+
+                            {/* Carreta */}
                             <div>
                                 <label style={LABEL}>Carreta-Escola Alocada</label>
-                                {filteredTrucks.length === 0 ? (
+                                {!form.groupId ? (
+                                    <div style={{ padding: '0.8rem 1rem', borderRadius: 10, background: '#F9FAFB', border: '1px dashed #E5E7EB', fontSize: '0.78rem', color: '#9CA3AF' }}>
+                                        Selecione o grupo para ver as carretas disponíveis
+                                    </div>
+                                ) : filteredTrucks.length === 0 ? (
                                     <div style={{ padding: '1rem', borderRadius: 10, background: '#FFF7ED', border: '1px solid #FED7AA', display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
                                         <TruckIcon style={{ width: 18, height: 18, color: '#EA580C', flexShrink: 0 }} />
                                         <span style={{ fontSize: '0.78rem', color: '#9A3412' }}>Nenhuma carreta disponível para {selectedGroup?.state || 'este estado'}.</span>
                                     </div>
                                 ) : (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.6rem' }}>
-                                        {/* None option */}
                                         <button type="button" onClick={() => set('truckId', undefined)}
                                             style={{ textAlign: 'left', padding: '0.75rem 1rem', borderRadius: 10, cursor: 'pointer', transition: 'all 0.18s', background: !form.truckId ? '#F3F4F6' : '#F9FAFB', border: `1.5px solid ${!form.truckId ? '#9CA3AF' : '#E5E7EB'}` }}>
                                             <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#6B7280' }}>Sem carreta</div>
@@ -539,7 +599,7 @@ export default function NovaTurmaPage() {
                                 )}
                             </div>
 
-                            {/* Vacancies + Reserve Slots (REQ-01) */}
+                            {/* Vagas + Reserva + Status */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                                 <FInput label="Vagas Totais" required type="number" min="1" max="500"
                                     value={form.vacancies}
@@ -563,24 +623,17 @@ export default function NovaTurmaPage() {
                                 </FSelect>
                             </div>
 
-                            {/* Map visual placeholder */}
+                            {/* Local físico específico (REQ-LOCAL-2026) */}
                             {form.cityId && (
-                                <div className="animate-fade-in" style={{ padding: '1rem 1.25rem', borderRadius: 12, background: 'linear-gradient(135deg, #EFF6FF 0%, #F0FDF4 100%)', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                    <div style={{ width: 44, height: 44, borderRadius: 12, background: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                        <MapPinIcon style={{ width: 22, height: 22, color: '#fff' }} />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1E40AF' }}>
-                                            {cities.find(c => c.id === form.cityId)?.name}
-                                        </div>
-                                        <div style={{ fontSize: '0.72rem', color: '#3B82F6', marginTop: '0.1rem' }}>
-                                            Estado: <strong>{cities.find(c => c.id === form.cityId)?.state}</strong>{' · '}
-                                            Grupo: <strong>{selectedGroup?.name}</strong>
-                                        </div>
-                                    </div>
-                                    <span style={{ marginLeft: 'auto', padding: '0.25rem 0.75rem', borderRadius: 100, background: '#DCFCE7', color: '#059669', fontSize: '0.67rem', fontWeight: 800, border: '1px solid #BBF7D0' }}>
-                                        Local confirmado
-                                    </span>
+                                <div className="animate-fade-in">
+                                    <LocationFields
+                                        value={location}
+                                        onChange={setLocation}
+                                        cityContext={(() => {
+                                            const c = cities.find(x => x.id === form.cityId);
+                                            return c ? `${c.name}, ${c.state}, Brasil` : undefined;
+                                        })()}
+                                    />
                                 </div>
                             )}
                         </div>
@@ -639,6 +692,32 @@ export default function NovaTurmaPage() {
                                     <FInput label="Encerramento das Inscrições" type="date" value={form.enrollmentCloseDate} onChange={e => set('enrollmentCloseDate', e.target.value)} />
                                 </div>
                             </div>
+
+                            <div style={{ padding: '1rem 1.25rem', borderRadius: 12, background: '#FFFDE7', border: '1px solid #FEF08A' }}>
+                                <div style={{ ...SEC_TITLE, color: '#92400E' }}>Dias de aula (calendário letivo)</div>
+                                <p style={{ fontSize: '0.72rem', color: '#78350F', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
+                                    Define como o sistema conta <strong>sábados e domingos</strong> para meta de frequência/certificado (junto com feriados da turma e horários em &quot;Editar turma&quot;).
+                                </p>
+                                <FSelect label="Política de fins de semana" value={form.weekendPolicy}
+                                    onChange={e => set('weekendPolicy', e.target.value as FormState['weekendPolicy'])}>
+                                    <option value="WEEKDAYS_ONLY">Só dias úteis (seg–sex) — fins de semana não contam</option>
+                                    <option value="FOLLOW_SCHEDULE">Seguir horário cadastrado da turma (class_schedules)</option>
+                                    <option value="ALL_WEEKENDS">Todos os sábados e domingos no período contam como dia de aula</option>
+                                    <option value="SELECT_WEEKENDS">Apenas alguns fins de semana (indicar datas abaixo)</option>
+                                </FSelect>
+                                {form.weekendPolicy === 'SELECT_WEEKENDS' && (
+                                    <div style={{ marginTop: '0.75rem' }}>
+                                        <label style={LABEL}>Datas com aula (YYYY-MM-DD)</label>
+                                        <textarea
+                                            value={form.weekendExtraDatesRaw}
+                                            onChange={e => set('weekendExtraDatesRaw', e.target.value)}
+                                            placeholder={'2026-05-10\n2026-05-24'}
+                                            rows={4}
+                                            style={{ ...INPUT, resize: 'vertical', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem' }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -649,8 +728,40 @@ export default function NovaTurmaPage() {
                             {/* Quick pills */}
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                 <InfoPill icon={<AcademicCapIcon style={{ width: 14, height: 14 }} />} label="Curso" value={selectedCourse?.name || '—'} />
-                                <InfoPill icon={<MapPinIcon style={{ width: 14, height: 14 }} />} label="Cidade" value={cities.find(c => c.id === form.cityId)?.name || '—'} color="#0891B2" bg="#F0F9FF" />
+                                {form.routeType === 'INTERCIDADE' ? (
+                                    <>
+                                        <InfoPill icon={<MapPinIcon style={{ width: 14, height: 14 }} />} label="Origem" value={cities.find(c => c.id === form.originCityId)?.name || '—'} color="#1D4ED8" bg="#EFF6FF" />
+                                        <InfoPill icon={<MapPinIcon style={{ width: 14, height: 14 }} />} label="Destino" value={cities.find(c => c.id === form.cityId)?.name || '—'} color="#059669" bg="#F0FDF4" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <InfoPill icon={<MapPinIcon style={{ width: 14, height: 14 }} />} label="Cidade" value={cities.find(c => c.id === form.cityId)?.name || '—'} color="#0891B2" bg="#F0F9FF" />
+                                        <InfoPill icon={<MapPinIcon style={{ width: 14, height: 14 }} />} label="Rota" value={`${form.originNeighborhood || '?'} → ${form.destinationNeighborhood || '?'}`} color="#059669" bg="#F0FDF4" />
+                                    </>
+                                )}
                                 <InfoPill icon={<BuildingOfficeIcon style={{ width: 14, height: 14 }} />} label="Grupo" value={selectedGroup?.name || '—'} color="#EA580C" bg="#FFF7ED" />
+                            </div>
+
+                            {/* Badge tipo de rota */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{
+                                    padding: '0.3rem 0.85rem', borderRadius: 100, fontSize: '0.72rem', fontWeight: 800,
+                                    background: form.routeType === 'INTERCIDADE' ? '#EFF6FF' : '#F0FDF4',
+                                    color: form.routeType === 'INTERCIDADE' ? '#1D4ED8' : '#059669',
+                                    border: `1px solid ${form.routeType === 'INTERCIDADE' ? '#BFDBFE' : '#BBF7D0'}`,
+                                }}>
+                                    {form.routeType === 'INTERCIDADE' ? '🚌 Intercidade' : '🏙️ Intraurbana'}
+                                </span>
+                                {form.routeType === 'INTERCIDADE' && form.originCityId && form.cityId && (
+                                    <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 600 }}>
+                                        {cities.find(c => c.id === form.originCityId)?.name} → {cities.find(c => c.id === form.cityId)?.name}
+                                    </span>
+                                )}
+                                {form.routeType === 'INTRAURBANA' && form.originNeighborhood && form.destinationNeighborhood && (
+                                    <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 600 }}>
+                                        {form.originNeighborhood} → {form.destinationNeighborhood}
+                                    </span>
+                                )}
                             </div>
 
                             {/* Summary grid */}
@@ -663,8 +774,14 @@ export default function NovaTurmaPage() {
                                     ['Início', form.startDate ? new Date(form.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—', false],
                                     ['Término', form.endDate ? new Date(form.endDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—', false],
                                     ['Vagas Totais', String(form.vacancies), true],
-                                    ['Vagas Reserva', String(form.reserveSlots ?? 0), true], // REQ-01
+                                    ['Vagas Reserva', String(form.reserveSlots ?? 0), true],
                                     ['Carreta', trucks.find(t => t.id === form.truckId)?.identifier || 'Sem carreta', false],
+                                    ['Fins de semana', (
+                                        form.weekendPolicy === 'WEEKDAYS_ONLY' ? 'Só dias úteis'
+                                            : form.weekendPolicy === 'ALL_WEEKENDS' ? 'Todos sáb/dom'
+                                                : form.weekendPolicy === 'SELECT_WEEKENDS' ? 'Datas específicas'
+                                                    : 'Horário da turma'
+                                    ), false],
                                 ].map(([k, v, mono]) => (
                                     <div key={k as string} style={{ padding: '0.65rem 0.9rem', borderRadius: 10, background: '#F9FAFB', border: '1px solid #F3F4F6' }}>
                                         <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#9CA3AF', marginBottom: '0.2rem' }}>{k}</div>

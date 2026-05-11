@@ -1,9 +1,12 @@
-import { Controller, Get, Patch, Delete, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
+import { UpdateOwnPasswordDto } from './dto/update-own-password.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+
+const ALL_ROLES = ['IT_ADMIN', 'ADMIN', 'COORDINATOR', 'TEACHER', 'DRIVER', 'STUDENT'];
 
 @ApiTags('users')
 @Controller('users')
@@ -22,6 +25,7 @@ export class UsersController {
     }
 
     @Get('me')
+    @Roles(...ALL_ROLES)
     @ApiOperation({ summary: 'Get own profile (any authenticated user)' })
     @ApiResponse({ status: 200, description: 'Own profile returned' })
     async getMe(@Request() req: any) {
@@ -29,6 +33,7 @@ export class UsersController {
     }
 
     @Patch('me')
+    @Roles(...ALL_ROLES)
     @ApiOperation({ summary: 'Update own profile (any authenticated user)' })
     @ApiResponse({ status: 200, description: 'Profile updated successfully' })
     async updateMe(
@@ -38,9 +43,60 @@ export class UsersController {
         return this.usersService.update(req.user.userId || req.user.id, data);
     }
 
+    @Patch('me/password')
+    @Roles(...ALL_ROLES)
+    @ApiOperation({ summary: 'Alterar a própria senha (utilizador autenticado)' })
+    @ApiResponse({ status: 200, description: 'Senha atualizada' })
+    @ApiResponse({ status: 400, description: 'Senha atual incorreta ou validação falhou' })
+    async updateMyPassword(
+        @Request() req: any,
+        @Body() body: UpdateOwnPasswordDto,
+    ) {
+        return this.usersService.updateOwnPassword(
+            req.user.userId || req.user.id,
+            body.currentPassword,
+            body.newPassword,
+        );
+    }
+
     // ─── PASSO 1.3: Preferências — ANTES de /:id ─────────────────────────────
 
+    // ─── PASSO 3.7: Registro de Ponto Professor — ANTES de /:id ──────────────
+
+    @Post('me/checkin')
+    @Roles('TEACHER')
+    @ApiOperation({ summary: 'Registrar ponto (check-in) do professor autenticado' })
+    @ApiResponse({ status: 201, description: 'Ponto registrado com sucesso' })
+    async teacherCheckin(@Request() req: any) {
+        return this.usersService.registerCheckin(req.user.id);
+    }
+
+    @Get('me/checkins')
+    @Roles('TEACHER')
+    @ApiOperation({ summary: 'Histórico de pontos do professor autenticado' })
+    @ApiResponse({ status: 200, description: 'Histórico retornado com sucesso' })
+    async getMyCheckins(@Request() req: any) {
+        return this.usersService.getCheckins(req.user.id);
+    }
+
+    @Post('me/driver-checkin')
+    @Roles('DRIVER')
+    @ApiOperation({ summary: 'Registrar ponto do motorista autenticado' })
+    @ApiResponse({ status: 201, description: 'Ponto do motorista registrado' })
+    async driverCheckin(@Request() req: any) {
+        return this.usersService.registerDriverCheckin(req.user.id);
+    }
+
+    @Get('me/driver-checkins')
+    @Roles('DRIVER')
+    @ApiOperation({ summary: 'Histórico de pontos do motorista' })
+    @ApiResponse({ status: 200, description: 'Histórico de motorista retornado' })
+    async getMyDriverCheckins(@Request() req: any) {
+        return this.usersService.getDriverCheckins(req.user.id);
+    }
+
     @Get('me/preferences')
+    @Roles(...ALL_ROLES)
     @ApiOperation({ summary: 'Buscar preferências do usuário autenticado' })
     @ApiResponse({ status: 200, description: 'Preferências retornadas com defaults caso não existam' })
     async getMyPreferences(@Request() req: any) {
@@ -48,6 +104,7 @@ export class UsersController {
     }
 
     @Patch('me/preferences')
+    @Roles(...ALL_ROLES)
     @ApiOperation({ summary: 'Atualizar preferências do usuário autenticado' })
     @ApiResponse({ status: 200, description: 'Preferências atualizadas com sucesso' })
     async updateMyPreferences(
@@ -65,6 +122,7 @@ export class UsersController {
     }
 
     @Get(':id')
+    @Roles('ADMIN', 'COORDINATOR')
     @ApiOperation({ summary: 'Get user by ID' })
     @ApiResponse({ status: 200, description: 'User retrieved successfully' })
     @ApiResponse({ status: 404, description: 'User not found' })

@@ -37,4 +37,14 @@ export class MinioService implements OnModuleInit {
         await this.ensureBucket(bucket);
         return this.client.presignedPutObject(bucket, key, expirySeconds);
     }
+
+    /** GET assinado para o browser ler imagem/PDF sem expor bucket público */
+    async presignedGetUrl(
+        bucket: string,
+        objectKey: string,
+        expirySeconds = 3600,
+    ): Promise<string> {
+        await this.ensureBucket(bucket);
+        return this.client.presignedGetObject(bucket, objectKey, expirySeconds);
+    }
 }

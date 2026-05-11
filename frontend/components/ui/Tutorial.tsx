@@ -46,13 +46,26 @@ export default function Tutorial({ storageKey, steps, portalName, forceOpen, onC
         onClose?.();
     };
 
+    // Fail-safe: permite fechar tutorial preso via tecla ESC
+    useEffect(() => {
+        if (!open) return;
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') close();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [open]);
+
     if (!open) return null;
     const current = steps[step];
     const isLast = step === steps.length - 1;
     const progress = Math.round(((step + 1) / steps.length) * 100);
 
     return (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+            onClick={(e) => { if (e.target === e.currentTarget) close(); }}
+        >
             <div className="animate-scale-in" style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,0.22)', overflow: 'hidden' }}>
                 <div style={{ padding: '1.25rem 1.5rem 1rem', background: 'linear-gradient(135deg, #111827, #1F2937)', position: 'relative' }}>
                     <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,214,0,0.06) 1px, transparent 1px)', backgroundSize: '24px 24px', pointerEvents: 'none' }} />

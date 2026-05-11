@@ -44,6 +44,52 @@ export class CreateAcaoDto {
     @IsString()
     localExecucao?: string;
 
+    // ── Detalhes adicionais do local (REQ-LOCAL-2026) ──
+    // Aditivos: turmas filhas herdam estes valores automaticamente quando criadas.
+
+    @ApiPropertyOptional({ example: 'Av. Beira-Mar, 1500 - Centro' })
+    @IsOptional()
+    @IsString()
+    localEndereco?: string;
+
+    @ApiPropertyOptional({ example: 'Em frente à praça principal' })
+    @IsOptional()
+    @IsString()
+    localReferencia?: string;
+
+    @ApiPropertyOptional({ example: -5.0892 })
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    localLatitude?: number;
+
+    @ApiPropertyOptional({ example: -42.8013 })
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    localLongitude?: number;
+
+    // ── Tipo de rota (REQ-ROUTE-2026) ─────────────────────────────────────────
+    @ApiPropertyOptional({ example: 'INTERCIDADE', enum: ['INTERCIDADE', 'INTRAURBANA'] })
+    @IsOptional()
+    @IsString()
+    routeType?: 'INTERCIDADE' | 'INTRAURBANA';
+
+    @ApiPropertyOptional({ example: 'uuid-da-cidade-origem', description: 'Cidade de origem (intercidade)' })
+    @IsOptional()
+    @IsString()
+    originCidadeId?: string;
+
+    @ApiPropertyOptional({ example: 'Alto do Calhau', description: 'Bairro/ponto de partida (intraurbana)' })
+    @IsOptional()
+    @IsString()
+    originNeighborhood?: string;
+
+    @ApiPropertyOptional({ example: 'Forquilha', description: 'Bairro/ponto de chegada (intraurbana)' })
+    @IsOptional()
+    @IsString()
+    destinationNeighborhood?: string;
+
     @ApiPropertyOptional({ example: 350 })
     @IsOptional()
     @Type(() => Number)

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, Length } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateCityDto {
@@ -18,4 +18,14 @@ export class CreateCityDto {
     @IsString()
     @IsOptional()
     ibgeCode?: string;
+
+    @ApiProperty({ example: -2.5297, description: 'Latitude (geocodificada via Nominatim se não fornecida)', required: false })
+    @IsNumber()
+    @IsOptional()
+    latitude?: number;
+
+    @ApiProperty({ example: -44.3028, description: 'Longitude (geocodificada via Nominatim se não fornecida)', required: false })
+    @IsNumber()
+    @IsOptional()
+    longitude?: number;
 }

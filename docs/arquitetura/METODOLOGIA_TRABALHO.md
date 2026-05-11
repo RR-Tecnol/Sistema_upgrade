@@ -6,7 +6,26 @@
 
 ---
 
-## OS PAPÉIS DA EQUIPE
+## 🔗 REFERÊNCIAS CRUZADAS
+
+> **Ler este documento junto com:**
+> - [`sobre-sistema.md`](./sobre-sistema.md) — o quê o sistema é e como funciona
+> - [`LIVRO_DE_REGRAS.md`](./LIVRO_DE_REGRAS.md) — as regras técnicas que governam o código
+> - [`seguranca/MR_ROBOT_MENTALIDADE.md`](../seguranca/MR_ROBOT_MENTALIDADE.md) — checklist de segurança obrigatório
+> - [`DIARIO_DE_BORDO.md`](./DIARIO_DE_BORDO.md) — histórico de como a metodologia foi aplicada
+>
+> **Documentos citados no fluxo de trabalho:**
+> | Etapa do fluxo | Doc |
+> |----------------|-----|
+> | PLANEJAMENTO | `PROX-PASSOS.md` (o que fazer) + `ESTADO_SISTEMA.md` (estado atual) |
+> | EXECUÇÃO | `LIVRO_DE_REGRAS.md` (como fazer) + `ERROS_E_SOLUCOES.md` (o que evitar) |
+> | VALIDAÇÃO | `MR_ROBOT_MENTALIDADE.md` (checklist) + navegador (F12) |
+> | DOCUMENTAÇÃO | `ESTADO_SISTEMA.md` + `DIARIO_DE_BORDO.md` + `PROX-PASSOS.md` |
+> | COMMIT | `SEEDS_GUIDE.md` (se dados foram alterados) |
+
+---
+
+## OS PAPIS DA EQUIPE
 
 | Papel | Quem | Responsabilidade |
 |-------|------|-----------------|

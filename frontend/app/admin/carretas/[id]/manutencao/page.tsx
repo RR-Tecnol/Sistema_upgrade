@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
+import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
@@ -222,7 +223,8 @@ function Modal({ truckId, editing, onClose, onSaved }: { truckId: string; editin
     const lbl = { fontSize: '0.65rem', fontWeight: 700, color: '#6B7280', marginBottom: 4, display: 'block', textTransform: 'uppercase' as const, letterSpacing: '.06em' };
 
     return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(10px)' }}
+        <ModalPortal>
+        <div style={{ position: 'fixed', inset: 0, zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(10px)' }}
             onClick={e => e.target === e.currentTarget && onClose()}>
             <div style={{ width: '100%', maxWidth: 600, maxHeight: '88vh', overflowY: 'auto', background: '#fff', borderRadius: 22, boxShadow: '0 0 60px rgba(0,0,0,.3)', border: '1px solid rgba(255,255,255,.1)', animation: 'mn-3d-in .35s both' }}>
                 {/* Header */}
@@ -381,6 +383,7 @@ function Modal({ truckId, editing, onClose, onSaved }: { truckId: string; editin
                 </div>
             </div>
         </div>
+        </ModalPortal>
     );
 }
 
@@ -496,10 +499,46 @@ export default function ManutencaoPage() {
 
                     {/* Lista */}
                     {filtered.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '4rem', background: '#fff', borderRadius: 18, border: '1px solid #F3F4F6' }}>
-                            <div style={{ fontSize: '2.5rem', marginBottom: 12, animation: 'mn-float 3s ease-in-out infinite' }}>🔧</div>
-                            <p style={{ fontFamily: 'Orbitron', fontSize: '0.7rem', letterSpacing: '.15em', color: '#9CA3AF', marginBottom: 16 }}>NENHUM REGISTRO</p>
-                            <button onClick={() => { setEditing(null); setModal(true); }} style={{ padding: '10px 22px', borderRadius: 12, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#1e40af,#2563EB)', color: '#fff', fontWeight: 800, fontSize: '0.75rem', fontFamily: 'Orbitron', boxShadow: '0 0 14px rgba(37,99,235,.4)' }}>+ Nova Manutenção</button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {/* Banner inteligente: carreta inativa/em manutenção sem nenhum registro */}
+                            {list.length === 0 && (truck?.status === 'INACTIVE' || truck?.status === 'MAINTENANCE') && (
+                                <div style={{ padding: '1.25rem 1.5rem', borderRadius: 16, background: truck?.status === 'MAINTENANCE' ? '#FEF2F2' : '#FFFBEB', border: `2px solid ${truck?.status === 'MAINTENANCE' ? '#FECACA' : '#FDE68A'}`, display: 'flex', gap: '1rem', alignItems: 'flex-start', animation: 'mn-fade .4s both' }}>
+                                    <div style={{ fontSize: '2rem', flexShrink: 0, animation: 'mn-float 3s ease-in-out infinite' }}>
+                                        {truck?.status === 'MAINTENANCE' ? '⚠️' : '⏸️'}
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontFamily: 'Orbitron', fontWeight: 800, fontSize: '0.8rem', color: truck?.status === 'MAINTENANCE' ? '#DC2626' : '#92400E', marginBottom: '0.4rem', letterSpacing: '.04em' }}>
+                                            {truck?.status === 'MAINTENANCE' ? 'CARRETA EM MANUTENÇÃO SEM REGISTRO' : 'CARRETA INATIVA SEM HISTÓRICO'}
+                                        </div>
+                                        <p style={{ fontSize: '0.78rem', color: truck?.status === 'MAINTENANCE' ? '#991B1B' : '#78350F', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
+                                            {truck?.status === 'MAINTENANCE'
+                                                ? 'Esta carreta está marcada como Em Manutenção, mas não há nenhum registro de manutenção cadastrado. Registre o serviço em andamento para manter o controle completo e gerar as contas a pagar corretamente.'
+                                                : 'Esta carreta está marcada como Inativa, mas não possui histórico de manutenção. Registre o motivo da inatividade para rastreabilidade e conformidade do controle de frota.'
+                                            }
+                                        </p>
+                                        <button
+                                            onClick={() => { setEditing(null); setModal(true); }}
+                                            style={{ padding: '9px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', background: truck?.status === 'MAINTENANCE' ? 'linear-gradient(135deg,#DC2626,#B91C1C)' : 'linear-gradient(135deg,#D97706,#B45309)', color: '#fff', fontWeight: 800, fontSize: '0.75rem', fontFamily: 'Orbitron', letterSpacing: '.04em', boxShadow: truck?.status === 'MAINTENANCE' ? '0 0 14px rgba(220,38,38,.4)' : '0 0 14px rgba(217,119,6,.4)' }}
+                                        >
+                                            + Registrar Manutenção Agora
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Estado vazio padrão (busca sem resultado ou sem registros em carreta disponível) */}
+                            <div style={{ textAlign: 'center', padding: list.length === 0 && (truck?.status === 'INACTIVE' || truck?.status === 'MAINTENANCE') ? '2rem' : '4rem', background: '#fff', borderRadius: 18, border: '1px solid #F3F4F6' }}>
+                                <div style={{ fontSize: '2.5rem', marginBottom: 12, animation: 'mn-float 3s ease-in-out infinite' }}>🔧</div>
+                                <p style={{ fontFamily: 'Orbitron', fontSize: '0.7rem', letterSpacing: '.15em', color: '#9CA3AF', marginBottom: 16 }}>
+                                    {list.length > 0 ? 'NENHUM RESULTADO PARA OS FILTROS' : 'NENHUM REGISTRO DE MANUTENÇÃO'}
+                                </p>
+                                {list.length === 0 && truck?.status === 'AVAILABLE' && (
+                                    <button onClick={() => { setEditing(null); setModal(true); }} style={{ padding: '10px 22px', borderRadius: 12, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#1e40af,#2563EB)', color: '#fff', fontWeight: 800, fontSize: '0.75rem', fontFamily: 'Orbitron', boxShadow: '0 0 14px rgba(37,99,235,.4)' }}>+ Nova Manutenção</button>
+                                )}
+                                {list.length > 0 && (
+                                    <button onClick={() => { setSearch(''); setFStatus('todos'); setFTipo('todos'); }} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #E5E7EB', background: '#F9FAFB', color: '#6B7280', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>Limpar Filtros</button>
+                                )}
+                            </div>
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>

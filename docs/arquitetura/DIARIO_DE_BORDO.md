@@ -10,6 +10,28 @@
 
 ---
 
+## 🔗 REFERÊNCIAS CRUZADAS
+
+> **Ler este documento:**
+> Quando precisar entender o CONTEXTO de uma decisão que não está explicada nas docs técnicas.
+> O Diário registra o raciocínio que levou às regras e bugs catalogados.
+>
+> **Ler junto com:**
+> - [`ESTADO_SISTEMA.md`](./ESTADO_SISTEMA.md) — o que está pronto hoje (resultado das sessões)
+> - [`ERROS_E_SOLUCOES.md`](../seguranca/ERROS_E_SOLUCOES.md) — bugs descobertos e documentados neste diário
+> - [`LIVRO_DE_REGRAS.md`](./LIVRO_DE_REGRAS.md) — regras que nasceram das decisões registradas aqui
+>
+> **Formato de entrada (ao atualizar):**
+> ```
+> ## SESSÃO DD/MM/AAAA — [Tema] | [Participantes]
+> ### Contexto
+> ### O que foi feito
+> ### Decisões importantes
+> ### O que ficou para a próxima sessão
+> ```
+
+---
+
 ## SESSÃO 18/03/2026 — Tarde (continuação 4) | Reestruturação arquitetural completa do portal motorista
 
 ### Contexto
@@ -484,3 +506,166 @@ Auditoria confirmou que o PASSO 3.5 já estava **100% implementado**: paginaçã
 
 ### Validação
 `tsc --noEmit` → EXIT:0 após cada bloco.
+
+---
+
+## SESSÃO 23/03/2026 — Sprint Final Partes 6 e 7 | Bugs visuais + Dashboard Motorista
+
+### Contexto
+Davi (Tech Lead) reportou 3 problemas observados em produção via screenshot:
+1. Sidebar com dupla seleção ao acessar Freq. Funcionários
+2. "Nenhum funcionário ativo" na página de frequência (lista vazia)
+3. Erro de compilação em `funcionarios/page.tsx` (página inacessível)
+
+Adicionalmente: modais cortando e kanban com possível erro.
+
+### Diagnósticos realizados (leitura de código puro, sem executar)
+
+**Bug JSX de sintaxe:** Contagem de parênteses revelou `diff=1` mas análise mais profunda mostrou que era falso positivo (parêntese literal em template string `(${digits}`). O bug real era na linha 1339: `onClose={() => setDetailEmployee(null); document.body.style.overflow = ''}` — arrow function com dois statements sem bloco `{}` em JSX. Isso deixa um parêntese aberto semanticamente, causando "Unexpected token div" no compilador.
+
+**Sidebar dupla seleção:** A lógica `pathname?.startsWith(item.href + '/')` ativava o item "Funcionários" (`/admin/funcionarios`) quando o pathname era `/admin/funcionarios/frequencia`, pois a string começa com o href do pai + `/`. Solução: calcular se existe algum item no nav com match exato — se sim, usar apenas exact match para todos os items.
+
+**"Nenhum funcionário ativo":** `GET /employees` retorna `{ employees: [], total, activeCount, byRole, byDept }` — não um array. `Array.isArray(r.data)` retorna `false`. O código usava o array vazio como fallback. Além disso, as rotas `GET /employees/attendance` e `GET /employees/attendance/summary` estavam declaradas DEPOIS de `@Get(':id')` no controller — NestJS capturava "attendance" como valor do parâmetro `:id`, causando 404 ou erro inesperado.
+
+### O que foi feito
+
+**Fix 1 — Sintaxe JSX:**
+`onClose={() => setDetailEmployee(null); document.body.style.overflow = ''}` → `onClose={() => { setDetailEmployee(null); document.body.style.overflow = ''; }}`
+
+**Fix 2 — Sidebar match exato:**
+```typescript
+const allHrefs = navSections.flatMap(s => s.items.map(i => i.href));
+const hasExactMatch = allHrefs.includes(pathname ?? '');
+const isActive = pathname === item.href || (!hasExactMatch && pathname?.startsWith(item.href + '/'));
+```
+
+**Fix 3 — Frequência funcionários lista vazia:**
+```typescript
+const list: Employee[] = r.data?.employees ?? (Array.isArray(r.data) ? r.data : []);
+```
+
+**Fix 4 — Rota attendance capturada por :id (LIVRO_DE_REGRAS §2):**
+Rotas `@Post('attendance')`, `@Get('attendance/summary')`, `@Get('attendance')` movidas para ANTES de `@Get(':id')` no `employees.controller.ts`.
+
+**Fix 5 — Modal cortando:**
+`EmployeeModal`: `maxHeight: 'calc(100vh - 2rem)'` + `display: 'flex'` + `flexDirection: 'column'` adicionados ao container.
+
+**Dashboard motorista — implementação final:**
+- 4 KPIs: viagens/mês, km rodados (só viagens com kmStart E kmEnd), R$ a receber (soma `amount`), imprevistos pendentes
+- 3 requests paralelos (era 4 — eliminado overfetch de status duplicados)
+- Exibe `notes` da viagem ativa
+- 5 ações rápidas (adicionado botão Imprevisto → `/driver/imprevistos`)
+- `Counter` agora aceita `prefix` (para `R$ `) e `suffix`
+
+**TSC:0** confirmado após todas as alterações.
+
+### Regra nova derivada desta sessão
+**Arrow function com múltiplos statements em JSX SEMPRE com bloco explícito `{}`:**
+```tsx
+// ❌ Inválido — o ; fecha o statement, deixa o } solto
+onClose={() => setA(null); setB('')}
+
+// ✅ Correto
+onClose={() => { setA(null); setB(''); }}
+```
+Adicionado ao LIVRO_DE_REGRAS §8C.
+
+---
+
+## SESSÃO 23/03/2026 — Atualização de Documentação | Gravity 2.0
+
+### O que foi feito
+Atualização completa de todos os documentos após sprint final:
+- `ESTADO_SISTEMA.md` — v6.0: snapshot completo de tudo que foi executado, funcionalidades por portal, pendências reais
+- `PROX-PASSOS.md` — v6.0: grupos todos marcados como ✅, apenas BLOCO B e C pendentes
+- `ERROS_E_SOLUCOES.md` — v6.0: todos os bugs desta sessão documentados com causa raiz + solução + prevenção
+- `DIARIO_DE_BORDO.md` — esta entrada
+- `LIVRO_DE_REGRAS.md` — v6.0: nova regra de arrow function JSX + anti-padrão BUG-ROTA-ATTENDANCE
+
+### Estado do sistema ao final desta sessão
+- TSC:0 backend confirmado
+- Todos os passos da lista original concluídos
+- Únicas pendências reais: BLOCO B (SUPER_ADMIN), BLOCO C (console backend), ALERTA-01 (credenciais no login)
+- Sistema em ~97% de completude
+
+---
+
+*Sistema Upgrade | RR TECNOL | Atualizado: 23/03/2026 — Sprint Final Completo*
+
+## SESSÃO 25/03/2026 — Sprint Fechamento Completo | Gravity 2.0 + Davi
+
+### Contexto
+Sprint de fechamento final do sistema. Objetivo: zerar toda a lista de pendentes identificada ao longo das sessões anteriores. Gravity 2.0 operou como executor via MCP + Playwright para validação ao vivo.
+
+### Pendentes no início da sessão
+1. `POST /teachers/me/checkin` — endpoint não existia
+2. Freq. Funcionários — sem calendário
+3. Preferências de animações — toggle não persistia por usuário
+4. Kanban — sem validação de transições, sem erro real do servidor
+5. UTF-8 — arquivos com BOM e conteúdo corrompido
+
+### O que foi feito — Backend
+
+**TeacherCheckin (BLOCO CHECKIN-01):**
+- Model `TeacherCheckin` adicionado ao schema Prisma com relação no `User`
+- `prisma db push` — banco sincronizado com a nova tabela
+- `UsersService.registerCheckin()` + `getCheckins()` adicionados
+- `TeachersController` criado com `POST /api/teachers/me/checkin` e `GET /api/teachers/me/checkins`
+- `UsersModule` registra o novo controller
+- TSC:0 após todas as mudanças
+
+**Kanban backend:**
+- `confirmEnrollment()` adicionado ao `EnrollmentsService` (APPROVED→ENROLLED)
+- Cases `ENROLLED` e `DOCUMENT_PENDING` adicionados ao switch no controller
+- Default do switch lança `BadRequestException` explícita (não silencia mais)
+
+### O que foi feito — Frontend
+
+**Ponto do Professor (historico/page.tsx):**
+- Interface `Checkin` adicionada
+- `loadAll` agora busca checkins em paralelo com `GET /teachers/me/checkins`
+- Tab "Meu Ponto" completamente reescrita: card com data/hora atual, aviso "Ponto registrado hoje às HH:MM", botão `handleCheckin` que recarrega a lista, histórico com animação e badge "HOJE"
+- Bug corrigido: `GET /classes?status[]=...` → `GET /classes?teacherUserId=...` (backend não suporta array de status)
+
+**Kanban (admin/inscricoes/page.tsx):**
+- `VALID_TRANSITIONS` matrix implementada
+- `updateStatus` valida antes de chamar API; toast mostra erro real do servidor
+- `handleDrop` bloqueia status finais (ENROLLED/REJECTED); valida transição antes de agir
+- Cards ENROLLED/REJECTED: `draggable=false`, cursor `default`
+- Botões quick action: PENDING/WAITLIST → Aprovar/Rejeitar; APPROVED → Confirmar Matrícula
+
+**Freq. Funcionários (funcionarios/frequencia/page.tsx):**
+- Arquivo reescrito do zero com calendário interativo
+- Layout: calendário (esquerda) + tabela funcionários (direita)
+- Calendário: navegação mensal, dias clicáveis, coloridos por status (verde/vermelho/amarelo)
+- Mesmo padrão visual de admin/frequencia (LIVRO_DE_REGRAS: consistência de UX)
+
+**UTF-8 e BOM:**
+- `fix-bom.ps1` aplicado: 122 arquivos verificados, BOM removido onde necessário
+- Arquivos criados nesta sessão salvos sem BOM
+
+**Animações por usuário:**
+- Hook `hooks/useAnimacoes.ts` criado — lê `GET /users/me/preferences` e aplica `body.no-animations` no DOM
+- Regra CSS `body.no-animations * { animation: none; transition: none }` adicionada ao `globals.css`
+- Hook aplicado nos 4 layouts: admin, teacher, student, driver
+
+### Validação ao vivo (Playwright)
+
+| Página | Resultado |
+|--------|-----------|
+| `/admin/dashboard` | ✅ KPIs reais, atividades recentes, BI |
+| `/admin/inscricoes` | ✅ 28 inscrições, kanban com colunas |
+| `/admin/funcionarios/frequencia` | ✅ Calendário Março 2026, legenda, data selecionada |
+| `/teacher/historico` → Minhas Turmas | ✅ 5 turmas com status reais |
+| `/teacher/historico` → Meu Ponto | ✅ Checkin registrado às 17:46, histórico com 2 registros |
+
+### Decisões desta sessão
+- `GET /classes` com múltiplos status (array) não é suportado → sempre usar `teacherUserId` para filtrar turmas do professor
+- Hook `useAnimacoes` em layout (não em página) garante que a preferência é aplicada globalmente no portal sem repetição
+- Validação de transição no frontend (VALID_TRANSITIONS) é complementar à validação no backend — ambas necessárias para UX responsivo + segurança
+
+### Estado ao final desta sessão
+- Sistema em **100% das funcionalidades catalogadas** implementadas e validadas ao vivo
+- TSC:0 backend confirmado
+- Zero pendências críticas
+

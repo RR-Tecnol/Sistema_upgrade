@@ -10,6 +10,11 @@ import {
     CheckCircleIcon,
     ClockIcon,
 } from '@heroicons/react/24/outline';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
+import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
 /* ── Tipos ─────────────────────────────────────────── */
 interface Holiday {
@@ -156,7 +161,8 @@ function ModalNovaOcorrencia({
     };
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        <ModalPortal>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
             onClick={onClose}>
             <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', animation: 'slideUp 0.25s' }}
                 onClick={e => e.stopPropagation()}>
@@ -225,6 +231,7 @@ function ModalNovaOcorrencia({
             </div>
             <style>{`@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
         </div>
+        </ModalPortal>
     );
 }
 
@@ -237,7 +244,8 @@ export default function FeriadosPage() {
     const [filterType, setFilterType] = useState('');
     const [deleting, setDeleting] = useState<string | null>(null);
     const [preloading, setPreloading] = useState(false);
-    const [preloadResult, setPreloadResult] = useState<{ ok: number; skip: number } | null>(null);
+    const [preloadResult, setPreloadResult] = useState<{ ok: number; skip: number; detail?: string } | null>(null);
+    const [listViewMode, setListViewMode] = usePersistedAdminViewMode('admin:feriados:list', 'table');
 
     const load = async () => {
         setLoading(true);
@@ -290,26 +298,52 @@ export default function FeriadosPage() {
                 }
             }
         }
-        setPreloadResult({ ok, skip });
+        setPreloadResult({
+            ok,
+            skip,
+            detail: `${classes.length} turma(s) em andamento analisada(s).`,
+        });
         setPreloading(false);
         await load();
+    };
+
+    /** Feriados estaduais fixos por UF da cidade da turma (backend `brazil-state-holidays`). */
+    const handlePreloadEstaduais = async () => {
+        if (!classes.length) {
+            toast.warning('Nenhuma turma ativa (IN_PROGRESS) encontrada.');
+            return;
+        }
+        setPreloading(true);
+        try {
+            const y = new Date().getFullYear();
+            const res = await api.post<{ ok: number; skip: number; classesProcessed: number }>(
+                '/holiday/preload-state-holidays',
+                { years: [y, y + 1] },
+            );
+            const { ok, skip, classesProcessed } = res.data;
+            setPreloadResult({
+                ok,
+                skip,
+                detail: `${classesProcessed} turma(s) em andamento — feriados aplicados conforme o estado da cidade.`,
+            });
+            toast.success('Pré-carga de feriados estaduais concluída.');
+        } catch {
+            toast.error('Não foi possível pré-carregar feriados estaduais.');
+        } finally {
+            setPreloading(false);
+            await load();
+        }
     };
 
     const filtered = filterType ? holidays.filter(h => inferType(h) === filterType) : holidays;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }} className="animate-fade-in">
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-                <div>
-                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '1.7rem', fontWeight: 900, letterSpacing: '0.08em', margin: 0 }}>
-                        FERIADOS
-                    </h1>
-                    <p style={{ color: '#9CA3AF', fontSize: '0.82rem', margin: '4px 0 0' }}>
-                        Registre feriados e imprevistos — data final de turmas é recalculada automaticamente (REQ-08)
-                    </p>
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <AdminHeaderHero
+                title="FERIADOS"
+                subtitle="Registre feriados e imprevistos — data final de turmas é recalculada automaticamente (REQ-08)"
+                rightSlot={(
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     {/* FEAT-FERIADO: botão de pré-carga */}
                     <button onClick={handlePreloadNacional} disabled={preloading}
                         title={`Registrar os ${FERIADOS_NACIONAIS.length} feriados nacionais (2025–2026) automaticamente para todas as turmas ativas`}
@@ -321,18 +355,30 @@ export default function FeriadosPage() {
                         }}>
                         🇧🇷 {preloading ? 'Carregando...' : `Pré-carregar ${FERIADOS_NACIONAIS.length} Feriados Nacionais 2025/2026`}
                     </button>
+                    <button onClick={handlePreloadEstaduais} disabled={preloading}
+                        title="Registrar feriados estaduais com data fixa (ex.: Farroupilha no RS) conforme o estado da cidade de cada turma em andamento — anos 2025 e 2026"
+                        style={{
+                            padding: '8px 14px', borderRadius: 10, fontSize: '0.78rem', fontWeight: 700,
+                            cursor: preloading ? 'not-allowed' : 'pointer',
+                            border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#047857',
+                            opacity: preloading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6,
+                        }}>
+                        📍 {preloading ? 'Carregando...' : `Pré-carregar Feriados Estaduais (UF da turma) ${new Date().getFullYear()}/${new Date().getFullYear() + 1}`}
+                    </button>
                     <button className="btn-primary" onClick={() => setShowModal(true)}>
                         <PlusIcon style={{ width: 16, height: 16 }} /> Registrar Ocorrência
                     </button>
-                </div>
-            </div>
+                    </div>
+                )}
+            />
 
             {/* Banner resultado pré-carga */}
             {preloadResult && (
                 <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 600 }}>
                         ✅ Pré-carga concluída: <strong>{preloadResult.ok}</strong> feriados registrados,{' '}
-                        <strong>{preloadResult.skip}</strong> ignorados (já existiam ou fora do período da turma)
+                        <strong>{preloadResult.skip}</strong> ignorados (já existiam ou indisponíveis para a UF).
+                        {preloadResult.detail ? <> {' '}— {preloadResult.detail}</> : null}
                     </div>
                     <button onClick={() => setPreloadResult(null)} style={{ background: 'none', border: 'none', color: '#059669', cursor: 'pointer', fontSize: '1rem', flexShrink: 0 }}>✕</button>
                 </div>
@@ -343,11 +389,15 @@ export default function FeriadosPage() {
                 {Object.entries(TYPE_CONFIG).map(([k, v]) => {
                     const count = holidays.filter(h => inferType(h) === k).length;
                     return (
-                        <div key={k} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', border: `1px solid ${v.color}22`, borderLeft: `4px solid ${v.color}` }}>
-                            <div style={{ fontSize: '1.2rem', marginBottom: 4 }}>{v.icon}</div>
-                            <div style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1.5rem', color: v.color }}>{count}</div>
-                            <div style={{ fontSize: '0.68rem', color: '#6B7280', fontWeight: 600 }}>{v.label}</div>
-                        </div>
+                        <AnimatedKpiCard
+                            key={k}
+                            label={v.label}
+                            value={count}
+                            color={v.color}
+                            bg={v.bg}
+                            border={v.color}
+                            sub={v.icon}
+                        />
                     );
                 })}
             </div>
@@ -363,6 +413,9 @@ export default function FeriadosPage() {
                         {v.icon} {v.label}
                     </button>
                 ))}
+                <div style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+                    <AdminViewModeToggle mode={listViewMode} onChange={setListViewMode} />
+                </div>
             </div>
 
             {/* Lista */}
@@ -374,8 +427,49 @@ export default function FeriadosPage() {
                         <CheckCircleIcon style={{ width: 36, height: 36, margin: '0 auto 8px', opacity: 0.3 }} />
                         <p style={{ fontFamily: 'Orbitron', fontSize: '0.75rem', letterSpacing: '0.12em' }}>NENHUMA OCORRÊNCIA REGISTRADA</p>
                         <p style={{ fontSize: '0.78rem', color: '#9CA3AF', marginTop: 6 }}>
-                            Use o botão <strong>Pré-carregar Feriados Nacionais</strong> para cadastrar automaticamente os feriados de 2025/2026
+                            Use <strong>Pré-carregar Feriados Nacionais</strong> ou{' '}
+                            <strong>Pré-carregar Feriados Estaduais</strong> (conforme o estado da cidade da turma)
                         </p>
+                    </div>
+                ) : listViewMode === 'card' ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, padding: 14 }}>
+                        {filtered.map((h, idx) => {
+                            const cfg = TYPE_CONFIG[inferType(h)] ?? TYPE_CONFIG['OTHER'];
+                            const cls = classes.find(c => c.id === h.classId);
+                            return (
+                                <div
+                                    key={h.id}
+                                    className="adm-kpi-card adm-scale-in"
+                                    style={{
+                                        animationDelay: `${idx * 28}ms`,
+                                        background: '#fff',
+                                        opacity: h.active ? 1 : 0.55,
+                                        borderStyle: 'solid',
+                                        borderWidth: '1px 1px 1px 4px',
+                                        borderLeftColor: cfg.color,
+                                        borderTopColor: `${cfg.color}33`,
+                                        borderRightColor: `${cfg.color}22`,
+                                        borderBottomColor: `${cfg.color}22`,
+                                    }}
+                                >
+                                    <div className="adm-kpi-grid" />
+                                    <div style={{ position: 'relative', zIndex: 1, padding: '12px 14px' }}>
+                                        <div style={{ marginBottom: 6 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: '0.65rem', fontWeight: 700, border: `1px solid ${cfg.color}30` }}>{cfg.icon} {cfg.label}</span></div>
+                                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem', fontWeight: 700, color: '#111827' }}>{fmtDate(h.date.split('T')[0])}</div>
+                                        <div style={{ fontSize: '0.8rem', color: '#374151', marginTop: 8, lineHeight: 1.35 }}>{h.reason ?? h.description ?? '—'}</div>
+                                        <div style={{ fontSize: '0.72rem', color: '#92400E', marginTop: 8, fontFamily: 'JetBrains Mono' }}>{cls ? `${cls.classIdentifier} · ${cls.city?.name}/${cls.city?.state}` : '—'}</div>
+                                        <div style={{ fontSize: '0.72rem', color: '#D97706', marginTop: 4, fontWeight: 600 }}>
+                                            {h.newEndDate ? <>Nova fim: {fmtDate(h.newEndDate.split('T')[0])}</> : 'Fim: auto-calculado'}
+                                        </div>
+                                    </div>
+                                    <div style={{ position: 'relative', zIndex: 1, borderTop: '1px solid #F3F4F6', padding: '8px 12px' }}>
+                                        <button type="button" onClick={() => { setConfirmRemoveId(h.id); setConfirmRemoveDesc(h.reason || h.date?.split('T')[0] || ''); setRemoveMotivo(''); }} disabled={deleting === h.id} title="Remover" style={{ padding: '6px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <TrashIcon style={{ width: 14, height: 14 }} /> Remover
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
@@ -445,8 +539,9 @@ export default function FeriadosPage() {
 
             {/* PASSO 3.8: Modal de confirmação com motivo de exclusão */}
             {confirmRemoveId && (
+                <ModalPortal>
                 <div
-                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
                     onClick={() => setConfirmRemoveId(null)}
                 >
                     <div
@@ -499,6 +594,7 @@ export default function FeriadosPage() {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
             )}
         </div>
     );

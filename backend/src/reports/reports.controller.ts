@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Param, Res, UseGuards,
+  Controller, Get, Param, Query, Res, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -25,12 +25,12 @@ export class ReportsController {
   async frequencyAll(@Res() res: Response) {
     const classes = await this.pdfService.getAllClassIds();
     if (!classes.length) return res.status(404).json({ message: 'Nenhuma turma encontrada' });
-    const { html, summary } = await this.pdfService.generateFrequencyReport(classes[0]);
-    const pdf = await this.pdfService.htmlToPdf(html);
+    const { buffer, summary, engine } = await this.pdfService.generateFrequencyPdfBuffer(classes[0]);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="frequencia-geral-${new Date().toISOString().slice(0,10)}.pdf"`);
     res.setHeader('X-Summary', JSON.stringify(summary));
-    return res.send(pdf);
+    res.setHeader('X-PDF-Engine', engine);
+    return res.send(buffer);
   }
 
   @Get('concludents/all')
@@ -38,12 +38,12 @@ export class ReportsController {
   async concludentsAll(@Res() res: Response) {
     const classes = await this.pdfService.getAllClassIds();
     if (!classes.length) return res.status(404).json({ message: 'Nenhuma turma encontrada' });
-    const { html, summary } = await this.pdfService.generateConcludentsList(classes[0]);
-    const pdf = await this.pdfService.htmlToPdf(html);
+    const { buffer, summary, engine } = await this.pdfService.generateConcludentsPdfBuffer(classes[0]);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="concludentes-geral-${new Date().toISOString().slice(0,10)}.pdf"`);
     res.setHeader('X-Summary', JSON.stringify(summary));
-    return res.send(pdf);
+    res.setHeader('X-PDF-Engine', engine);
+    return res.send(buffer);
   }
 
   /**
@@ -55,14 +55,22 @@ export class ReportsController {
     description: 'Retorna application/pdf gerado via Puppeteer. Template com modelo governamental.',
   })
   @ApiParam({ name: 'classId', description: 'ID da turma' })
-  async frequencyReport(@Param('classId') classId: string, @Res() res: Response) {
-    const { html, summary } = await this.pdfService.generateFrequencyReport(classId);
-    const pdf = await this.pdfService.htmlToPdf(html);
-
+  async frequencyReport(
+    @Param('classId') classId: string,
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, summary, engine } = await this.pdfService.generateFrequencyPdfBuffer(
+      classId,
+      start,
+      end,
+    );
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="frequencia-${classId}.pdf"`);
     res.setHeader('X-Summary', JSON.stringify(summary));
-    return res.send(pdf);
+    res.setHeader('X-PDF-Engine', engine);
+    return res.send(buffer);
   }
 
   /**
@@ -71,9 +79,30 @@ export class ReportsController {
   @Get('frequency/:classId/data')
   @ApiOperation({ summary: 'Dados de frequência em JSON' })
   @ApiParam({ name: 'classId', description: 'ID da turma' })
-  async frequencyData(@Param('classId') classId: string) {
-    const { classInfo, summary } = await this.pdfService.generateFrequencyReport(classId);
-    return { classInfo, summary };
+  async frequencyData(
+    @Param('classId') classId: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pdfService.getFrequencyDashboardPayload(classId, start, end);
+  }
+
+  @Get('frequency/:classId/xlsx')
+  @ApiOperation({ summary: 'XLSX avançado de frequência (dashboard premium)' })
+  @ApiParam({ name: 'classId', description: 'ID da turma' })
+  async frequencyXlsx(
+    @Param('classId') classId: string,
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.pdfService.generateFrequencyAdvancedXlsxBuffer(classId, start, end);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="frequencia-${classId}-${start || 'periodo'}.xlsx"`);
+    return res.send(buffer);
   }
 
   /**
@@ -87,13 +116,12 @@ export class ReportsController {
   })
   @ApiParam({ name: 'classId', description: 'ID da turma' })
   async concludentsReport(@Param('classId') classId: string, @Res() res: Response) {
-    const { html, summary } = await this.pdfService.generateConcludentsList(classId);
-    const pdf = await this.pdfService.htmlToPdf(html);
-
+    const { buffer, summary, engine } = await this.pdfService.generateConcludentsPdfBuffer(classId);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="concludentes-${classId}.pdf"`);
     res.setHeader('X-Summary', JSON.stringify(summary));
-    return res.send(pdf);
+    res.setHeader('X-PDF-Engine', engine);
+    return res.send(buffer);
   }
 
   /**
@@ -105,5 +133,58 @@ export class ReportsController {
   async concludentsData(@Param('classId') classId: string) {
     const { classInfo, summary } = await this.pdfService.generateConcludentsList(classId);
     return { classInfo, summary };
+  }
+
+  @Get('employees/attendance')
+  @ApiOperation({ summary: 'PDF de frequência de professores/motoristas por período' })
+  async employeesAttendanceReport(
+    @Query('role') role: string,
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, summary, engine } = await this.pdfService.generateEmployeesAttendancePdfBuffer(
+      role,
+      start,
+      end,
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="frequencia-${String(role || 'funcionarios').toLowerCase()}-${start}-${end}.pdf"`,
+    );
+    res.setHeader('X-Summary', JSON.stringify(summary));
+    res.setHeader('X-PDF-Engine', engine);
+    return res.send(buffer);
+  }
+
+  @Get('employees/attendance/data')
+  @ApiOperation({ summary: 'Dados dashboard de frequência de professores/motoristas por período' })
+  async employeesAttendanceData(
+    @Query('role') role: string,
+    @Query('start') start: string,
+    @Query('end') end: string,
+  ) {
+    return this.pdfService.getEmployeesAttendanceDashboardPayload(role, start, end);
+  }
+
+  @Get('employees/attendance/xlsx')
+  @ApiOperation({ summary: 'XLSX avançado de frequência de professores/motoristas' })
+  async employeesAttendanceXlsx(
+    @Query('role') role: string,
+    @Query('start') start: string,
+    @Query('end') end: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.pdfService.generateEmployeesAdvancedXlsxBuffer(role, start, end);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="frequencia-${String(role || 'funcionarios').toLowerCase()}-${start || 'periodo'}.xlsx"`,
+    );
+    return res.send(buffer);
   }
 }

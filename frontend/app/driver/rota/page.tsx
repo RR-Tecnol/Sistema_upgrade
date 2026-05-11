@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api/client';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 
 interface Trip {
     id: string;
@@ -53,35 +55,15 @@ export default function DriverRota() {
 
     return (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {/* Header */}
-            <div style={{
-                background: 'linear-gradient(135deg, #FFFDE7, #FFF9C4)',
-                borderRadius: 18, border: '1px solid rgba(255,214,0,0.4)',
-                padding: '1.5rem 1.75rem',
-                boxShadow: '0 4px 20px rgba(255,214,0,0.1)',
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <div style={{ width: 40, height: 40, borderRadius: 11, background: 'linear-gradient(135deg,#FFD600,#F59E0B)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', boxShadow: '0 4px 12px rgba(255,214,0,0.4)' }}>📍</div>
-                        <div>
-                            <h1 style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.3rem', color: '#92400E', letterSpacing: '0.08em', margin: 0 }}>MINHAS ROTAS</h1>
-                            <p style={{ color: '#B45309', fontSize: '0.65rem', letterSpacing: '0.1em', margin: '0.15rem 0 0' }}>HISTÓRICO DE DESLOCAMENTOS — {stats.total} VIAGEM{stats.total !== 1 ? 'S' : ''}</p>
-                        </div>
-                    </div>
-                    {/* Mini KPIs */}
-                    <div style={{ display: 'flex', gap: '0.6rem' }}>
-                        {[
-                            { label: 'Em Trânsito', value: stats.active,    color: '#059669' },
-                            { label: 'Planejadas',  value: stats.planned,   color: '#0891B2' },
-                            { label: 'Concluídas',  value: stats.completed, color: '#6B7280' },
-                        ].map(k => (
-                            <div key={k.label} style={{ textAlign: 'center', padding: '0.4rem 0.75rem', borderRadius: 10, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.06)' }}>
-                                <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.1rem', color: k.color }}>{k.value}</div>
-                                <div style={{ fontSize: '0.58rem', fontWeight: 700, color: '#92400E', letterSpacing: '0.06em' }}>{k.label.toUpperCase()}</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            <AdminHeaderHero
+                title="MINHAS ROTAS"
+                subtitle={`Histórico de deslocamentos — ${stats.total} viagem${stats.total !== 1 ? 's' : ''}`}
+                badge="MOTORISTA"
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '0.6rem' }}>
+                <AnimatedKpiCard label="Em Trânsito" value={stats.active} color="#059669" bg="#F0FDF4" border="#BBF7D0" compact />
+                <AnimatedKpiCard label="Planejadas" value={stats.planned} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" compact />
+                <AnimatedKpiCard label="Concluídas" value={stats.completed} color="#6B7280" bg="#F3F4F6" border="#E5E7EB" compact />
             </div>
 
             {/* Filtros */}

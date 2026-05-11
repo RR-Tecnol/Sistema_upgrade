@@ -12,6 +12,7 @@ import {
     ArrowLeftIcon,
     ArrowRightIcon,
 } from '@heroicons/react/24/outline';
+import { CreationSuccessScreen } from '@/components/CreationSuccessScreen';
 
 type Role = 'TEACHER' | 'DRIVER';
 
@@ -132,20 +133,19 @@ export default function RegistroPage() {
     if (success) {
         return (
             <div style={{ minHeight: '100vh', background: '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-                <div style={{ textAlign: 'center', maxWidth: 480 }}>
-                    <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#F0FDF4', border: '2px solid #BBF7D0', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-                        <CheckCircleIcon style={{ width: 36, height: 36, color: '#059669' }} />
-                    </div>
-                    <h1 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.5rem', fontWeight: 900, color: '#111827', marginBottom: '0.75rem' }}>
-                        CADASTRO ENVIADO!
-                    </h1>
-                    <p style={{ color: '#6B7280', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-                        Seu cadastro foi recebido e está aguardando aprovação do administrador.<br />
-                        Você receberá um e-mail quando sua conta for aprovada.
-                    </p>
-                    <Link href="/login" style={{ display: 'inline-block', padding: '0.75rem 2rem', borderRadius: 10, background: '#FFD600', color: '#000', fontWeight: 700, fontSize: '0.9rem', textDecoration: 'none' }}>
-                        Ir para o Login
-                    </Link>
+                <div style={{ width: '100%', maxWidth: 520 }}>
+                    <CreationSuccessScreen
+                        title="CADASTRO ENVIADO!"
+                        entityName={form.name.trim()}
+                        redirectMessage="Aguarde a aprovação do administrador. Você receberá um e-mail quando sua conta for liberada."
+                        alinhamento="center"
+                        minHeight="auto"
+                        linksRodape={(
+                            <Link href="/login" style={{ display: 'inline-block', padding: '0.75rem 2rem', borderRadius: 10, background: '#FFD600', color: '#000', fontWeight: 700, fontSize: '0.9rem', textDecoration: 'none' }}>
+                                Ir para o Login
+                            </Link>
+                        )}
+                    />
                 </div>
             </div>
         );

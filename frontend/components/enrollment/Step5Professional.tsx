@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useEnrollmentStore } from '@/stores/useEnrollmentStore';
-import { CareerGoal } from '@/lib/enums';
 
 export default function Step5Professional() {
     const { formData, updateProfessional, nextStep, prevStep } = useEnrollmentStore();
@@ -11,70 +10,63 @@ export default function Step5Professional() {
 
     const handleChange = (field: string, value: any) => {
         setData((prev) => ({ ...prev, [field]: value }));
-        if (errors[field]) {
-            setErrors((prev) => ({ ...prev, [field]: '' }));
-        }
+        if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
     };
 
     const validate = () => {
-        const newErrors: Record<string, string> = {};
-
-        if (!data.careerGoal) newErrors.careerGoal = 'Objetivo profissional é obrigatório';
-        // REQ-05: motivation é opcional — aluno pode deixar em branco
-        // Mínimo 20 caracteres somente se preenchido
-        if (data.motivation && data.motivation.length < 20) {
-            newErrors.motivation = 'Se preenchida, descreva com pelo menos 20 caracteres';
-        }
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
+        const e: Record<string, string> = {};
+        if (!data.careerGoal) e.careerGoal = 'Objetivo profissional é obrigatório';
+        if (data.motivation && data.motivation.length < 20) e.motivation = 'Se preenchida, descreva com pelo menos 20 caracteres';
+        setErrors(e);
+        return Object.keys(e).length === 0;
     };
 
     const handleNext = () => {
-        if (validate()) {
-            updateProfessional(data);
-            nextStep();
-        }
+        if (validate()) { updateProfessional(data); nextStep(); }
     };
 
+    const LABEL: React.CSSProperties = { display: 'block', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9CA3AF', marginBottom: '0.45rem' };
+    const ERROR: React.CSSProperties = { color: '#F87171', fontSize: '0.72rem', marginTop: '0.3rem' };
+    const HINT: React.CSSProperties = { color: '#6B7280', fontSize: '0.75rem', marginTop: '0.35rem' };
+
     return (
-        <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-white mb-6">Qualificação Profissional</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff', margin: '0 0 0.25rem' }}>Qualificação Profissional</h2>
 
             {/* Previous Qualification */}
             <div>
-                <label className="block text-purple-200 mb-2">Qualificação Anterior (opcional)</label>
+                <label style={LABEL}>Qualificação Anterior <span style={{ fontSize: '0.62rem', fontWeight: 400, color: '#6B7280' }}>(opcional)</span></label>
                 <textarea
+                    className="enroll-input"
                     value={data.previousQualification || ''}
                     onChange={(e) => handleChange('previousQualification', e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
                     placeholder="Descreva cursos ou qualificações que você já possui (se houver)"
+                    style={{ resize: 'vertical', minHeight: 80 }}
                 />
-                <p className="text-purple-300 text-sm mt-1">
-                    Ex: Curso de informática básica, curso de inglês, etc.
-                </p>
+                <p style={HINT}>Ex: Curso de informática básica, curso de inglês, etc.</p>
             </div>
 
             {/* Professional Interest */}
             <div>
-                <label className="block text-purple-200 mb-2">Área de Interesse Profissional (opcional)</label>
+                <label style={LABEL}>Área de Interesse Profissional <span style={{ fontSize: '0.62rem', fontWeight: 400, color: '#6B7280' }}>(opcional)</span></label>
                 <input
+                    className="enroll-input"
                     type="text"
                     value={data.professionalInterest || ''}
                     onChange={(e) => handleChange('professionalInterest', e.target.value)}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="Ex: Tecnologia, Gastronomia, Saúde, etc."
+                    placeholder="Ex: Tecnologia, Gastronomia, Saúde..."
                 />
             </div>
 
             {/* Career Goal */}
             <div>
-                <label className="block text-purple-200 mb-2">Objetivo Profissional *</label>
+                <label style={LABEL}>Objetivo Profissional *</label>
                 <select
+                    className="enroll-select"
                     value={data.careerGoal || ''}
                     onChange={(e) => handleChange('careerGoal', e.target.value)}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    style={{ borderColor: errors.careerGoal ? '#EF4444' : undefined }}
                 >
                     <option value="">Selecione</option>
                     <option value="SEEK_EMPLOYMENT">Buscar emprego</option>
@@ -83,17 +75,13 @@ export default function Step5Professional() {
                     <option value="NOT_SURE">Ainda não sei</option>
                     <option value="OTHER">Outro</option>
                 </select>
-                {errors.careerGoal && <p className="text-red-400 text-sm mt-1">{errors.careerGoal}</p>}
+                {errors.careerGoal && <p style={ERROR}>{errors.careerGoal}</p>}
             </div>
 
             {/* How Heard About */}
             <div>
-                <label className="block text-purple-200 mb-2">Como soube do curso? (opcional)</label>
-                <select
-                    value={data.howHeardAbout || ''}
-                    onChange={(e) => handleChange('howHeardAbout', e.target.value)}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
+                <label style={LABEL}>Como soube do curso? <span style={{ fontSize: '0.62rem', fontWeight: 400, color: '#6B7280' }}>(opcional)</span></label>
+                <select className="enroll-select" value={data.howHeardAbout || ''} onChange={(e) => handleChange('howHeardAbout', e.target.value)}>
                     <option value="">Selecione</option>
                     <option value="SOCIAL_MEDIA">Redes Sociais</option>
                     <option value="FRIENDS_FAMILY">Amigos/Família</option>
@@ -107,36 +95,28 @@ export default function Step5Professional() {
 
             {/* Motivation */}
             <div>
-                <label className="block text-purple-200 mb-2">Por que você quer fazer este curso? <span className="text-purple-400 text-sm font-normal">(opcional)</span></label> {/* REQ-05 */}
+                <label style={LABEL}>Por que você quer fazer este curso? <span style={{ fontSize: '0.62rem', fontWeight: 400, color: '#6B7280' }}>(opcional)</span></label>
                 <textarea
+                    className="enroll-input"
                     value={data.motivation || ''}
                     onChange={(e) => handleChange('motivation', e.target.value)}
                     rows={5}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
                     placeholder="Conte-nos sobre suas expectativas (opcional)..."
+                    style={{
+                        resize: 'vertical', minHeight: 100,
+                        borderColor: errors.motivation ? '#EF4444' : undefined,
+                    }}
                 />
-                {errors.motivation && <p className="text-red-400 text-sm mt-1">{errors.motivation}</p>}
+                {errors.motivation && <p style={ERROR}>{errors.motivation}</p>}
                 {data.motivation && (
-                    <p className="text-purple-300 text-sm mt-1">
-                        {data.motivation.length} caracteres {data.motivation.length < 20 ? '(mínimo 20 se preenchido)' : '✓'}
-                    </p>
+                    <p style={HINT}>{data.motivation.length} caracteres {data.motivation.length < 20 ? '(mínimo 20 se preenchido)' : '✓'}</p>
                 )}
             </div>
 
-            {/* Navigation Buttons */}
-            <div className="flex justify-between pt-6">
-                <button
-                    onClick={prevStep}
-                    className="px-8 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition-all duration-300"
-                >
-                    ← Voltar
-                </button>
-                <button
-                    onClick={handleNext}
-                    className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/50"
-                >
-                    Próximo →
-                </button>
+            {/* Nav */}
+            <div className="nav-row">
+                <button className="btn-back" onClick={prevStep}>← Voltar</button>
+                <button className="btn-next" onClick={handleNext}>Próximo →</button>
             </div>
         </div>
     );

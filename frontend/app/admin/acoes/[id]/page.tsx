@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { acoesApi, Acao, AcaoStatus, AcaoCustoTipo } from '@/lib/api/acoes';
 import api from '@/lib/api/acoes';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
+import { LocationFields, LocationFieldsValue } from '@/components/admin/LocationFields';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
 const FUTURISTIC_CSS = `
 @keyframes holo-scan {
@@ -134,6 +137,14 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
         precoCombustivelL: String(acao.precoCombustivelL || ''),
         autonomiaKmL: String(acao.autonomiaKmL || ''),
     });
+    // Local físico (REQ-LOCAL-2026) — pré-preenchido com valores existentes
+    const [acaoLocation, setAcaoLocation] = useState<LocationFieldsValue>({
+        name: acao.localExecucao ?? null,
+        address: acao.localEndereco ?? null,
+        reference: acao.localReferencia ?? null,
+        latitude: acao.localLatitude ?? null,
+        longitude: acao.localLongitude ?? null,
+    });
     const [loading, setLoading] = useState(false);
 
     const save = async () => {
@@ -143,7 +154,13 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
             distanciaKm: Number(form.distanciaKm) || undefined,
             precoCombustivelL: Number(form.precoCombustivelL) || undefined,
             autonomiaKmL: Number(form.autonomiaKmL) || undefined,
-        });
+            // Local físico (REQ-LOCAL-2026)
+            localExecucao: acaoLocation.name || form.localExecucao || undefined,
+            localEndereco: acaoLocation.address || undefined,
+            localReferencia: acaoLocation.reference || undefined,
+            localLatitude: acaoLocation.latitude ?? undefined,
+            localLongitude: acaoLocation.longitude ?? undefined,
+        } as any);
         setLoading(false);
         setEditing(false);
         onUpdate();
@@ -173,10 +190,17 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                 {editing ? (
                     <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                         <div style={{ gridColumn: '1/-1' }}><label style={LABEL}>Nome</label><input style={INPUT} value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} /></div>
-                        <div><label style={LABEL}>Local de Execução</label><input style={INPUT} value={form.localExecucao} onChange={e => setForm(f => ({ ...f, localExecucao: e.target.value }))} /></div>
                         <div><label style={LABEL}>Distância (km)</label><input type="number" style={INPUT} value={form.distanciaKm} onChange={e => setForm(f => ({ ...f, distanciaKm: e.target.value }))} /></div>
                         <div><label style={LABEL}>Combustível (R$/L)</label><input type="number" step="0.01" style={INPUT} value={form.precoCombustivelL} onChange={e => setForm(f => ({ ...f, precoCombustivelL: e.target.value }))} /></div>
                         <div><label style={LABEL}>Autonomia (km/L)</label><input type="number" step="0.1" style={INPUT} value={form.autonomiaKmL} onChange={e => setForm(f => ({ ...f, autonomiaKmL: e.target.value }))} /></div>
+                        <div style={{ gridColumn: '1/-1' }}>
+                            <label style={LABEL}>📍 Local físico onde a ação ocorre</label>
+                            <LocationFields
+                                value={acaoLocation}
+                                onChange={setAcaoLocation}
+                                cityContext={acao.cidade ? `${acao.cidade.name}, ${acao.cidade.state}, Brasil` : (acao.cidadeNome ? `${acao.cidadeNome}, Brasil` : undefined)}
+                            />
+                        </div>
                         <div style={{ gridColumn: '1/-1' }}><label style={LABEL}>Observações</label><textarea style={{ ...INPUT, resize: 'vertical', minHeight: 80 }} value={form.observacoes} onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))} rows={3} /></div>
                         <div style={{ gridColumn: '1/-1', display: 'flex', justifyContent: 'flex-end' }}>
                             <button className="btn-primary" onClick={save} disabled={loading}>{loading ? 'Salvando...' : '💾 Salvar alterações'}</button>
@@ -185,10 +209,30 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                 ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                         <InfoItem label="Nome" value={acao.nome} wide />
-                        <InfoItem label="Cidade" value={acao.cidade ? `${acao.cidade.name}, ${acao.cidade.state}` : '—'} />
+                        <InfoItem
+                            label="Cidade"
+                            value={acao.cidade ? `${acao.cidade.name}, ${acao.cidade.state}` : (acao.cidadeNome || '—')}
+                        />
                         <InfoItem label="Grupo" value={acao.grupo?.name || '—'} />
                         <InfoItem label="Carreta" value={acao.carreta ? `${acao.carreta.identifier} — ${acao.carreta.licensePlate}` : 'Não vinculada'} />
                         <InfoItem label="Local" value={acao.localExecucao || '—'} />
+                        {acao.localEndereco && <InfoItem label="Endereço" value={acao.localEndereco} wide />}
+                        {acao.localReferencia && <InfoItem label="Ponto de referência" value={acao.localReferencia} wide />}
+                        {(acao.localLatitude && acao.localLongitude) && (
+                            <InfoItem
+                                label="Coordenadas"
+                                value={(
+                                    <a
+                                        href={`https://www.google.com/maps/search/?api=1&query=${acao.localLatitude},${acao.localLongitude}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ color: '#2563EB', textDecoration: 'none' }}
+                                    >
+                                        🗺️ {acao.localLatitude.toFixed(5)}, {acao.localLongitude.toFixed(5)} →
+                                    </a>
+                                ) as any}
+                            />
+                        )}
                         <InfoItem label="Início" value={fmtDate(acao.dataInicio)} />
                         <InfoItem label="Fim" value={fmtDate(acao.dataFim)} />
                         <InfoItem label="Inscrições Online" value={acao.permitirInscricoes ? '✅ Ativas' : '❌ Desativadas'} />
@@ -206,30 +250,28 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                     </div>
                     <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#FFD600', boxShadow: '0 0 8px #FFD600', animation: 'yellowPulse 2s infinite' }} />
                 </div>
-                <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 14 }}>
+                <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
                     {[
-                        { label: 'Distância Total', value: acao.distanciaKm ? `${Number(acao.distanciaKm)} km` : '—', icon: '📡', highlight: false },
-                        { label: 'Combustível (R$/L)', value: acao.precoCombustivelL ? fmtCurrency(Number(acao.precoCombustivelL)) : '—', icon: '⛽', highlight: false },
-                        { label: 'Autonomia', value: acao.autonomiaKmL ? `${Number(acao.autonomiaKmL)} km/L` : '—', icon: '⚡', highlight: false },
+                        { label: 'Distância Total', value: acao.distanciaKm ? `${Number(acao.distanciaKm)} km` : '—', icon: '📡', highlight: false, color: '#60A5FA', bg: '#EFF6FF', border: '#BFDBFE' },
+                        { label: 'Combustível (R$/L)', value: acao.precoCombustivelL ? fmtCurrency(Number(acao.precoCombustivelL)) : '—', icon: '⛽', highlight: false, color: '#F87171', bg: '#FEF2F2', border: '#FECACA' },
+                        { label: 'Autonomia', value: acao.autonomiaKmL ? `${Number(acao.autonomiaKmL)} km/L` : '—', icon: '⚡', highlight: false, color: '#FBBF24', bg: '#FFFBEB', border: '#FDE68A' },
                         ...(rf ? [
-                            { label: 'Litros Estimados', value: `${rf.estimado.litrosEstimados.toFixed(1)} L`, icon: '💧', highlight: true },
-                            { label: 'Custo Comb.', value: fmtCurrency(rf.estimado.combustivel), icon: '💰', highlight: true },
+                            { label: 'Litros Estimados', value: `${rf.estimado.litrosEstimados.toFixed(1)} L`, icon: '💧', highlight: true, color: '#38BDF8', bg: '#F0F9FF', border: '#BAE6FD' },
+                            { label: 'Custo Comb.', value: fmtCurrency(rf.estimado.combustivel), icon: '💰', highlight: true, color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
                         ] : []),
                     ].map((item, i) => (
-                        <div key={item.label} className="futuristic-card-3d" style={{
-                            padding: '16px 14px', borderRadius: 12, textAlign: 'center', cursor: 'default',
-                            background: item.highlight ? 'linear-gradient(135deg, rgba(255,214,0,0.08), rgba(255,214,0,0.03))' : '#FAFBFC',
-                            border: item.highlight ? '1px solid rgba(255,214,0,0.35)' : '1px solid #F0F1F4',
-                            boxShadow: item.highlight ? '0 0 20px rgba(255,214,0,0.1), 0 4px 12px rgba(0,0,0,0.04)' : '0 2px 8px rgba(0,0,0,0.03)',
-                            animation: `counter-up 0.5s ${i * 0.08}s both`
-                        }}>
-                            <div style={{ fontSize: '1.2rem', marginBottom: 6 }}>{item.icon}</div>
-                            <div style={{ fontSize: '0.63rem', color: item.highlight ? 'rgba(184,155,0,0.8)' : '#9CA3AF', marginBottom: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{item.label}</div>
-                            <div style={{
-                                fontSize: '1.05rem', fontWeight: 900, color: item.highlight ? '#B89B00' : '#374151', fontFamily: 'Orbitron, sans-serif',
-                                filter: item.highlight ? 'drop-shadow(0 0 8px rgba(255,214,0,0.4))' : 'none'
-                            }}>{item.value}</div>
-                        </div>
+                        <AnimatedKpiCard
+                            key={item.label}
+                            label={item.label}
+                            value={0}
+                            displayValue={item.value}
+                            color={item.color}
+                            bg={item.bg}
+                            border={item.border}
+                            delayMs={i * 90}
+                            compact
+                            icon={<span style={{ fontSize: '1.05rem', lineHeight: 1 }}>{item.icon}</span>}
+                        />
                     ))}
                 </div>
             </div>
@@ -371,40 +413,33 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Cards de resumo estimado x real */}
             {rf && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
                     {[
-                        { label: 'Custo Estimado', icon: '⚡', value: fmtCurrency(rf.estimado.total), sub1: `⛽ ${fmtCurrency(rf.estimado.combustivel)}`, sub2: `👥 ${fmtCurrency(rf.estimado.diarias)}`, glow: '255,214,0', color: '#FFD600' },
-                        { label: 'Custo Real', icon: '💵', value: fmtCurrency(rf.real.total), sub1: `⛽ ${fmtCurrency(rf.real.abastecimentos)}`, sub2: `📋 ${fmtCurrency(rf.real.despesasGerais)}`, glow: '5,150,105', color: '#34D399' },
+                        { label: 'Custo Estimado', icon: '⚡', value: fmtCurrency(rf.estimado.total), sub1: `⛽ ${fmtCurrency(rf.estimado.combustivel)} · 👥 ${fmtCurrency(rf.estimado.diarias)}`, glow: '255,214,0', color: '#FFD600', bg: '#FFFDE7', border: '#FEF08A' },
+                        { label: 'Custo Real', icon: '💵', value: fmtCurrency(rf.real.total), sub1: `⛽ ${fmtCurrency(rf.real.abastecimentos)} · 📋 ${fmtCurrency(rf.real.despesasGerais)}`, glow: '5,150,105', color: '#34D399', bg: '#ECFDF5', border: '#A7F3D0' },
                         {
                             label: rf.economia >= 0 ? 'Economia' : 'Excesso', icon: rf.economia >= 0 ? '📉' : '📈',
                             value: fmtCurrency(Math.abs(rf.economia)),
                             sub1: rf.economia >= 0 ? 'Abaixo do previsto ✓' : 'Acima do previsto !',
-                            sub2: '', glow: rf.economia >= 0 ? '29,78,216' : '220,38,38',
-                            color: rf.economia >= 0 ? '#60A5FA' : '#f87171'
+                            glow: rf.economia >= 0 ? '29,78,216' : '220,38,38',
+                            color: rf.economia >= 0 ? '#60A5FA' : '#f87171',
+                            bg: rf.economia >= 0 ? '#EFF6FF' : '#FEF2F2',
+                            border: rf.economia >= 0 ? '#BFDBFE' : '#FECACA',
                         },
                     ].map((card, i) => (
-                        <div key={card.label} className="futuristic-card-3d" style={{
-                            padding: '20px', borderRadius: 14, cursor: 'default',
-                            background: `linear-gradient(135deg, rgba(${card.glow},0.08), rgba(0,0,0,0))`,
-                            border: `1px solid rgba(${card.glow},0.25)`,
-                            boxShadow: `0 0 24px rgba(${card.glow},0.08), 0 4px 20px rgba(0,0,0,0.05)`,
-                            animation: `counter-up 0.5s ${i * 0.1}s both`
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                                <div style={{
-                                    width: 36, height: 36, borderRadius: 10,
-                                    background: `rgba(${card.glow},0.15)`, border: `1px solid rgba(${card.glow},0.3)`,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem'
-                                }}>{card.icon}</div>
-                                <div style={{ fontFamily: 'Orbitron', fontSize: '0.6rem', fontWeight: 800, color: `rgba(${card.glow === '255,214,0' ? '184,155,0' : card.glow.split(',').join(',')},0.9)`, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{card.label}</div>
-                            </div>
-                            <div style={{
-                                fontFamily: 'Orbitron', fontSize: '1.5rem', fontWeight: 900, color: card.color, marginBottom: 8,
-                                filter: `drop-shadow(0 0 10px rgba(${card.glow},0.4))`
-                            }}>{card.value}</div>
-                            <div style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>{card.sub1}</div>
-                            {card.sub2 && <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 2 }}>{card.sub2}</div>}
-                        </div>
+                        <AnimatedKpiCard
+                            key={card.label}
+                            label={card.label}
+                            value={0}
+                            displayValue={card.value}
+                            sub={card.sub1}
+                            color={card.color}
+                            bg={`linear-gradient(135deg, rgba(${card.glow},0.08), ${card.bg})`}
+                            border={card.border}
+                            delayMs={i * 90}
+                            compact
+                            icon={<span style={{ fontSize: '1rem', lineHeight: 1 }}>{card.icon}</span>}
+                        />
                     ))}
                 </div>
             )}
@@ -478,7 +513,8 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
 
             {/* Modal de custo */}
             {showModal && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setShowModal(null)}>
+                <ModalPortal>
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setShowModal(null)}>
                     <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
                         <div style={{ padding: '18px 24px 12px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: 10, background: '#FFFDE7', borderRadius: '18px 18px 0 0' }}>
                             <span style={{ fontSize: '1.2rem' }}>{showModal === 'ABASTECIMENTO' ? '⛽' : '📋'}</span>
@@ -504,6 +540,7 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                         </div>
                     </div>
                 </div>
+                </ModalPortal>
             )}
         </div>
     );
@@ -854,11 +891,14 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
 // ── TabInscricoes ───────────────────────────────────────────────
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-    PENDING: { label: 'Pendente', color: '#92400E', bg: '#FEF3C7', border: '#FDE68A' },
-    APPROVED: { label: 'Aprovada', color: '#065F46', bg: '#D1FAE5', border: '#6EE7B7' },
-    REJECTED: { label: 'Rejeitada', color: '#991B1B', bg: '#FEE2E2', border: '#FCA5A5' },
-    WAITLIST: { label: 'Lista Espera', color: '#1E40AF', bg: '#DBEAFE', border: '#93C5FD' },
-    CORRECTION_NEEDED: { label: 'Correção', color: '#7C3AED', bg: '#EDE9FE', border: '#C4B5FD' },
+    PENDING:            { label: 'Pendente',     color: '#92400E', bg: '#FEF3C7', border: '#FDE68A' },
+    APPROVED:           { label: 'Aprovada',     color: '#065F46', bg: '#D1FAE5', border: '#6EE7B7' },
+    ENROLLED:           { label: 'Matriculado',  color: '#1E3A8A', bg: '#DBEAFE', border: '#93C5FD' },
+    REJECTED:           { label: 'Rejeitada',    color: '#991B1B', bg: '#FEE2E2', border: '#FCA5A5' },
+    WAITLIST:           { label: 'Lista Espera', color: '#92400E', bg: '#FEF9C3', border: '#FEF08A' },
+    DROPOUT:            { label: 'Desistente',   color: '#374151', bg: '#F3F4F6', border: '#D1D5DB' },
+    CORRECTION_NEEDED:  { label: 'Correção',     color: '#7C3AED', bg: '#EDE9FE', border: '#C4B5FD' },
+    DOCUMENT_PENDING:   { label: 'Doc. Pendente',color: '#B45309', bg: '#FEF3C7', border: '#FDE68A' },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -980,27 +1020,23 @@ function TabInscricoes({ acao, onRefresh }: { acao: Acao; onRefresh: () => void 
             )}
 
             {/* KPIs */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 12 }}>
                 {[
                     { label: 'Total', val: todas.length, icon: '👥', glow: '255,214,0', color: '#FFD600' },
                     { label: 'Aprovados', val: todas.filter(i => i.status === 'APPROVED').length, icon: '✅', glow: '52,211,153', color: '#34D399' },
                     { label: 'Pendentes', val: todas.filter(i => i.status === 'PENDING').length, icon: '⏳', glow: '251,191,36', color: '#FBBF24' },
                     { label: 'Lista Espera', val: todas.filter(i => i.status === 'WAITLIST').length, icon: '🕐', glow: '96,165,250', color: '#60A5FA' },
                 ].map((k, i) => (
-                    <div key={k.label} className="futuristic-card-3d" style={{
-                        padding: '18px 14px', textAlign: 'center', borderRadius: 14, cursor: 'default',
-                        background: `linear-gradient(135deg, rgba(${k.glow},0.08), transparent)`,
-                        border: `1px solid rgba(${k.glow},0.25)`,
-                        boxShadow: `0 0 20px rgba(${k.glow},0.08)`,
-                        animation: `counter-up 0.4s ${i * 0.08}s both`
-                    }}>
-                        <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>{k.icon}</div>
-                        <div style={{
-                            fontFamily: 'Orbitron', fontSize: '1.6rem', fontWeight: 900, color: k.color,
-                            filter: `drop-shadow(0 0 12px rgba(${k.glow},0.5))`, lineHeight: 1
-                        }}>{k.val}</div>
-                        <div style={{ fontSize: '0.6rem', color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 6 }}>{k.label}</div>
-                    </div>
+                    <AnimatedKpiCard
+                        key={k.label}
+                        label={k.label}
+                        value={k.val}
+                        color={k.color}
+                        bg={`linear-gradient(135deg, rgba(${k.glow},0.12), transparent)`}
+                        border={k.color}
+                        delayMs={i * 80}
+                        icon={<span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{k.icon}</span>}
+                    />
                 ))}
             </div>
 
@@ -1163,9 +1199,14 @@ function TabInscricoes({ acao, onRefresh }: { acao: Acao; onRefresh: () => void 
                                         </td>
                                         <td style={{ padding: '10px 14px' }}>
                                             <div style={{ display: 'flex', gap: 5 }}>
+                                                {/* Aprovar: apenas PENDING ou WAITLIST */}
                                                 {(i.status === 'PENDING' || i.status === 'WAITLIST') && <button onClick={() => acaoInsc(i.id, 'approve')} disabled={loadingAct === i.id + 'approve'} style={{ ...BTN, background: '#D1FAE5', color: '#065F46' }}>✅ Aprovar</button>}
+                                                {/* Rejeitar: apenas PENDING ou WAITLIST */}
                                                 {(i.status === 'PENDING' || i.status === 'WAITLIST') && <button onClick={() => acaoInsc(i.id, 'reject')} disabled={loadingAct === i.id + 'reject'} style={{ ...BTN, background: '#FEE2E2', color: '#991B1B' }}>❌ Rejeitar</button>}
-                                                {i.status !== 'WAITLIST' && i.status !== 'REJECTED' && <button onClick={() => acaoInsc(i.id, 'waitlist')} disabled={loadingAct === i.id + 'waitlist'} style={{ ...BTN, background: '#DBEAFE', color: '#1E40AF' }}>🕐 Espera</button>}
+                                                {/* Espera: apenas PENDING ou APPROVED — não para ENROLLED (já matriculado) */}
+                                                {(i.status === 'PENDING' || i.status === 'APPROVED') && <button onClick={() => acaoInsc(i.id, 'waitlist')} disabled={loadingAct === i.id + 'waitlist'} style={{ ...BTN, background: '#FEF9C3', color: '#92400E' }}>⏳ Espera</button>}
+                                                {/* Confirmar matrícula: apenas APPROVED */}
+                                                {i.status === 'APPROVED' && <button onClick={() => acaoInsc(i.id, 'approve')} disabled={loadingAct === i.id + 'approve'} style={{ ...BTN, background: '#DBEAFE', color: '#1E3A8A' }}>🎓 Matricular</button>}
                                             </div>
                                         </td>
                                     </tr>
@@ -1338,7 +1379,7 @@ export default function AcaoDetailPage() {
                                         {cfg.label.toUpperCase()}
                                     </span>
                                     {[
-                                        { icon: '📍', text: acao.cidade ? `${acao.cidade.name}, ${acao.cidade.state}` : '—' },
+                                        { icon: '📍', text: acao.cidade ? `${acao.cidade.name}, ${acao.cidade.state}` : (acao.cidadeNome || '—') },
                                         { icon: '📅', text: `${fmtDate(acao.dataInicio)} → ${fmtDate(acao.dataFim)}` },
                                         acao.carreta && { icon: '🚛', text: acao.carreta.identifier },
                                         { icon: '🎓', text: `${acao.turmas?.length || 0} turmas` },

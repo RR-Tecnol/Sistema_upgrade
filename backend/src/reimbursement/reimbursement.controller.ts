@@ -109,11 +109,13 @@ export class ReimbursementController {
   @ApiQuery({ name: 'status', enum: ExpenseStatus, required: false })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'employeeId', required: false, description: 'Admin: filtrar reembolsos do funcionário (UUID)' })
   findAll(
     @Request() req: any,
     @Query('status') status?: ExpenseStatus,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit = 20,
+    @Query('employeeId') employeeId?: string,
   ) {
     // Admin/Coordinator vê todos; TEACHER, DRIVER e STUDENT vêem só os seus
     const onlyMine =
@@ -121,7 +123,22 @@ export class ReimbursementController {
         ? req.user.id
         : undefined;
 
-    return this.service.findAll(onlyMine, status, page, limit);
+    const privileged = ['IT_ADMIN', 'ADMIN', 'COORDINATOR', 'FINANCIAL'].includes(req.user.role);
+    const employeeFilter =
+      !onlyMine && privileged && employeeId?.trim() ? employeeId.trim() : undefined;
+
+    return this.service.findAll(onlyMine, status, page, limit, employeeFilter ? { employeeId: employeeFilter } : undefined);
+  }
+
+  /**
+   * URL GET assinada para pré-visualização do recibo (MinIO privado).
+   * Registado antes de `GET :id` para não capturar o segmento literal como UUID.
+   */
+  @Get(':id/receipt-presigned-url')
+  @ApiOperation({ summary: 'Obter URL assinada para visualizar o comprovante (MinIO privado)' })
+  @ApiParam({ name: 'id', description: 'ID do reembolso' })
+  getReceiptPresignedUrl(@Param('id') id: string, @Request() req: any) {
+    return this.service.getPresignedReceiptViewUrl(id, { id: req.user.id, role: req.user.role });
   }
 
   /**
@@ -130,8 +147,8 @@ export class ReimbursementController {
   @Get(':id')
   @ApiOperation({ summary: 'Detalhe de um reembolso' })
   @ApiParam({ name: 'id', description: 'ID do reembolso' })
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    return this.service.findOneForCaller(id, { id: req.user.id, role: req.user.role });
   }
 
   /**

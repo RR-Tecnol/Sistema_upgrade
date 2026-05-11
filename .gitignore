@@ -13,6 +13,10 @@ dist/
 .next/
 out/
 
+# Cache local de PDFs (certificados)
+tmp/certificates/
+backend/tmp/
+
 # Environment variables
 .env
 .env.local
@@ -60,3 +64,13 @@ temp/
 .cache/
 .temp/
 .tmp/
+
+# Python (scripts auxiliares no repo)
+**/__pycache__/
+*.pyc
+
+# Artefactos locais de desenvolvimento (não versionar)
+backend/error.txt
+backend/test.pdf
+backend/test_clean.pdf
+backend/test_piaui.pdf

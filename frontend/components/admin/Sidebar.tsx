@@ -23,6 +23,7 @@ import {
     BanknotesIcon,
     ClockIcon,
     ExclamationTriangleIcon,
+    ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 
 const navSections = [
@@ -54,11 +55,12 @@ const navSections = [
         label: 'Operações de Campo',
         items: [
             { name: 'Períodos de Curso', href: '/admin/acoes', icon: BoltIcon },
+            { name: 'Viagens', href: '/admin/viagens', icon: TruckIcon },
             { name: 'Funcionários', href: '/admin/funcionarios', icon: BriefcaseIcon },
-            { name: 'Freq. Funcionarios', href: '/admin/funcionarios/frequencia', icon: ClipboardDocumentCheckIcon },
             { name: 'Feriados', href: '/admin/feriados', icon: CalendarDaysIcon },
             { name: 'Imprevistos', href: '/admin/imprevistos', icon: ExclamationTriangleIcon },
             { name: 'Reembolsos', href: '/admin/reembolsos', icon: BanknotesIcon },
+            { name: 'Feedbacks', href: '/admin/feedbacks', icon: ChatBubbleLeftRightIcon },
             { name: 'Contas a Pagar', href: '/admin/contas-a-pagar', icon: CurrencyDollarIcon },
         ]
     },
@@ -84,7 +86,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
     const [time, setTime] = useState('');
 
     useEffect(() => {
-        const u = localStorage.getItem('user');
+        const u = sessionStorage.getItem('user') || localStorage.getItem('user');
         if (u) setUser(JSON.parse(u));
 
         const tick = () => {
@@ -142,7 +144,12 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                         <div key={section.label}>
                             <div className="sidebar-section-label">{section.label}</div>
                             {section.items.map((item, index) => {
-                                const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+                                // LIVRO_DE_REGRAS: se existe item com match exato no pathname, usar só exact match
+                    // Evita dupla seleção ex: /funcionarios e /funcionarios/frequencia
+                    const allHrefs = navSections.flatMap(s => s.items.map(i => i.href));
+                    const hasExactMatch = allHrefs.includes(pathname ?? '');
+                    const isActive = pathname === item.href ||
+                        (!hasExactMatch && (pathname?.startsWith(item.href + '/') ?? false));
                                 const Icon = item.icon;
                                 return (
                                     <Link
@@ -162,6 +169,30 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                             })}
                         </div>
                     ))}
+                {/* MODO INSPEÇÃO TI — visível apenas para IT_ADMIN */}
+                    {user?.role === 'IT_ADMIN' && (
+                        <div style={{ marginTop: 8 }}>
+                            <div className="sidebar-section-label" style={{ color: '#7C3AED', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 10 }}>🔬</span> Inspeção TI
+                            </div>
+                            {[
+                                { name: 'Portal do Aluno', href: '/student/dashboard', emoji: '🎓' },
+                                { name: 'Portal do Professor', href: '/teacher/dashboard', emoji: '📚' },
+                                { name: 'Portal do Motorista', href: '/driver/dashboard', emoji: '🚛' },
+                            ].map((item) => (
+                                <Link
+                                    key={item.name}
+                                    href={item.href}
+                                    className="sidebar-link"
+                                    onClick={onClose}
+                                    style={{ background: 'rgba(124,58,237,0.08)', border: '1px dashed rgba(124,58,237,0.3)', marginBottom: 2 }}
+                                >
+                                    <span style={{ fontSize: 14 }}>{item.emoji}</span>
+                                    <span style={{ fontSize: '0.8rem', color: '#7C3AED', fontWeight: 600 }}>{item.name}</span>
+                                </Link>
+                            ))}
+                        </div>
+                    )}
                 </nav>
 
                 {/* Footer */}

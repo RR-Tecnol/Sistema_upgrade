@@ -7,12 +7,17 @@ import { toast } from '@/components/ui/Toast';
 import {
     PlusIcon,
     PencilIcon,
-    TrashIcon,
     ChartBarIcon,
     MagnifyingGlassIcon,
     FunnelIcon,
+    ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
+import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
+import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
     PLANNED: { label: 'Planejada', color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-subtle)' },
@@ -30,6 +35,7 @@ const PERIOD_LABELS: Record<string, string> = {
 };
 
 export default function TurmasPage() {
+    const searchParams = useSearchParams();
     const [classes, setClasses] = useState<Class[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('all');
@@ -37,8 +43,26 @@ export default function TurmasPage() {
     const [search, setSearch] = useState('');
     const [deleteClassId, setDeleteClassId] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [statusModalClass, setStatusModalClass] = useState<Class | null>(null);
+    const [statusTarget, setStatusTarget] = useState('');
+    const [statusSaving, setStatusSaving] = useState(false);
+    const [listViewMode, setListViewMode] = usePersistedAdminViewMode('admin:turmas:list', 'table');
 
     useEffect(() => { loadClasses(); }, [statusFilter]);
+
+    useEffect(() => {
+        if (searchParams.get('created') !== '1') return;
+        const createdId = searchParams.get('createdClassId');
+        toast.success(createdId ? `Turma criada com sucesso (${createdId.slice(0, 8)}...)` : 'Turma criada com sucesso!');
+        loadClasses();
+
+        // Evita toast duplicado em futuras navegações/back
+        const url = new URL(window.location.href);
+        url.searchParams.delete('created');
+        url.searchParams.delete('createdClassId');
+        window.history.replaceState({}, '', url.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
 
     const loadClasses = async () => {
         try {
@@ -67,6 +91,26 @@ export default function TurmasPage() {
         }
     };
 
+    const handleOpenStatusModal = (item: Class) => {
+        setStatusModalClass(item);
+        setStatusTarget(item.status === 'CANCELLED' ? 'PLANNED' : item.status);
+    };
+
+    const handleSaveStatus = async () => {
+        if (!statusModalClass || !statusTarget) return;
+        setStatusSaving(true);
+        try {
+            await classesApi.updateStatus(statusModalClass.id, statusTarget);
+            toast.success('Status da turma atualizado com sucesso.');
+            setStatusModalClass(null);
+            await loadClasses();
+        } catch {
+            toast.error('Não foi possível atualizar o status da turma.');
+        } finally {
+            setStatusSaving(false);
+        }
+    };
+
     const filtered = classes.filter(c => {
         const matchSearch =
             c.classIdentifier?.toLowerCase().includes(search.toLowerCase()) ||
@@ -86,32 +130,34 @@ export default function TurmasPage() {
     return (
         <>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }} className="animate-fade-in">
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                    <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '2rem', fontWeight: 900, letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
-                        TURMAS
-                    </h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Gerencie as turmas dos cursos profissionalizantes</p>
-                </div>
-                <Link href="/admin/turmas/nova" className="btn-primary">
-                    <PlusIcon style={{ width: 16, height: 16 }} />
-                    Nova Turma
-                </Link>
-            </div>
+            <AdminHeaderHero
+                title="TURMAS"
+                subtitle="Gerencie as turmas dos cursos profissionalizantes"
+                rightSlot={(
+                    <Link href="/admin/turmas/nova" className="btn-primary">
+                        <PlusIcon style={{ width: 16, height: 16 }} />
+                        Nova Turma
+                    </Link>
+                )}
+            />
 
             {/* Stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
                 {[
                     { label: 'Total', value: stats.total, color: 'var(--neon-yellow)' },
                     { label: 'Matrículas Abertas', value: stats.open, color: 'var(--neon-green)' },
                     { label: 'Em Andamento', value: stats.active, color: 'var(--neon-cyan)' },
                     { label: 'Concluídas', value: stats.done, color: 'var(--neon-purple)' },
                 ].map((s, i) => (
-                    <div key={i} className="stat-card animate-scale-in" style={{ animationDelay: `${i * 60}ms`, padding: '1rem' }}>
-                        <div className="stat-label">{s.label}</div>
-                        <div style={{ fontFamily: 'Orbitron', fontSize: '1.75rem', fontWeight: 800, color: s.color, textShadow: `0 0 16px ${s.color}` }}>{s.value}</div>
-                    </div>
+                    <AnimatedKpiCard
+                        key={s.label}
+                        label={s.label}
+                        value={s.value}
+                        color={s.color}
+                        bg="#FFFFFF"
+                        border="#FFD600"
+                        delayMs={i * 60}
+                    />
                 ))}
             </div>
 
@@ -186,6 +232,10 @@ export default function TurmasPage() {
                 </div>
             </div>
 
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <AdminViewModeToggle mode={listViewMode} onChange={setListViewMode} />
+            </div>
+
             {/* Table */}
             <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
                 <style>{`
@@ -205,6 +255,64 @@ export default function TurmasPage() {
                     <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                         <FunnelIcon style={{ width: 36, height: 36, margin: '0 auto 0.75rem', opacity: 0.3 }} />
                         <p style={{ fontFamily: 'Orbitron', fontSize: '0.75rem', letterSpacing: '0.12em' }}>NENHUMA TURMA ENCONTRADA</p>
+                    </div>
+                ) : listViewMode === 'card' ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, padding: 14 }}>
+                        {filtered.map((item, idx) => {
+                            const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.PLANNED;
+                            const borderAccent = item.city?.state === 'MA' ? '#FFD600' : '#00F5FF';
+                            return (
+                                <div
+                                    key={item.id}
+                                    className="adm-kpi-card adm-scale-in"
+                                    style={{
+                                        animationDelay: `${idx * 30}ms`,
+                                        background: '#fff',
+                                        borderStyle: 'solid',
+                                        borderWidth: '1px 1px 1px 4px',
+                                        borderLeftColor: borderAccent,
+                                        borderTopColor: `${cfg.border}`,
+                                        borderRightColor: `${cfg.border}`,
+                                        borderBottomColor: `${cfg.border}`,
+                                    }}
+                                >
+                                    <div className="adm-kpi-grid" />
+                                    <div className="adm-kpi-topline" style={{ background: `linear-gradient(90deg, transparent, ${borderAccent}, transparent)` }} />
+                                    <div style={{ position: 'relative', zIndex: 1, padding: '14px 14px 10px' }}>
+                                        <div style={{ fontFamily: 'JetBrains Mono', fontWeight: 700, color: 'var(--neon-yellow)', fontSize: '0.85rem', marginBottom: 6 }}>{item.classIdentifier}</div>
+                                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)', marginBottom: 4 }}>{item.course?.name || '—'}</div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.city?.name || '—'} · {PERIOD_LABELS[item.period] || item.period}</div>
+                                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', marginTop: 4 }}>{item.startTime} – {item.endTime}</div>
+                                        <div style={{ marginTop: 8 }}>
+                                            <span style={{ padding: '0.25rem 0.6rem', borderRadius: 100, fontSize: '0.65rem', fontWeight: 700, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>{cfg.label}</span>
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', marginTop: 8, fontFamily: 'JetBrains Mono', color: 'var(--text-secondary)' }}>{new Date(item.startDate).toLocaleDateString('pt-BR')} → {new Date(item.endDate).toLocaleDateString('pt-BR')}</div>
+                                        <div style={{ fontFamily: 'Orbitron', fontWeight: 800, color: 'var(--neon-yellow)', fontSize: '0.9rem', marginTop: 6 }}>{item.vacancies} vagas</div>
+                                        {item.truck ? <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>Carreta: {item.truck.identifier}</div> : null}
+                                    </div>
+                                    <div style={{ position: 'relative', zIndex: 1, borderTop: '1px solid rgba(148,163,184,.22)', padding: '10px 12px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                        <Link href={`/admin/turmas/${item.id}`} title="Editar" style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(0,245,255,0.08)', color: 'var(--neon-cyan)', border: '1px solid rgba(0,245,255,0.2)', display: 'flex' }}><PencilIcon style={{ width: 14, height: 14 }} /></Link>
+                                        <Link href={`/admin/turmas/${item.id}/estatisticas`} title="Estatísticas" style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(191,90,242,0.08)', color: 'var(--neon-purple)', border: '1px solid rgba(191,90,242,0.2)', display: 'flex' }}><ChartBarIcon style={{ width: 14, height: 14 }} /></Link>
+                                        <button
+                                            type="button"
+                                            onClick={() => item.status === 'CANCELLED' ? handleOpenStatusModal(item) : setDeleteClassId(item.id)}
+                                            title={item.status === 'CANCELLED' ? 'Reativar' : 'Cancelar'}
+                                            style={{
+                                                padding: '0.4rem',
+                                                borderRadius: 7,
+                                                background: item.status === 'CANCELLED' ? 'rgba(0,245,255,0.08)' : 'rgba(255,45,85,0.08)',
+                                                color: item.status === 'CANCELLED' ? 'var(--neon-cyan)' : 'var(--neon-red)',
+                                                border: item.status === 'CANCELLED' ? '1px solid rgba(0,245,255,0.2)' : '1px solid rgba(255,45,85,0.2)',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                            }}
+                                        >
+                                            <ArrowPathIcon style={{ width: 14, height: 14 }} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 ) : (
                     <div>
@@ -284,13 +392,25 @@ export default function TurmasPage() {
                                                         style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(0,245,255,0.08)', color: 'var(--neon-cyan)', border: '1px solid rgba(0,245,255,0.2)', display: 'flex', transition: 'all 0.2s' }}>
                                                         <PencilIcon style={{ width: 14, height: 14 }} />
                                                     </Link>
-                                                    <Link href={`/admin/turmas/${item.id}/estatisticas`} title="Estatísticas"
+                                                    <Link href={`/admin/turmas/${item.id}/estatisticas`} title="Ver mais"
                                                         style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(191,90,242,0.08)', color: 'var(--neon-purple)', border: '1px solid rgba(191,90,242,0.2)', display: 'flex', transition: 'all 0.2s' }}>
                                                         <ChartBarIcon style={{ width: 14, height: 14 }} />
                                                     </Link>
-                                                    <button onClick={() => handleDelete(item.id)} title="Excluir"
-                                                        style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(255,45,85,0.08)', color: 'var(--neon-red)', border: '1px solid rgba(255,45,85,0.2)', cursor: 'pointer', display: 'flex', transition: 'all 0.2s' }}>
-                                                        <TrashIcon style={{ width: 14, height: 14 }} />
+                                                    <button
+                                                        onClick={() => item.status === 'CANCELLED' ? handleOpenStatusModal(item) : setDeleteClassId(item.id)}
+                                                        title={item.status === 'CANCELLED' ? 'Reativar' : 'Cancelar'}
+                                                        style={{
+                                                            padding: '0.4rem',
+                                                            borderRadius: 7,
+                                                            background: item.status === 'CANCELLED' ? 'rgba(0,245,255,0.08)' : 'rgba(255,45,85,0.08)',
+                                                            color: item.status === 'CANCELLED' ? 'var(--neon-cyan)' : 'var(--neon-red)',
+                                                            border: item.status === 'CANCELLED' ? '1px solid rgba(0,245,255,0.2)' : '1px solid rgba(255,45,85,0.2)',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            transition: 'all 0.2s',
+                                                        }}
+                                                    >
+                                                        <ArrowPathIcon style={{ width: 14, height: 14 }} />
                                                     </button>
                                                 </div>
                                             </td>
@@ -307,14 +427,55 @@ export default function TurmasPage() {
 
         <ConfirmModal
             isOpen={!!deleteClassId}
-            title="EXCLUIR TURMA"
-            message="Tem certeza que deseja excluir esta turma? Alunos matriculados e registros de frequência serão removidos."
-            confirmLabel="Excluir"
+            title="CANCELAR TURMA"
+            message="Tem certeza que deseja cancelar esta turma? Depois você poderá reativar escolhendo um novo status."
+            confirmLabel="Cancelar turma"
             danger
             loading={deleting}
             onConfirm={() => deleteClassId && handleDelete(deleteClassId)}
             onCancel={() => setDeleteClassId(null)}
         />
+
+        {statusModalClass && (
+            <div
+                className="modal-overlay"
+                onClick={() => setStatusModalClass(null)}
+                style={{ zIndex: 1200 }}
+            >
+                <div
+                    className="modal-content"
+                    style={{ maxWidth: 460 }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <h3 style={{ fontFamily: 'Orbitron', fontSize: '0.9rem', marginBottom: 8 }}>
+                        REATIVAR TURMA
+                    </h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>
+                        Defina o novo status para <strong>{statusModalClass.classIdentifier}</strong>.
+                    </p>
+                    <select
+                        value={statusTarget}
+                        onChange={e => setStatusTarget(e.target.value)}
+                        className="form-input"
+                        style={{ marginBottom: 14 }}
+                    >
+                        <option value="PLANNED">Planejada</option>
+                        <option value="ENROLLMENT_OPEN">Matrículas Abertas</option>
+                        <option value="ENROLLMENT_CLOSED">Matrículas Fechadas</option>
+                        <option value="IN_PROGRESS">Em Andamento</option>
+                        <option value="COMPLETED">Concluída</option>
+                    </select>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button className="btn-ghost" onClick={() => setStatusModalClass(null)}>
+                            Fechar
+                        </button>
+                        <button className="btn-primary" onClick={handleSaveStatus} disabled={statusSaving}>
+                            {statusSaving ? 'Salvando...' : 'Salvar status'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
         </>
     );
 }
