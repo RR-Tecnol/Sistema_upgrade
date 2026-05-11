@@ -8,10 +8,9 @@
 >
 > **Executar nesta ordem exata:** F5.16 → F5.14 → F5.15 → F5.13
 > **Referências obrigatórias antes de implementar:**
-> - `docs/arquitetura/sobre-sistema.md` §11.8 (GPS) + §6 (Frontend)
-> - `docs/arquitetura/ESTADO_SISTEMA.md` (bypasses ativos)
-> - `docs/arquitetura/LIVRO_DE_REGRAS.md` §6 (seed único) + §8G (anti-padrões GPS)
-> - `docs/arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md` (transição produção)
+> - Doc canónica: `docs/sistema-atual/` (mapas, GPS, frontend, seeds) — ver `07-integracoes-notificacoes-arquivos-mapa.md`, `04-frontend-portais-e-rotas.md`, `05-dados-prisma-migracoes-seeds.md`
+> - Código: `backend/src/driver-location/`, `frontend/components/MapaMotoristas.tsx`, `frontend/components/DriverDrawer.tsx`, `backend/prisma/seed-desenvolvimento/seed-full.ts`
+> - Docs antigas (`docs/arquitetura/*`, `docs/seguranca/*`) foram **removidas** em 2026-05-11; detalhe histórico de bypasses está neste plano e no Git
 
 ---
 
@@ -815,8 +814,7 @@ Nunca editar o mesmo bloco de código em paralelo sem consolidar.
 ## REMOÇÃO PÓS-APRESENTAÇÃO (Fase 6)
 ## ═══════════════════════════════════════════════════════════
 
-> Executar após a apresentação executiva. Ver instruções completas em
-> `docs/arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md`
+> Executar após a apresentação executiva. Instruções históricas estavam em `docs/arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md` (removido); usar esta secção + código + `docs/sistema-atual/07-integracoes-notificacoes-arquivos-mapa.md`
 
 | # | Bypass | Arquivo | Ação | Quando |
 |---|--------|---------|------|--------|
@@ -848,16 +846,13 @@ model Trip {
 ## REFERÊNCIAS CRUZADAS
 ## ═══════════════════════════════════════════════════════════
 
-| Doc | Relação com este plano |
-|-----|------------------------|
-| `docs/arquitetura/sobre-sistema.md` §11.8 | Módulo GPS/DriverLocation — lógica de getMotoristaAtivos, ETA, alertas |
-| `docs/arquitetura/sobre-sistema.md` §6.6 | MapaMotoristas.tsx — routeOSRM, updateMap, cache refs |
-| `docs/arquitetura/sobre-sistema.md` §6.7 | DriverDrawer.tsx — comportamento atual e bug |
-| `docs/arquitetura/ESTADO_SISTEMA.md` | Status atual dos 4 bugs e bypasses ativos |
-| `docs/arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md` | Transição completa demo → produção (Fase 6) |
-| `docs/arquitetura/LIVRO_DE_REGRAS.md` §6 | Seed único — buildSeedRoute integrada ao seed-full.ts |
-| `docs/arquitetura/LIVRO_DE_REGRAS.md` §8G | Anti-padrões GPS catalogados |
-| `docs/seguranca/ERROS_E_SOLUCOES.md` | BUG-DRAWER-TRANSFORM, BUG-STATUS-STALE, BUG-OSRM-RATE-LIMIT |
+| Fonte | Relação com este plano |
+|-------|------------------------|
+| `docs/sistema-atual/07-integracoes-notificacoes-arquivos-mapa.md` | Mapas, OSRM, driver location, MinIO |
+| `docs/sistema-atual/04-frontend-portais-e-rotas.md` | Rotas admin/driver; componentes de mapa |
+| `docs/sistema-atual/05-dados-prisma-migracoes-seeds.md` | Seed `seed-desenvolvimento/seed-full.ts`, migrations |
+| `docs/sistema-atual/README.md` | Índice da documentação canónica |
+| Git / este ficheiro | Bypasses e bugs F5.13–F5.16 descritos nas secções acima |
 
 ---
 

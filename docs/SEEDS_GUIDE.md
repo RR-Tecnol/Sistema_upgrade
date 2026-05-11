@@ -1,220 +1,79 @@
-# 🌱 Seeds Guide — Sistema UPGRADE
-## v2.0 | 23/03/2026 — Atualizado após auditoria completa
+# Guia de seeds — Sistema UPGRADE
 
-> Guia completo sobre como funcionam os seeds, como executá-los e como criar novos.
-> **Regra de ouro:** Nunca criar arquivos seed separados. Tudo em `seed-full.ts`.
+Documentação operacional dos **dados de desenvolvimento**. Alinhado a `backend/package.json` e à pasta `backend/prisma/`.
 
 ---
 
-## 🔗 REFERÊNCIAS CRUZADAS
+## Ficheiro principal de desenvolvimento
 
-> **Ler antes de rodar ou alterar qualquer seed:**
-> - [`sobre-sistema.md §3`](./arquitetura/sobre-sistema.md) — schema Prisma: modelos e relacionamentos
-> - [`LIVRO_DE_REGRAS.md §3`](./arquitetura/LIVRO_DE_REGRAS.md) — regras de banco (soft delete, UUID, datas UTC)
-> - [`ESTADO_SISTEMA.md`](./arquitetura/ESTADO_SISTEMA.md) — estado atual e seed de apresentação pendente
-> - [`PROX-PASSOS.md §F5.8–F5.12`](./arquitetura/PROX-PASSOS.md) — blocos de seed a implementar
->
-> **Arquivo oficial do seed:** `backend/prisma/seed-full.ts`
-> - ❌ NUNCA criar: `seed-novo.ts`, `seed-temp.ts`, `seed-test.ts`, `seed_trip_test.js` etc.
-> - Todo dado de teste vai em `seed-full.ts`
->
-> **Aviso de violação removida:** `seed-rastreamento.ts` deletado em F5.7 — integrado ao `seed-full.ts`
+| Caminho | Comando |
+|---------|---------|
+| `backend/prisma/seed-desenvolvimento/seed-full.ts` | `npm run prisma:seed` (também `seed:extra`, `seed:full`) |
 
----
+**Refresh de dados de motoristas (argumento CLI):** `npm run seed:refresh-drivers`
 
-## Estrutura de Seeds (Definitiva)
+## Outros scripts
 
-| Arquivo | Propósito | Comando | Idempotente |
-|---------|-----------|---------|-------------|
-| `backend/prisma/seed-full.ts` | Dados **obrigatórios + demonstração** — usuários, cursos, grupos, cidades, carretas, turmas, viagens, reembolsos, ausências, notificações | `npm run prisma:seed` | ✅ Sim |
+| Comando | Ficheiro |
+|---------|----------|
+| `npm run seed:prod` | `backend/prisma/seed-prod.ts` |
+| `npm run reset:prod` | `backend/prisma/reset-db.ts` — **destructivo**; só com consciência do que o script faz |
 
-> ⛔ **NUNCA criar:** `seed-novo.ts`, `seed-temp.ts`, `seed-test.ts`, `seed_trip_test.js` etc.
-> Qualquer dado de teste vai em `seed-full.ts`. Seeds avulsos são legado e devem ser excluídos.
->
-> ⚠️ **VIOLAÇÃO ATIVA:** `seed-rastreamento.ts` foi criado em 27/03/2026 violando esta regra.
-> Deve ser migrado para `seed-full.ts` → seção `runSeed_rastreamento()` e depois deletado.
+Scripts pontuais em `backend/prisma/` (ex.: `seed-absences-joao.ts`) são **auxiliares** para cenários específicos, não substituem o seed principal.
 
 ---
 
-## Credenciais de Teste (criadas pelo seed.ts)
+## Credenciais criadas pelo seed de desenvolvimento
 
-```
-admin@qualifica.com                   → Senha: RR@@Upgrade → ADMIN
-maria.professora.visual@qualifica.com → Senha: RR@@Upgrade → TEACHER
-joao.driver.test99@qualifica.com      → Senha: RR@@Upgrade → DRIVER
-aluno@qualifica.com                   → Senha: RR@@Upgrade → STUDENT
-```
+Conforme README da raiz do repositório (sincronizar com o conteúdo atual do `seed-full.ts` se divergir):
 
-> ⚠️ **IMPORTANTE:** Sempre buscar usuários por **email**, nunca por role!
-> ```typescript
-> // ✅ CORRETO
-> const driver = await prisma.user.findFirst({ where: { email: 'joao.driver.test99@qualifica.com' } });
-> // ❌ ERRADO — pode pegar o usuário errado
-> const driver = await prisma.user.findFirst({ where: { role: 'DRIVER' } });
-> ```
+| Perfil | Email | Senha |
+|--------|-------|-------|
+| Administrador | `admin@qualifica.com` | `RR@@Upgrade` |
+| Professora | `maria.professora.visual@qualifica.com` | `RR@@Upgrade` |
+| Motorista | `joao.driver.test99@qualifica.com` | `RR@@Upgrade` |
+| Aluno | `aluno@qualifica.com` | `RR@@Upgrade` |
+
+**Regra:** em scripts e testes, localizar utilizadores por **email** (único), não por `role` isolado, para evitar pegar o utilizador errado quando existir mais do que um com a mesma role.
 
 ---
 
-## Como Executar
+## Como executar
 
-```powershell
+```bash
 cd backend
-
-# Único seed do projeto (idempotente — pode rodar várias vezes)
+npm install
+npx prisma generate
+npx prisma migrate deploy
 npm run prisma:seed
+```
 
-# Alternativa direta com tsx:
-npx tsx prisma/seed-full.ts
+Ou directamente:
+
+```bash
+npx tsx prisma/seed-desenvolvimento/seed-full.ts
 ```
 
 ---
 
-## Padrão de Seed — Modelo para Adicionar ao seed-extra.ts
+## Padrão idempotente (modelo)
 
-Todo bloco de seed deve ser **idempotente** (seguro de rodar múltiplas vezes):
-
-```typescript
-// ─── BLOCO: [Nome da Entidade] ─────────────────────────────────────────────
-const entidadeCount = await prisma.minhaEntidade.count();
-
-if (entidadeCount < 3) {
-  // Buscar dependências sempre por email/identifier único (nunca por role)
-  const adminUser = await prisma.user.findFirst({ where: { email: 'admin@qualifica.com' } });
-  if (!adminUser) throw new Error('Admin não encontrado — rode prisma:seed primeiro');
-
-  const items = [
-    { campo1: 'valor1', userId: adminUser.id },
-    { campo1: 'valor2', userId: adminUser.id },
-  ];
-
-  for (const item of items) {
-    const exists = await prisma.minhaEntidade.findFirst({ where: { campo1: item.campo1 } });
-    if (!exists) {
-      await prisma.minhaEntidade.create({ data: item });
-    }
-  }
-  console.log(`✅ MinhaEntidade: ${await prisma.minhaEntidade.count()} registros`);
-} else {
-  console.log(`ℹ️  MinhaEntidade: já existem ${entidadeCount} registros — pulando`);
-}
-```
+Cada bloco de seed deve poder correr várias vezes sem duplicar dados críticos: usar `findFirst` / `upsert` / contagens antes de `create`. Ver exemplos dentro do próprio `seed-full.ts`.
 
 ---
 
-## Mapeamento de Campos Críticos (erros comuns)
+## Campos que costumam gerar erro
 
-### `Trip` (Viagens)
-```typescript
-// ✅ Campos corretos
-{ truckId, driverUserId, driverName, originCityId, destinationCityId,
-  departureDate, expectedArrivalDate, status: 'PLANNED', kmStart, kmEnd }
-// ❌ Campo INVÁLIDO — não existe no schema
-{ distanceKm: 500 }  // ← TypeError: Unknown field
-```
+Resumo útil (detalhe no schema Prisma):
 
-### `TruckMaintenance` (Manutenção)
-```typescript
-// ✅ tipo é string livre (não enum)
-{ tipo: 'preventiva' }  // preventiva | corretiva | revisao | pneu | eletrica | outro
-// ✅ status é string (não enum)
-{ status: 'agendada' }  // agendada | em_andamento | concluida | cancelada
-// ✅ prioridade é string (não enum)
-{ prioridade: 'media' }  // baixa | media | alta | critica
-```
-
-### `Truck` (Carreta)
-```typescript
-// ✅ TruckType é enum com apenas 2 valores
-{ type: 'STANDARD' }    // ou 'MULTICOURSE'
-// ❌ INVÁLIDO
-{ type: 'TRUCK' }       // não existe
-{ type: 'CAMINHAO' }    // não existe
-```
-
-### `Notification` (Notificações)
-```typescript
-// ✅ Campo data é JSON — link vai dentro
-{ data: { link: '/rota/de/destino' } }
-// ❌ Campo 'link' não existe diretamente no model
-{ link: '/rota' }  // campo não existe
-```
-
-### `Reimbursement` (Reembolsos)
-```typescript
-// ✅ Campo type (não category)
-{ type: 'FOOD' }  // FOOD | CLASSROOM_MATERIAL | EMERGENCY_REPAIR | CLEANING_MATERIAL | OTHER
-// ❌ INVÁLIDO
-{ category: 'ALIMENTACAO' }  // campo errado + valor errado
-```
+- **Trip:** usar campos reais do modelo (ex.: `kmStart`, `kmEnd`); não inventar `distanceKm` se não existir no schema.
+- **Notification:** metadados em JSON no campo `data` (ex.: `{ link: '...' }`), não um campo `link` solto se o modelo não tiver.
+- **Reimbursement:** tipo de despesa no campo previsto pelo schema (ex.: `type`), não `category` genérico sem correspondência.
+- **Truck.type:** valores do enum definidos no Prisma (ex.: `STANDARD`, `MULTICOURSE`).
 
 ---
 
-## Troubleshooting de Seeds
+## Referência cruzada
 
-| Problema | Causa | Solução |
-|----------|-------|---------|
-| `Field does not exist: distanceKm` | Campo inválido em Trip | Use `kmStart` e `kmEnd` |
-| `Field does not exist: link` | Campo inválido em Notification | Use `data: { link: '...' }` |
-| `Prisma.absence is not a function` | Model Absence não no client | `npx prisma generate` + restart backend |
-| `Unique constraint failed` | Dado já existe | Usar `findFirst` antes de `create` |
-| `Admin not found` | Seed principal não foi rodado | `npm run prisma:seed` primeiro |
-| `TruckType must be STANDARD or MULTICOURSE` | Enum inválido | Verificar valores do enum |
-| Encoding corrompido nos dados | Container sem `pt_BR.UTF-8` | Recriar container com o argumento correto |
-
----
-
-## Seeds a Implementar — Apresentação Executiva (F5.8 a F5.12)
-
-```typescript
-// seed-full.ts — adicionar após runSeed3_test():
-
-// ─── BLOCO: Rastreamento — Seed de Apresentação ─────────────────────────────
-async function runSeed_rastreamento() {
-    // 1. Marca João (joao.driver.test99) como COMPLETED → some do mapa
-    // 2. Limpa trips fantasmas (IN_TRANSIT sem nenhuma DriverLocation)
-    // 3. Cria 8 motoristas demo com trips IN_TRANSIT + trilhas GPS
-    // 4. Cria 3 motoristas com trips COMPLETED (encerradas hoje, histórico visível)
-    // IMPORTANTE: usar offsets relativos a Date.now() — nunca timestamps hardcoded
-}
-
-// ─── BLOCO: Refresh de timestamps (para apresentação) ────────────────────────
-// Exposto via: npx tsx prisma/seed-full.ts --refresh-drivers
-// Atualiza apenas capturedAt das últimas DriverLocations dos motoristas demo
-// para manter os status corretos (ONLINE/STOPPED/OFFLINE) no momento da apresentação
-async function refreshDriverTimestamps() { ... }
-```
-
-**Offsets de timestamp para cada status (relativos ao `Date.now()` na execução):**
-| Status desejado | Offset do último `capturedAt` |
-|----------------|------------------------------|
-| 🟢 ONLINE | `now - 3min` |
-| 🟡 STOPPED | `now - 10min` (speed=0 por >30min via pontos anteriores) |
-| 🔴 OFFLINE | `now - 120min` |
-
-**Comando para apresentação (rodar 5min antes):**
-```powershell
-cd backend
-npx tsx prisma/seed-full.ts --refresh-drivers
-```
-
----
-
-## Seeds a Implementar (ainda pendentes em seed-full.ts) — legado
-
-```typescript
-// 1. UserPreferences para cada usuário de teste (após migration PASSO 1.3)
-await prisma.userPreferences.upsert({
-  where: { userId: adminUser.id },
-  create: { userId: adminUser.id },
-  update: {},
-});
-
-// 2. EmployeeAttendance (após migration PASSO 3.2)
-// 3. ClassTeacher vinculando Maria à turma de teste
-// 4. AuditLogs variados para popular histórico do ADM
-```
-
----
-
-*Sistema Upgrade | RR TECNOL | v2.0 | 23/03/2026*
-*Seeds legados removidos da doc — o projeto usa APENAS seed.ts + seed-extra.ts*
+- Modelo de dados e migrations: [`sistema-atual/05-dados-prisma-migracoes-seeds.md`](./sistema-atual/05-dados-prisma-migracoes-seeds.md)
+- Ambiente local: [`sistema-atual/02-ambiente-e-execucao-local.md`](./sistema-atual/02-ambiente-e-execucao-local.md)

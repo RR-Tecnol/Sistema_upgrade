@@ -5,12 +5,12 @@
 
 ## 🔗 REFERÊNCIAS CRUZADAS
 
-> **Este documento é o roadmap de execução.** Leia-o após ler as docs de estado e regras.
+> **Este documento é o roadmap de execução.** Leia-o após a documentação canónica do código.
 >
 > **Ler nesta ordem antes de executar qualquer passo:**
-> 1. [`../arquitetura/ESTADO_SISTEMA.md`](../arquitetura/ESTADO_SISTEMA.md) — situação hoje e bypasses ativos
-> 2. [`../arquitetura/LIVRO_DE_REGRAS.md`](../arquitetura/LIVRO_DE_REGRAS.md) — regras que governam como executar
-> 3. [`../seguranca/ERROS_E_SOLUCOES.md`](../seguranca/ERROS_E_SOLUCOES.md) — não repita erros catalogados
+> 1. [`../sistema-atual/README.md`](../sistema-atual/README.md) — índice da fonte de verdade técnica
+> 2. [`../sistema-atual/07-integracoes-notificacoes-arquivos-mapa.md`](../sistema-atual/07-integracoes-notificacoes-arquivos-mapa.md) — GPS, mapas, sockets, ficheiros
+> 3. [`../SEEDS_GUIDE.md`](../SEEDS_GUIDE.md) — seeds e dados de desenvolvimento
 > 4. Este arquivo — o que FAZER e em qual ordem
 >
 > **⭐ FASE 5 CONCLUÍDA — F5.13 a F5.17 IMPLEMENTADOS (07/04/2026)**
@@ -20,10 +20,9 @@
 > | Fase | Doc específico |
 > |------|----------------|
 > | **F5.13–F5.16 (implementação imediata)** | **[`PLANO-DE-IMPLEMENTACAO.md`](./PLANO-DE-IMPLEMENTACAO.md)** |
-> | F5 — GPS Demo (contexto geral) | [`../arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md`](../arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md) |
-> | Pós-produção (remoção de bypasses) | [`../arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md §PARTE 2`](../arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md) |
-> | Schema/Prisma | [`../arquitetura/sobre-sistema.md §4`](../arquitetura/sobre-sistema.md) · [`../SEEDS_GUIDE.md`](../SEEDS_GUIDE.md) |
-> | Responsividade portal /driver | [`../arquitetura/REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md`](../arquitetura/REGRAS_RESPONSIVIDADE_PORTAL_MOTORISTA.md) |
+> | F5 — GPS Demo / pós-produção | [`PLANO-DE-IMPLEMENTACAO.md`](./PLANO-DE-IMPLEMENTACAO.md) (secções de bypass) + [`../sistema-atual/07-integracoes-notificacoes-arquivos-mapa.md`](../sistema-atual/07-integracoes-notificacoes-arquivos-mapa.md) |
+> | Schema/Prisma | [`../sistema-atual/05-dados-prisma-migracoes-seeds.md`](../sistema-atual/05-dados-prisma-migracoes-seeds.md) · [`../SEEDS_GUIDE.md`](../SEEDS_GUIDE.md) |
+> | Responsividade portal /driver | Código `frontend/app/driver/*` + [`../sistema-atual/04-frontend-portais-e-rotas.md`](../sistema-atual/04-frontend-portais-e-rotas.md) |
 
 ---
 
@@ -196,13 +195,12 @@ após a auditoria executiva.
 
 ## 🏭 FASE 6 — PÓS-APRESENTAÇÃO: PRODUÇÃO REAL
 
-> **Documentos:** [`PLANO-DE-IMPLEMENTACAO.md §REMOÇÃO`](./PLANO-DE-IMPLEMENTACAO.md) +
-> [`../arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md`](../arquitetura/RASTREAMENTO_PRODUCAO_APRESENTACAO.md)
+> **Documentos:** [`PLANO-DE-IMPLEMENTACAO.md §REMOÇÃO`](./PLANO-DE-IMPLEMENTACAO.md) + [`../sistema-atual/07-integracoes-notificacoes-arquivos-mapa.md`](../sistema-atual/07-integracoes-notificacoes-arquivos-mapa.md)
 
 | # | Ação | Arquivo |
 |---|------|---------|
 | 1 | Remover BYPASS-DEMO-STATUS (ou setar IS_DEMO_MODE=false) | `driver-location.service.ts` / `.env` |
-| 2 | Remover BYPASS-DEMO-OSRM (`buildSeedRoute()`) | `prisma/seed-full.ts` |
+| 2 | Remover BYPASS-DEMO-OSRM (`buildSeedRoute()`) | `prisma/seed-desenvolvimento/seed-full.ts` |
 | 3 | Remover BYPASS-DEMO-ALERTAS | `admin/dashboard/page.tsx` |
 | 4 | Migration `routePoints Json?` na Trip | `prisma/schema.prisma` |
 | 5 | Implementar `getOrCalculateRoute()` + Redis TTL 7d | `driver-location.service.ts` |

@@ -131,4 +131,4 @@ A análise financeira é responsabilidade do portal admin, não do motorista.
 ---
 
 *PESQ-F2-01 | Concluída em 18/03/2026 | Bloqueia EXEC-02*
-*Implementação: criar docs/arquitetura/PROMPTS_EXECUCAO_FASE2.md → EXEC-02*
+*Implementação (histórico): doc de prompts em `docs/arquitetura/` foi removida; usar `docs/sistema-atual/` + código → EXEC-02*

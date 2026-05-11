@@ -1,5 +1,7 @@
 # 📁 05_reports — Pesquisas Arquiteturais Profundas
 
+> **Documentação canónica do código:** [`../sistema-atual/README.md`](../sistema-atual/README.md) — use-a como fonte de verdade do estado atual; os ficheiros abaixo são **pesquisa** e podem anteceder ou divergir da implementação até serem incorporados.
+
 Este diretório contém relatórios de pesquisa gerados pelo **Deep Research** (Gemini Advanced / Perplexity / ChatGPT Research Mode) sob orquestração do Tech Lead.
 
 ---

@@ -138,10 +138,12 @@ npm run dev
 Sistema_upgrade/
 ├── backend/                    # API NestJS
 │   ├── prisma/
-│   │   ├── schema.prisma       # Schema do banco (30+ tabelas)
+│   │   ├── schema.prisma       # Schema do banco
 │   │   ├── migrations/         # Histórico de migrations
-│   │   ├── seed.ts             # Seed principal (admin, cursos, grupos)
-│   │   └── seed-extra.ts       # Seed de teste (viagens, manutenções, etc.)
+│   │   ├── seed-desenvolvimento/
+│   │   │   └── seed-full.ts    # Seed principal de desenvolvimento (npm run prisma:seed)
+│   │   ├── seed-prod.ts
+│   │   └── reset-db.ts         # Uso controlado — pode apagar dados
 │   └── src/
 │       ├── auth/               # JWT Auth + 2FA
 │       ├── students/           # Gestão de alunos
@@ -170,9 +172,12 @@ Sistema_upgrade/
 │       ├── driver/             # Portal Motorista
 │       └── student/            # Portal Aluno
 ├── docs/
-│   ├── SEEDS_GUIDE.md          # Como funcionam os seeds + modelo
-│   ├── ONBOARDING.md           # Guia para o chefe / novo dev
-│   └── arquitetura/            # Documentação técnica completa
+│   ├── INDEX.md                # Índice: AFAZERES + research + sistema-atual + seeds
+│   ├── sistema-atual/          # Documentação canónica (alinhada ao código)
+│   ├── mapeamentos/            # Roadmaps temáticos
+│   ├── SEEDS_GUIDE.md
+│   ├── AFAZERES/               # Backlog e planos de execução
+│   └── research/               # Pesquisas (05_reports, etc.)
 ├── docker-compose.yml
 └── README.md
 ```
@@ -214,11 +219,10 @@ Sistema_upgrade/
 
 | Arquivo | Conteúdo |
 |---------|---------|
-| [`docs/ONBOARDING.md`](docs/ONBOARDING.md) | **Guia para novo membro da equipe** — setup rápido e tour do sistema |
-| [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) | **Como criar seeds** — modelo padrão para popular dados de teste |
-| [`docs/arquitetura/SETUP.md`](docs/arquitetura/SETUP.md) | Guia detalhado de instalação |
-| [`docs/arquitetura/DIARIO_DE_BORDO.md`](docs/arquitetura/DIARIO_DE_BORDO.md) | Log narrativo de decisões técnicas |
-| [`docs/arquitetura/LIVRO_DE_REGRAS.md`](docs/arquitetura/LIVRO_DE_REGRAS.md) | Regras de negócio do sistema |
+| [`docs/INDEX.md`](docs/INDEX.md) | **Índice** — por onde começar (AFAZERES, research, sistema-atual) |
+| [`docs/sistema-atual/README.md`](docs/sistema-atual/README.md) | **Fonte de verdade técnica** — arquitetura, fluxos, dados, integrações, bypasses |
+| [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) | Seeds, comandos e credenciais de desenvolvimento |
+| [`docs/AFAZERES/`](docs/AFAZERES/) | Backlog, correcções e planos imediatos |
 
 ---
 

@@ -1389,7 +1389,7 @@ grep -B2 "@Get\|@Post\|@Patch\|@Delete" backend/src/classes/classes.controller.t
 
 1. [x] **OAI-2** Reparar `classes.controller.ts` — **feito 2026-05-06** — `@UseGuards(JwtAuthGuard, RolesGuard)` ao nível da classe + `@Roles` por método; `@Public()` em `Get('public')` apenas.
 2. [x] **OAI-1** Adicionar `@ApiBearerAuth()` no `truck-maintenance.controller.ts` — **feito 2026-05-06**.
-3. [ ] **OAI-3** Documentar o gateway WebSocket `/notifications` em `docs/arquitetura/` (não cabe em OpenAPI mas deve constar do contrato).
+3. [ ] **OAI-3** Documentar o gateway WebSocket `/notifications` em `docs/sistema-atual/` (contrato: `backend/src/notifications/ws-notification-payload.contract.ts`; já referenciado em `07-integracoes-notificacoes-arquivos-mapa.md` — expandir se necessário).
 4. [ ] **OAI-7** Adicionar `@Throttle({ default: { limit: 5, ttl: 300000 } })` aos endpoints `2fa/enable`/`2fa/disable`.
 5. [x] (Operacional) `GET /api/health` + `GET /api/ready` (DB) — **feito 2026-05-06** (`HealthModule`); *MinIO ping em `/ready` ainda não incluído* (opcional).
 6. [ ] (Defesa em profundidade) Considerar `APP_GUARD` global com `JwtAuthGuard` e usar `@Public()` por exclusão — protegeria contra A1/OAI-2 estruturalmente.
