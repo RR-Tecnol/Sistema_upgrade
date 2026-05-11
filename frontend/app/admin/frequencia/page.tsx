@@ -6,6 +6,7 @@ import { AcademicCapIcon, TruckIcon, UsersIcon } from '@heroicons/react/24/outli
 import EmployeeFrequencyTab from './components/EmployeeFrequencyTab';
 import StudentFrequencyTab from './components/StudentFrequencyTab';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { FrequenciaSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 
 type TabType = 'professores' | 'motoristas' | 'alunos';
 
@@ -39,6 +40,7 @@ export default function FrequenciaUnifiedPage() {
                 title="CENTRAL DE FREQUÊNCIA"
                 subtitle="Lançamento diário e visão individual: use o filtro e clique no nome (professores, motoristas ou alunos) para ver histórico completo e cadastro"
             />
+            <FrequenciaSidebarTutorial />
 
             {/* Tabs */}
             <div className="bg-white p-1 rounded-xl shadow-sm border border-gray-100 flex overflow-x-auto custom-scrollbar">

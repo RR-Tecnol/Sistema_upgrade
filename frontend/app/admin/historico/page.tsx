@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import api from '@/lib/api/client';
 import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { HistoricoSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -85,6 +86,7 @@ export default function HistoricoPage() {
                 subtitle={`Auditoria do sistema — ${total} registro${total !== 1 ? 's' : ''}`}
                 badge="Rastreabilidade administrativa"
             />
+            <HistoricoSidebarTutorial />
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
                 <AnimatedKpiCard label="Registros Totais" value={total} color="#FFD600" bg="#FFFDE7" border="#FEF08A" />

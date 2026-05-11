@@ -11,6 +11,7 @@ import {
     ClockIcon,
 } from '@heroicons/react/24/outline';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { FeriadosSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -371,6 +372,7 @@ export default function FeriadosPage() {
                     </div>
                 )}
             />
+            <FeriadosSidebarTutorial />
 
             {/* Banner resultado pré-carga */}
             {preloadResult && (

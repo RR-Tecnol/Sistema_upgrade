@@ -1571,6 +1571,8 @@
     align-items: center;
     justify-content: center;
     padding: 1rem;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     animation: fadeInUp 0.2s ease;
   }
 
@@ -1579,14 +1581,73 @@
     border: 1px solid var(--border-subtle);
     border-radius: 20px;
     padding: 2rem;
+    box-sizing: border-box;
     width: 100%;
-    max-width: 560px;
+    max-width: min(560px, calc(100vw - 2rem));
+    min-width: 0;
     max-height: calc(100vh - 2rem);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
     animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
     overflow-x: hidden;
     overflow-y: auto;
+    margin: auto;
+  }
+
+  @media (max-width: 520px) {
+    .modal-overlay {
+      align-items: flex-start;
+      padding: 0.65rem;
+    }
+
+    .modal-content {
+      padding: 1.1rem;
+      max-height: none;
+      max-width: calc(100vw - 1.3rem);
+    }
+  }
+
+  /* Ecrã estreito em altura (ex.: janela dividida): evita cortar o rodapé do modal. */
+  @media (max-height: 720px) {
+    .modal-overlay {
+      align-items: flex-start;
+      padding-top: 0.65rem;
+      padding-bottom: 1.25rem;
+    }
+
+    .modal-content {
+      max-height: none;
+    }
+  }
+
+  /* Lista longa de opções dentro do modal de status (scroll interno). */
+  .modal-status-options {
+    max-height: min(42vh, 300px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 2px;
+  }
+
+  /* Rodapé de modais: não cortar botões em viewport estreita (ex.: IDE + browser). */
+  .modal-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .modal-actions-row > button {
+    flex: 1 1 auto;
+    min-width: min(160px, 100%);
+  }
+
+  .modal-content.modal-content--sm {
+    max-width: min(440px, calc(100vw - 2rem));
+  }
+
+  .modal-content.modal-content--lg {
+    max-width: min(760px, calc(100vw - 2rem));
   }
 
   .modal-content::before {

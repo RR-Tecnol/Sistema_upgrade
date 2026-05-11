@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
-import { UpdateStudentPasswordDto } from './dto';
+import { UpdateStudentPasswordDto, UpdateStudentDocumentsDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { StudentGuard } from '../auth/guards/student.guard';
 
@@ -26,6 +26,13 @@ export class StudentsController {
     @ApiResponse({ status: 404, description: 'Student not found' })
     async getProfile(@Request() req: any) {
         return this.studentsService.getProfile(req.user.id);
+    }
+
+    @Patch('me/documents')
+    @ApiOperation({ summary: 'Atualizar URLs de documentação (merge por chave)' })
+    @ApiResponse({ status: 200, description: 'Perfil actualizado' })
+    async updateMyDocuments(@Request() req: any, @Body() body: UpdateStudentDocumentsDto) {
+        return this.studentsService.updateMyDocuments(req.user.id, body);
     }
 
     @Patch('me/password')

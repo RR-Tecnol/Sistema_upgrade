@@ -6,6 +6,7 @@ import { ArrowLeftIcon, BanknotesIcon, EnvelopeIcon, PhoneIcon, UserCircleIcon, 
 import api from '@/lib/api/client';
 import { pipelineBadgeForFeedback } from '@/lib/feedbackPipelineBadge';
 import { toast } from '@/components/ui/Toast';
+import { customConfirm } from '@/components/ui/ConfirmModal';
 import ApproveFeedbackPixModal from '@/components/admin/ApproveFeedbackPixModal';
 import AdminStudentProfileModal from '@/components/admin/AdminStudentProfileModal';
 import { createPortal } from 'react-dom';
@@ -160,7 +161,14 @@ export default function AdminFeedbackDetail() {
     }, [fb?.id, fb?.currentPhotoUrl, fb?.currentVideoUrl, fb?.socialPostProofUrl]);
 
     const handleApproveContent = async () => {
-        if (!window.confirm('Aceitar o envio como válido na triagem administrativa? O aluno será notificado. O passo seguinte é confirmar o valor do PIX e gerar Conta a pagar.')) return;
+        const ok = await customConfirm({
+            title: 'Aceitar na triagem?',
+            message:
+                'Aceitar o envio como válido na triagem administrativa? O aluno será notificado. O passo seguinte é confirmar o valor do PIX e gerar Conta a pagar.',
+            confirmLabel: 'Aceitar',
+            cancelLabel: 'Cancelar',
+        });
+        if (!ok) return;
         try {
             setProcessing(true);
             await api.patch(`/feedbacks/${id}/approve-content`);
@@ -209,7 +217,14 @@ export default function AdminFeedbackDetail() {
     const handleCancelReward = async () => {
         const reason = window.prompt('Motivo do cancelamento (post fake suspeito, etc.)', '');
         if (reason === null || !reason.trim()) { toast.error('Informe um motivo para cancelar a recompensa'); return; }
-        if (!window.confirm('Cancelar esta recompensa PIX em lote? O feedback continua existindo, mas não será pago.')) return;
+        const confirmed = await customConfirm({
+            title: 'Cancelar recompensa PIX?',
+            message: 'Cancelar esta recompensa PIX em lote? O feedback continua existindo, mas não será pago.',
+            confirmLabel: 'Cancelar recompensa',
+            cancelLabel: 'Voltar',
+            danger: true,
+        });
+        if (!confirmed) return;
         try { setProcessing(true); await api.patch(`/feedbacks/${id}/reward/cancel`, { reason }); toast.success('Recompensa cancelada.'); load(); }
         catch (e: any) { toast.error(e?.response?.data?.message || 'Erro'); } finally { setProcessing(false); }
     };

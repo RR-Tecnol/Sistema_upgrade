@@ -2,13 +2,64 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { PrismaService } from '../prisma/prisma.service';
 import { TripStatus } from '@prisma/client';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
+import { MinioService } from '../reimbursement/minio.service';
+
+/** Extrai bucket + chave a partir da URL gravada no Trip (mesmo formato do presigned upload). */
+/** Include compartilhado: lista admin + retorno de validação de auditoria. */
+const TRIP_ADMIN_LIST_INCLUDE = {
+    originCity: { select: { name: true, state: true } },
+    destinationCity: { select: { name: true, state: true } },
+    truck: { select: { identifier: true, licensePlate: true } },
+    driverUser: { select: { id: true, name: true } },
+    auditValidatedBy: { select: { id: true, name: true } },
+    _count: { select: { locations: true } },
+} as const;
+
+export function parseTripOdometerStoredUrl(stored: string): { bucket: string; objectKey: string } | null {
+    const s = String(stored ?? '').trim();
+    if (!s) return null;
+    try {
+        const u = new URL(s);
+        const segments = u.pathname.replace(/^\/+/, '').split('/').filter(Boolean);
+        if (segments.length < 2) return null;
+        return { bucket: segments[0], objectKey: segments.slice(1).join('/') };
+    } catch {
+        return null;
+    }
+}
 
 @Injectable()
 export class TripsService {
     constructor(
         private prisma: PrismaService,
         private notificationsSender: NotificationsSenderService,
+        private minioService: MinioService,
     ) {}
+
+    /** GET assinado para o admin pré-visualizar fotos MinIO privadas no browser. */
+    async getOdometerPhotoPresignedUrlForAdmin(tripId: string, kind: 'start' | 'end'): Promise<{ url: string }> {
+        const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+        if (!trip) throw new NotFoundException('Viagem não encontrada');
+        const raw = kind === 'start' ? trip.startOdometerPhotoUrl : trip.endOdometerPhotoUrl;
+        if (!raw?.trim()) throw new NotFoundException('Foto não disponível para esta viagem');
+        const parsed = parseTripOdometerStoredUrl(raw);
+        if (!parsed) throw new BadRequestException('URL da foto armazenada é inválida');
+        const url = await this.minioService.presignedGetUrl(parsed.bucket, parsed.objectKey, 3600);
+        return { url };
+    }
+
+    /** GET assinado para o motorista (só a própria viagem). */
+    async getOdometerPhotoPresignedUrlForDriver(tripId: string, driverUserId: string, kind: 'start' | 'end'): Promise<{ url: string }> {
+        const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+        if (!trip) throw new NotFoundException('Viagem não encontrada');
+        if (trip.driverUserId !== driverUserId) throw new ForbiddenException('Acesso negado');
+        const raw = kind === 'start' ? trip.startOdometerPhotoUrl : trip.endOdometerPhotoUrl;
+        if (!raw?.trim()) throw new NotFoundException('Foto não disponível para esta viagem');
+        const parsed = parseTripOdometerStoredUrl(raw);
+        if (!parsed) throw new BadRequestException('URL da foto armazenada é inválida');
+        const url = await this.minioService.presignedGetUrl(parsed.bucket, parsed.objectKey, 3600);
+        return { url };
+    }
 
     // ── Driver: busca viagens do motorista autenticado ────────────────────────
     async findByDriver(driverUserId: string, status?: TripStatus) {
@@ -35,12 +86,30 @@ export class TripsService {
         return this.prisma.trip.findMany({
             where,
             orderBy: { departureDate: 'desc' },
-            include: {
-                originCity:      { select: { name: true, state: true } },
-                destinationCity: { select: { name: true, state: true } },
-                truck:           { select: { identifier: true, licensePlate: true } },
-                driverUser:      { select: { id: true, name: true } },
+            include: TRIP_ADMIN_LIST_INCLUDE,
+        });
+    }
+
+    /** Admin/coordenador confirma que analisou a viagem concluída como válida operacionalmente. */
+    async validateAuditTrip(tripId: string, adminUserId: string) {
+        const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+        if (!trip) throw new NotFoundException('Viagem não encontrada');
+        if (trip.status !== TripStatus.COMPLETED) {
+            throw new BadRequestException('Só é possível validar viagens já concluídas pelo motorista.');
+        }
+        if (trip.auditValidatedAt) {
+            return this.prisma.trip.findUniqueOrThrow({
+                where: { id: tripId },
+                include: TRIP_ADMIN_LIST_INCLUDE,
+            });
+        }
+        return this.prisma.trip.update({
+            where: { id: tripId },
+            data: {
+                auditValidatedAt: new Date(),
+                auditValidatedByUserId: adminUserId,
             },
+            include: TRIP_ADMIN_LIST_INCLUDE,
         });
     }
 

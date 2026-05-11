@@ -12,6 +12,7 @@ import { toast } from '@/components/ui/Toast';
 import { useAdminFinanceRefresh } from '@/hooks/useAdminFinanceRefresh';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
+import { ContasAPagarSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import {
     TIPOS_ESTRADA,
@@ -1347,6 +1348,7 @@ function ContasPagarPageInner() {
                         </div>
                     </div>
                 </div>
+                <ContasAPagarSidebarTutorial />
 
                 {/* ─── KPI por status — mesmo padrão de card que «POR TIPO DE CONTA» ─── */}
                 {resp && (

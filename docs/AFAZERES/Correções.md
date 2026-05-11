@@ -180,7 +180,7 @@ Na raiz do projecto: `docker compose up -d` — Postgres, Redis, MinIO.
 1. `backend/.env` com `DATABASE_URL` apontando ao Postgres local (ex.: utilizador `cursos_user`).
 2. **`npx prisma migrate deploy`** (ou `node ./node_modules/prisma/build/index.js migrate deploy` se o wrapper `.bin` tiver permissões negadas).
 3. **`npx prisma generate`** na máquina onde corre o servidor — ver secção **Prisma multi-plataforma**.
-4. **`AUTH_BYPASS_MFA`**: se `true`, o login **ignora** OTP por e-mail e TOTP — útil para desenvolvimento rápido; **proibido em produção**. Para testar MFA real, usar `false`.
+4. **Bypasses de auth (só dev):** `AUTH_BYPASS_MFA=true` → JWT imediato (sem OTP nem TOTP). `AUTH_BYPASS_EMAIL_OTP=true` (com MFA bypass `false`) → salta só o OTP por e-mail; 2FA/setup mantêm-se. **Proibido em produção.** Para testar TOTP real: ambos `false`.
 
 ### Prisma multi-plataforma
 

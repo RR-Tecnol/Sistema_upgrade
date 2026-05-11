@@ -344,6 +344,7 @@ model User {
   classHolidaysRegistered ClassHoliday[] @relation("HolidayRegistrar") // REQ-08
   employee          Employee?
   tripsAsDriver     Trip[]    @relation("TripDriver") // EXEC-02
+  tripsAuditValidated Trip[]  @relation("TripAuditValidator")
   absences          Absence[]                          // Módulo de imprevistos
   preferences       UserPreferences?
   employeeAttendancesRegistered EmployeeAttendance[] @relation("EmployeeAttendanceRegistrar") // PASSO 3.2
@@ -1078,6 +1079,9 @@ model Trip {
   rejectionPenaltyAt  DateTime?
   status              TripStatus @default(PLANNED)
   notes               String?
+  // Admin confirmou auditoria operacional (UI admin viagens).
+  auditValidatedAt      DateTime?
+  auditValidatedByUserId  String?
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 
@@ -1086,6 +1090,7 @@ model Trip {
   originCity      City     @relation("TripOrigin", fields: [originCityId], references: [id])
   destinationCity City     @relation("TripDestination", fields: [destinationCityId], references: [id])
   driverUser      User?    @relation("TripDriver", fields: [driverUserId], references: [id])
+  auditValidatedBy User?   @relation("TripAuditValidator", fields: [auditValidatedByUserId], references: [id], onDelete: SetNull)
   expenses        Expense[]
   locations       DriverLocation[] // F1.4: trilha de localização do motorista
 

@@ -116,4 +116,9 @@ export const studentsApi = {
         });
         return data;
     },
+
+    async notifyPendingDocuments(id: string): Promise<{ sent: boolean; message: string }> {
+        const { data } = await api.post(`/admin/students/${id}/notify-pending-documents`);
+        return data;
+    },
 };

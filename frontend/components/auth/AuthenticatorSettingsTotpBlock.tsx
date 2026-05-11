@@ -38,8 +38,10 @@ export default function AuthenticatorSettingsTotpBlock({
     return (
         <div
             style={{
-                width: 'min(100%, 320px)',
-                minWidth: 260,
+                width: '100%',
+                maxWidth: 420,
+                minWidth: 0,
+                boxSizing: 'border-box',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '1rem',
@@ -78,7 +80,7 @@ export default function AuthenticatorSettingsTotpBlock({
                 </p>
             ) : null}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
                 <label
                     htmlFor={inputId}
                     style={{
@@ -91,7 +93,7 @@ export default function AuthenticatorSettingsTotpBlock({
                 >
                     Código do Authenticator
                 </label>
-                <span style={{ fontSize: '0.72rem', color: '#64748B', marginTop: -4, lineHeight: 1.35 }}>
+                <span style={{ fontSize: '0.72rem', color: '#64748B', lineHeight: 1.45 }}>
                     Seis números exibidos no app (atualizam a cada 30 segundos).
                 </span>
                 <input
@@ -111,10 +113,10 @@ export default function AuthenticatorSettingsTotpBlock({
                         borderRadius: 12,
                         border: `2px solid ${value.length > 0 ? YELLOW : '#E2E8F0'}`,
                         background: value.length > 0 ? '#FFFBEB' : WHITE,
-                        fontSize: '1.85rem',
+                        fontSize: 'clamp(1.1rem, 4vw, 1.85rem)',
                         fontWeight: 800,
                         fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                        letterSpacing: '0.45em',
+                        letterSpacing: 'clamp(0.12em, 1.5vw, 0.45em)',
                         textAlign: 'center',
                         color: BLACK,
                         outline: 'none',
@@ -140,11 +142,21 @@ export default function AuthenticatorSettingsTotpBlock({
                 </div>
             ) : null}
 
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div
+                style={{
+                    display: 'flex',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                    width: '100%',
+                    justifyContent: 'stretch',
+                }}
+            >
                 <button
                     type="button"
                     onClick={onCancel}
                     style={{
+                        flex: '1 1 120px',
+                        minWidth: 0,
                         padding: '0.5rem 1rem',
                         borderRadius: 10,
                         border: '2px solid #E2E8F0',
@@ -162,6 +174,8 @@ export default function AuthenticatorSettingsTotpBlock({
                     onClick={onConfirm}
                     disabled={!canConfirm}
                     style={{
+                        flex: '1 1 160px',
+                        minWidth: 0,
                         padding: '0.5rem 1.15rem',
                         borderRadius: 10,
                         border: 'none',

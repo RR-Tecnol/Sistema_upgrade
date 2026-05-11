@@ -3,6 +3,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api/client';
+import StudentDocumentUploadList, {
+    buildDocumentsPayload,
+    parseStudentDocumentsFromApi,
+} from '@/components/documents/StudentDocumentUploadList';
+import { getMissingEnrollmentDocumentEntries } from '@/components/enrollment/EnrollmentDocumentsPreview';
+import { toast } from '@/components/ui/Toast';
 import {
     UserIcon,
     EnvelopeIcon,
@@ -35,6 +41,7 @@ interface StudentProfile {
     rg: string;
     birthDate: string;
     gender: string;
+    documents?: Record<string, string> | null;
     user: { name: string; email: string; phone: string };
     contact: { email: string; phone: string; phoneAlt?: string };
     address: { street: string; number: string; neighborhood: string; city: string; state: string; cep: string };
@@ -55,6 +62,8 @@ function Section({ title, icon, children }: { title: string; icon: string; child
 export default function StudentProfile() {
     const [profile, setProfile] = useState<StudentProfile | null>(null);
     const [loading, setLoading] = useState(true);
+    const [docDraft, setDocDraft] = useState<Record<string, string>>({});
+    const [savingDocs, setSavingDocs] = useState(false);
 
     useEffect(() => { fetchProfile(); }, []);
 
@@ -62,10 +71,33 @@ export default function StudentProfile() {
         try {
             const response = await api.get('/students/me');
             setProfile(response.data);
+            setDocDraft(parseStudentDocumentsFromApi(response.data?.documents));
         } catch (error) {
             /* silencioso — perfil exibe dados locais como fallback */
         } finally {
             setLoading(false);
+        }
+    };
+
+    const missingRequiredDocs = getMissingEnrollmentDocumentEntries(docDraft).filter((m) => m.required);
+
+    const saveDocuments = async () => {
+        setSavingDocs(true);
+        try {
+            const { data } = await api.patch('/students/me/documents', {
+                documents: buildDocumentsPayload(docDraft),
+            });
+            setProfile(data);
+            setDocDraft(parseStudentDocumentsFromApi(data?.documents));
+            toast.success('Documentação actualizada.');
+        } catch (e: unknown) {
+            const msg =
+                e && typeof e === 'object' && 'response' in e
+                    ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+                    : undefined;
+            toast.error(typeof msg === 'string' ? msg : 'Erro ao guardar documentos.');
+        } finally {
+            setSavingDocs(false);
         }
     };
 
@@ -137,6 +169,49 @@ export default function StudentProfile() {
                         ))}
                     </div>
                 </Section>
+
+                <div id="documentos">
+                    <Section title="DOCUMENTAÇÃO" icon="📎">
+                        {missingRequiredDocs.length > 0 && (
+                            <div
+                                style={{
+                                    marginBottom: '1rem',
+                                    padding: '0.75rem 1rem',
+                                    borderRadius: 12,
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECACA',
+                                    fontSize: '0.82rem',
+                                    color: '#991B1B',
+                                    fontWeight: 600,
+                                    lineHeight: 1.45,
+                                }}
+                            >
+                                Faltam documentos obrigatórios: {missingRequiredDocs.map((m) => m.label).join(', ')}. Envie os ficheiros abaixo e
+                                guarde.
+                            </div>
+                        )}
+                        <StudentDocumentUploadList
+                            value={docDraft}
+                            onChange={setDocDraft}
+                            variant="student"
+                            hint="Os mesmos tipos de ficheiro da inscrição (PDF, JPG, PNG). Guarde após enviar."
+                        />
+                        <button
+                            type="button"
+                            onClick={() => void saveDocuments()}
+                            disabled={savingDocs}
+                            className="btn-primary"
+                            style={{
+                                marginTop: '1rem',
+                                border: 'none',
+                                cursor: savingDocs ? 'wait' : 'pointer',
+                                opacity: savingDocs ? 0.8 : 1,
+                            }}
+                        >
+                            {savingDocs ? 'A guardar…' : 'Guardar documentação'}
+                        </button>
+                    </Section>
+                </div>
 
                 {/* Contato */}
                 <Section title="CONTATO" icon="📧">

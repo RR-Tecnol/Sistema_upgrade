@@ -59,13 +59,16 @@ export function EmployeeStylePill({
     label,
     value,
     accent,
+    /** Permite várias linhas no valor (evita reticências em textos longos). */
+    valueWrap,
 }: {
     icon: string;
     label: string;
     value?: string | number | null;
     accent?: string;
+    valueWrap?: boolean;
 }) {
-    if ((value === null || value === undefined || value === '') && value !== 0) return null;
+    if (value === null || value === undefined || value === '') return null;
     return (
         <div
             style={{
@@ -74,12 +77,12 @@ export function EmployeeStylePill({
                 borderRadius: 14,
                 padding: '0.85rem 1rem',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: valueWrap ? 'flex-start' : 'center',
                 gap: '0.75rem',
                 minWidth: 0,
             }}
         >
-            <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>{icon}</span>
+            <span style={{ fontSize: '1.3rem', flexShrink: 0, marginTop: valueWrap ? '0.1rem' : undefined }}>{icon}</span>
             <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                     style={{
@@ -101,10 +104,11 @@ export function EmployeeStylePill({
                         fontSize: '0.92rem',
                         fontWeight: 700,
                         color: '#0F172A',
-                        lineHeight: 1.3,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                        lineHeight: 1.35,
+                        whiteSpace: valueWrap ? 'normal' : 'nowrap',
+                        overflow: valueWrap ? 'visible' : 'hidden',
+                        textOverflow: valueWrap ? 'clip' : 'ellipsis',
+                        wordBreak: valueWrap ? 'break-word' : undefined,
                     }}
                 >
                     {value}

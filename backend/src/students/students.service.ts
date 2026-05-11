@@ -8,6 +8,8 @@ import {
 } from '../common/certificate-attendance.util';
 import type { CertificateEligibilityBreakdown } from '../common/certificate-eligibility.util';
 import { evaluateCertificateEligibilityForEnrollment } from '../common/certificate-enrollment-evaluation.helper';
+import { mergeStudentDocuments, sanitizeStudentDocumentsPatch } from '../common/student-documents.util';
+import type { UpdateStudentDocumentsDto } from './dto';
 
 type CertificateProgressItem = CertificateEligibilityBreakdown & {
     classId: string;
@@ -56,6 +58,25 @@ export class StudentsService {
         }
 
         return student;
+    }
+
+    async updateMyDocuments(userId: string, dto: UpdateStudentDocumentsDto) {
+        const student = await this.prisma.student.findFirst({
+            where: { userId },
+            select: { id: true, documents: true },
+        });
+        if (!student) {
+            throw new NotFoundException('Student profile not found');
+        }
+        const merged = mergeStudentDocuments(
+            student.documents,
+            sanitizeStudentDocumentsPatch(dto.documents as Record<string, unknown>),
+        );
+        await this.prisma.student.update({
+            where: { id: student.id },
+            data: { documents: merged },
+        });
+        return this.getProfile(userId);
     }
 
     async updatePassword(userId: string, currentPassword: string, newPassword: string) {

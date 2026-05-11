@@ -92,6 +92,13 @@ export class AdminStudentsController {
         return this.adminStudentsService.update(id, updateStudentDto);
     }
 
+    @Post(':id/notify-pending-documents')
+    @ApiOperation({ summary: 'Reenviar notificação in-app de documentação pendente ao aluno' })
+    @ApiResponse({ status: 200, description: 'Lembrete enviado ou documentação já completa' })
+    async notifyPendingDocuments(@Param('id') id: string) {
+        return this.adminStudentsService.notifyPendingDocuments(id);
+    }
+
     @Delete(':id')
     @ApiOperation({ summary: 'Delete student' })
     @ApiResponse({ status: 200, description: 'Student deleted successfully' })

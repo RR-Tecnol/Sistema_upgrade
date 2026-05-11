@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     reactStrictMode: true,
+    experimental: {
+        /** Compatível com Next 14.2.x — evita chunk de axios quebrado no servidor. */
+        serverComponentsExternalPackages: ['axios'],
+    },
     env: {
         NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api',
     },

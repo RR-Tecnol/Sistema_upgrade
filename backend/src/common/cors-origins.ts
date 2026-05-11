@@ -2,8 +2,24 @@
  * Origens do frontend para CORS e Socket.IO.
  * Use FRONTEND_URLS (vírgula) ou FRONTEND_URL (uma ou várias URLs separadas por vírgula).
  */
+function uniq(origins: string[]): string[] {
+  return [...new Set(origins.map((o) => o.replace(/\/$/, '')))];
+}
+
 export function getFrontendCorsOrigins(): string | string[] {
   const raw = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '').trim();
+  const devDefaults = defaultOrigins();
+  const devList = Array.isArray(devDefaults) ? devDefaults : [devDefaults];
+
+  /** Em desenvolvimento, faz merge com a lista padrão para não bloquear 127.0.0.1 vs localhost nem portas extra. */
+  if (process.env.NODE_ENV !== 'production') {
+    const fromEnv = raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const merged = uniq([...fromEnv, ...devList]);
+    if (merged.length === 0) return devDefaults;
+    if (merged.length === 1) return merged[0]!;
+    return merged;
+  }
+
   if (raw) {
     const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
     if (list.length === 0) return defaultOrigins();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { dashboardApi, DashboardStats, Activity, UpcomingClass } from '@/lib/api/dashboard';
 import { ClockIcon, CalendarIcon } from '@heroicons/react/24/outline';
@@ -9,6 +9,7 @@ import dynamic from 'next/dynamic';
 import api from '@/lib/api/client';
 import type { DriverMarker } from '@/components/MapaMotoristas';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminCollapsibleTutorial from '@/components/admin/AdminCollapsibleTutorial';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
@@ -24,67 +25,6 @@ const MapaMotoristas = dynamic(() => import('@/components/MapaMotoristas'), {
     ),
 });
 const DriverDrawer = dynamic(() => import('@/components/DriverDrawer'), { ssr: false });
-
-/* ── Count-up ── */
-function useCountUp(target: number, duration = 1000) {
-    const [count, setCount] = useState(0);
-    const raf = useRef(0);
-    useEffect(() => {
-        if (target === 0) { setCount(0); return; }
-        const start = Date.now();
-        const tick = () => {
-            const p = Math.min((Date.now() - start) / duration, 1);
-            setCount(Math.round((1 - Math.pow(1 - p, 3)) * target));
-            if (p < 1) raf.current = requestAnimationFrame(tick);
-        };
-        raf.current = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf.current);
-    }, [target, duration]);
-    return count;
-}
-
-/* ── Clean sparkline (no glow, no broken emoji) ── */
-function Sparkline({ data, color, width = 72, height = 28 }: { data: number[]; color: string; width?: number; height?: number }) {
-    if (data.length < 2) return null;
-    const max = Math.max(...data);
-    const min = Math.min(...data);
-    const range = max - min || 1;
-    const pts = data.map((v, i) => {
-        const x = (i / (data.length - 1)) * width;
-        const y = height - ((v - min) / range) * height;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-    return (
-        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible', display: 'block' }}>
-            <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            {/* End dot */}
-            {(() => {
-                const lx = width; const ly = height - ((data[data.length - 1] - min) / range) * height;
-                return <circle cx={lx} cy={ly} r="3" fill={color} />;
-            })()}
-        </svg>
-    );
-}
-
-/* ── Single KPI card — ultra compact ── */
-function KPI({ label, value, sub, color, bg, border, spark, suffix = '' }: {
-    label: string; value: number; sub?: string; color: string; bg: string; border: string;
-    spark?: number[]; suffix?: string;
-}) {
-    const n = useCountUp(value, 1000);
-    return (
-        <div style={{ padding: '1rem 1.25rem', borderRadius: 14, background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color, opacity: 0.65, marginBottom: '0.2rem', whiteSpace: 'nowrap' }}>{label}</div>
-                <div style={{ fontFamily: 'Orbitron', fontSize: '1.65rem', fontWeight: 900, color, lineHeight: 1 }}>{n}{suffix}</div>
-                {sub && <div style={{ fontSize: '0.65rem', color, opacity: 0.5, marginTop: '0.2rem', fontFamily: 'JetBrains Mono' }}>{sub}</div>}
-            </div>
-            {spark && <Sparkline data={spark} color={color} />}
-        </div>
-    );
-}
-
-// Sparklines calculadas de dados reais no componente (ver sparkEnroll, sparkAprovados)
 
 interface AnalyticsData {
     inscricoesPorMes: { month: string; total: number; aprovados: number }[];
@@ -456,91 +396,257 @@ export default function AdminDashboard() {
             </div>
 
             {dashTab === 'health' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <AdminCollapsibleTutorial
+                    storageKey="admin-dashboard-cert-health-tutorial-expanded"
+                    emoji="🏥"
+                    title="SAÚDE DO SISTEMA — CERTIFICADOS (PDF)"
+                    steps={[
+                        {
+                            num: '1',
+                            color: '#3B82F6',
+                            title: 'Para que serve este painel',
+                            body: 'Mostra se a emissão de certificados em PDF está a correr bem: velocidade, filas e reutilização de ficheiros já gerados. Não substitui relatórios pedagógicos nem rankings de turma.',
+                        },
+                        {
+                            num: '2',
+                            color: '#B89B00',
+                            title: 'Taxa de reutilização de PDFs',
+                            body: 'Indica com que frequência o sistema volta a usar um PDF já criado em vez de gerar de novo. Valores mais altos significam menos espera quando alguém volta a pedir o mesmo documento.',
+                        },
+                        {
+                            num: '3',
+                            color: '#059669',
+                            title: 'Tempos médios de geração',
+                            body: 'Os dois cartões de tempo mostram o desempenho habitual em cada modo de emissão: um para o PDF completo com o layout oficial; outro para o modo alternativo quando o primeiro não está disponível. Serve para comparar se algo ficou mais lento que o normal.',
+                        },
+                        {
+                            num: '4',
+                            color: '#8B5CF6',
+                            title: 'Fila e limite simultâneo',
+                            body: '“Na fila de espera” soma pedidos que tiveram de aguardar porque já havia muitas emissões ao mesmo tempo. O limite de pedidos em paralelo é definido na instalação — se a fila crescer muito em horários de pico, fale com a equipa técnica.',
+                        },
+                        {
+                            num: '5',
+                            color: '#EA580C',
+                            title: 'Emissões por curso e por UF',
+                            body: 'Quantos certificados activos existem por curso e por estado: ajuda a ver distribuição geográfica e volume por formação.',
+                        },
+                        {
+                            num: '6',
+                            color: '#64748B',
+                            title: 'Porque pode aparecer tudo em zero',
+                            body: 'Os números voltam a começar após uma actualização do sistema ou quando ainda não houve pedidos de certificado desde o último arranque. É esperado até voltarem a gerar-se ou descarregarem PDFs.',
+                        },
+                    ]}
+                />
+
                 {healthLoading && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>A carregar métricas…</p>}
+
                 {certHealth && !healthLoading && (
-                    <div className="grid-3-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
-                        <KPI
-                            label="Cache hit rate"
-                            value={Math.round((certHealth.cache.hitRate ?? 0) * 1000) / 10}
-                            suffix="%"
-                            sub={`${certHealth.cache.hits} hits / ${certHealth.cache.misses} miss`}
-                            color="#B89B00"
-                            bg="#FFFDE7"
-                            border="#FEF08A"
-                        />
-                        <KPI
-                            label="Puppeteer (média)"
-                            value={Math.round((certHealth.generationMs.puppeteer.avg ?? 0) * 10) / 10}
-                            suffix=" ms"
-                            sub={`${certHealth.generationMs.puppeteer.count} amostras`}
-                            color="#059669"
-                            bg="#F0FDF4"
-                            border="#BBF7D0"
-                        />
-                        <KPI
-                            label="pdf-lib (média)"
-                            value={Math.round((certHealth.generationMs.pdfLib.avg ?? 0) * 10) / 10}
-                            suffix=" ms"
-                            sub={`${certHealth.generationMs.pdfLib.count} amostras`}
-                            color="#0891B2"
-                            bg="#F0F9FF"
-                            border="#BAE6FD"
-                        />
-                    </div>
-                )}
-                {certHealth && !healthLoading && (
-                    <div style={{ background: 'rgba(255, 255, 255, 0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.5)', borderRadius: 20, padding: '1.5rem', boxShadow: '0 8px 32px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)', cursor: 'default' }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.01)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}>
-                        <div>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#8E8E93', letterSpacing: '-0.01em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Motor Puppeteer</div>
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-                                <span style={{ fontSize: '2rem', fontWeight: 700, color: '#1C1C1E', letterSpacing: '-0.03em' }}>{certHealth.puppeteer.gateWaits}</span>
-                                <span style={{ fontSize: '0.9rem', color: '#8E8E93', fontWeight: 500 }}>na fila de espera</span>
+                    <>
+                        <div style={{ fontFamily: 'Orbitron', fontWeight: 800, fontSize: '0.68rem', letterSpacing: '0.12em', color: '#B89B00', textTransform: 'uppercase' }}>
+                            Motor de certificados
+                        </div>
+                        <div
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                gap: '0.85rem',
+                            }}
+                        >
+                            <AnimatedKpiCard
+                                label="Reutilização de PDFs"
+                                value={0}
+                                displayValue={`${Math.round((certHealth.cache.hitRate ?? 0) * 1000) / 10}%`}
+                                sub={`${certHealth.cache.hits} reutilizações · ${certHealth.cache.misses} geradas de novo`}
+                                color="#B89B00"
+                                bg="#FFFDE7"
+                                border="#FEF08A"
+                                icon={<span aria-hidden>📦</span>}
+                                compact
+                            />
+                            <AnimatedKpiCard
+                                label="Tempo médio — PDF completo"
+                                value={0}
+                                displayValue={`${Math.round((certHealth.generationMs.puppeteer.avg ?? 0) * 10) / 10} ms`}
+                                sub={`${certHealth.generationMs.puppeteer.count} medições`}
+                                color="#059669"
+                                bg="#F0FDF4"
+                                border="#BBF7D0"
+                                icon={<span aria-hidden>🎭</span>}
+                                compact
+                                delayMs={40}
+                            />
+                            <AnimatedKpiCard
+                                label="Tempo médio — modo compatível"
+                                value={0}
+                                displayValue={`${Math.round((certHealth.generationMs.pdfLib.avg ?? 0) * 10) / 10} ms`}
+                                sub={`${certHealth.generationMs.pdfLib.count} medições`}
+                                color="#0891B2"
+                                bg="#F0F9FF"
+                                border="#BAE6FD"
+                                icon={<span aria-hidden>📄</span>}
+                                compact
+                                delayMs={80}
+                            />
+                        </div>
+
+                        <div
+                            style={{
+                                background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+                                borderRadius: 16,
+                                border: '1px solid #E2E8F0',
+                                padding: '1.1rem 1.2rem',
+                                boxShadow: '0 10px 26px rgba(15,23,42,0.08)',
+                                display: 'grid',
+                                gridTemplateColumns: '1fr auto',
+                                gap: '0.9rem',
+                                minWidth: 0,
+                            }}
+                        >
+                            <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.22rem 0.62rem', borderRadius: 999, border: '1px solid #FED7AA', background: '#FFF7ED', fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: '#C2410C', marginBottom: '0.55rem' }}>
+                                    ⏳ Fila de emissão de PDFs
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '2rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.03em', fontFamily: 'Orbitron, sans-serif' }}>{certHealth.puppeteer.gateWaits}</span>
+                                    <span style={{ fontSize: '0.88rem', color: '#64748B', fontWeight: 600 }}>pedido(s) aguardando vaga de processamento</span>
+                                </div>
+                                <div style={{ marginTop: '0.55rem', display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600 }}>
+                                        Pressão da fila:
+                                    </span>
+                                    <span style={{ fontSize: '0.74rem', color: '#0F172A', fontWeight: 800, fontFamily: 'Orbitron, sans-serif' }}>
+                                        {Math.round((certHealth.puppeteer.gateWaits / Math.max(Number(certHealth.puppeteer.maxConcurrent) || 1, 1)) * 100)}%
+                                    </span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
+                                        (referência por capacidade paralela)
+                                    </span>
+                                </div>
+                            </div>
+                            <div style={{ minWidth: 210, maxWidth: 260 }}>
+                                <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748B', marginBottom: '0.4rem', textAlign: 'right' }}>
+                                    Concorrência configurada
+                                </div>
+                                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22C55E', flexShrink: 0 }} />
+                                    até {String(certHealth.puppeteer.maxConcurrent)} pedidos em paralelo
+                                </div>
+                                <div style={{ marginTop: '0.5rem', height: 8, borderRadius: 999, background: '#E2E8F0', overflow: 'hidden' }}>
+                                    <div
+                                        style={{
+                                            height: '100%',
+                                            width: `${Math.min(100, Math.round((certHealth.puppeteer.gateWaits / Math.max(Number(certHealth.puppeteer.maxConcurrent) || 1, 1)) * 100))}%`,
+                                            background: 'linear-gradient(90deg, #F59E0B 0%, #EA580C 100%)',
+                                            borderRadius: 999,
+                                        }}
+                                    />
+                                </div>
                             </div>
                         </div>
-                        <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#8E8E93', letterSpacing: '-0.01em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Concorrência</div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1C1C1E', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#34C759', boxShadow: '0 0 8px rgba(52, 199, 89, 0.4)' }} />
-                                {String(certHealth.puppeteer.maxConcurrent)} workers
-                            </div>
-                        </div>
-                    </div>
+                    </>
                 )}
                 {emission && !healthLoading && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                        <div style={{ background: 'rgba(255, 255, 255, 0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.5)', borderRadius: 20, padding: '1.5rem', boxShadow: '0 8px 32px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', transition: 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)' }}
-                            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1C1C1E', letterSpacing: '-0.01em' }}>Emissões por Curso</div>
-                                <div style={{ background: '#F2F2F7', padding: '0.2rem 0.6rem', borderRadius: 12, fontSize: '0.75rem', fontWeight: 600, color: '#8E8E93' }}>{emission.total} total</div>
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                            gap: '1.25rem',
+                        }}
+                    >
+                        <div
+                            style={{
+                                background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+                                borderRadius: 16,
+                                border: '1px solid #E2E8F0',
+                                padding: '1.15rem 1.15rem 1rem',
+                                boxShadow: '0 10px 22px rgba(15,23,42,0.07)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                minWidth: 0,
+                            }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0F172A', display: 'inline-flex', alignItems: 'center', gap: 8 }}>🎓 Emissões por Curso</div>
+                                <div style={{ background: '#F3F4F6', padding: '0.2rem 0.65rem', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700, color: '#6B7280' }}>{emission.total} total</div>
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                                {emission.byCourse.slice(0, 12).map(c => (
-                                    <div key={c.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <span style={{ fontSize: '0.9rem', color: '#3A3A3C', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '1rem' }}>{c.name}</span>
-                                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1C1C1E' }}>{c.count}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {emission.byCourse.slice(0, 12).map((c) => (
+                                    <div key={c.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', minWidth: 0 }}>
+                                        <div style={{ minWidth: 0, flex: 1 }}>
+                                            <div style={{ fontSize: '0.88rem', color: '#334155', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                                            <div style={{ marginTop: 4, height: 6, borderRadius: 999, background: '#E2E8F0', overflow: 'hidden' }}>
+                                                <div style={{ height: '100%', width: `${emission.total > 0 ? Math.max(3, Math.round((c.count / emission.total) * 100)) : 0}%`, background: 'linear-gradient(90deg, #0891B2 0%, #06B6D4 100%)' }} />
+                                            </div>
+                                        </div>
+                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#111827', fontFamily: 'Orbitron, sans-serif' }}>{c.count}</span>
+                                            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>
+                                                {emission.total > 0 ? `${Math.round((c.count / emission.total) * 100)}%` : '0%'}
+                                            </div>
+                                        </div>
                                     </div>
                                 ))}
+                            </div>
+                            <div style={{ marginTop: '0.9rem', paddingTop: '0.85rem', borderTop: '1px dashed #CBD5E1', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0.65rem' }}>
+                                <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '0.5rem 0.6rem', background: '#FFFFFF' }}>
+                                    <div style={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.08em', color: '#64748B', textTransform: 'uppercase' }}>Curso líder</div>
+                                    <div style={{ marginTop: 4, fontSize: '0.8rem', color: '#0F172A', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {emission.byCourse[0]?.name || '—'}
+                                    </div>
+                                </div>
+                                <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '0.5rem 0.6rem', background: '#FFFFFF' }}>
+                                    <div style={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.08em', color: '#64748B', textTransform: 'uppercase' }}>Concentração topo 3</div>
+                                    <div style={{ marginTop: 4, fontSize: '0.84rem', color: '#0F172A', fontWeight: 800, fontFamily: 'Orbitron, sans-serif' }}>
+                                        {emission.total > 0 ? `${Math.round((emission.byCourse.slice(0, 3).reduce((acc, x) => acc + x.count, 0) / emission.total) * 100)}%` : '0%'}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div style={{ background: 'rgba(255, 255, 255, 0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.5)', borderRadius: 20, padding: '1.5rem', boxShadow: '0 8px 32px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', transition: 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)' }}
-                            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1C1C1E', letterSpacing: '-0.01em', marginBottom: '1.25rem' }}>Distribuição por UF</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                                {emission.byState.map(s => (
-                                    <div key={s.state} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#F2F2F7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#8E8E93' }}>{s.state}</div>
-                                            <span style={{ fontSize: '0.9rem', color: '#3A3A3C', fontWeight: 500 }}>{s.state}</span>
+                        <div
+                            style={{
+                                background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+                                borderRadius: 16,
+                                border: '1px solid #E2E8F0',
+                                padding: '1.15rem 1.15rem 1rem',
+                                boxShadow: '0 10px 22px rgba(15,23,42,0.07)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                minWidth: 0,
+                            }}
+                        >
+                            <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0F172A', marginBottom: '1rem', display: 'inline-flex', alignItems: 'center', gap: 8 }}>🗺️ Distribuição por UF</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {emission.byState.map((s, idx) => (
+                                    <div key={s.state} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+                                            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 800, color: '#64748B', flexShrink: 0 }}>{s.state}</div>
+                                            <div style={{ minWidth: 0 }}>
+                                                <span style={{ fontSize: '0.88rem', color: '#374151', fontWeight: 600 }}>{s.state}</span>
+                                                <div style={{ fontSize: '0.66rem', color: '#94A3B8', marginTop: 1 }}>#{idx + 1} no ranking</div>
+                                            </div>
                                         </div>
-                                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1C1C1E' }}>{s.count}</span>
+                                        <div style={{ textAlign: 'right' }}>
+                                            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#111827', fontFamily: 'Orbitron, sans-serif' }}>{s.count}</span>
+                                            <div style={{ fontSize: '0.66rem', color: '#64748B', fontWeight: 700 }}>
+                                                {emission.total > 0 ? `${Math.round((s.count / emission.total) * 100)}%` : '0%'}
+                                            </div>
+                                        </div>
                                     </div>
                                 ))}
+                            </div>
+                            <div style={{ marginTop: '0.9rem', paddingTop: '0.85rem', borderTop: '1px dashed #CBD5E1', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0.65rem' }}>
+                                <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '0.5rem 0.6rem', background: '#FFFFFF' }}>
+                                    <div style={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.08em', color: '#64748B', textTransform: 'uppercase' }}>UFs com emissão</div>
+                                    <div style={{ marginTop: 4, fontSize: '0.84rem', color: '#0F172A', fontWeight: 800, fontFamily: 'Orbitron, sans-serif' }}>{emission.byState.length}</div>
+                                </div>
+                                <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '0.5rem 0.6rem', background: '#FFFFFF' }}>
+                                    <div style={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.08em', color: '#64748B', textTransform: 'uppercase' }}>UF líder</div>
+                                    <div style={{ marginTop: 4, fontSize: '0.84rem', color: '#0F172A', fontWeight: 800 }}>
+                                        {emission.byState[0]?.state || '—'}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -550,6 +656,49 @@ export default function AdminDashboard() {
 
             {dashTab === 'ops' && (
             <>
+            <AdminCollapsibleTutorial
+                storageKey="admin-dashboard-ops-tutorial-expanded"
+                emoji="📊"
+                title="COMO USAR O DASHBOARD OPERACIONAL"
+                steps={[
+                    {
+                        num: '1',
+                        color: '#3B82F6',
+                        title: 'Cartões principais (primeira linha)',
+                        body: 'Cursos ativos, alunos, turmas, inscrições pendentes e estados disponíveis são filtros de visão geral. Clique num cartão para abrir o detalhe (lista ou dados relacionados) sem sair do painel.',
+                    },
+                    {
+                        num: '2',
+                        color: '#B89B00',
+                        title: 'Métricas secundárias',
+                        body: 'Taxa de aprovação, frequência média e certificados emitidos resumem indicadores académicos; também são clicáveis para ver o detalhe contextual.',
+                    },
+                    {
+                        num: '3',
+                        color: '#059669',
+                        title: 'Distribuição de alunos por UF',
+                        body: 'Barras proporcionais à matrícula por estado — útil para planeamento geográfico e comparar pesos de cada UF.',
+                    },
+                    {
+                        num: '4',
+                        color: '#8B5CF6',
+                        title: 'Actividade e agenda',
+                        body: 'Últimos eventos do sistema e próximas aulas ajudam a acompanhar o ritmo operacional do dia.',
+                    },
+                    {
+                        num: '5',
+                        color: '#EA580C',
+                        title: 'Mapa de motoristas',
+                        body: 'Visualização em tempo real das viagens em campo; use filtros por estado ou por motorista e abra o painel lateral para detalhes da viagem.',
+                    },
+                    {
+                        num: '6',
+                        color: '#0891B2',
+                        title: 'Separador Saúde do Sistema',
+                        body: 'No topo, alterne para “Saúde do Sistema (certificados)” para ver se a emissão de PDFs está rápida, se há fila de espera e quantos certificados existem por curso e por estado.',
+                    },
+                ]}
+            />
 
             {/* ── ROW 1: PRIMARY KPIs ── */}
             <div className="grid-4-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>

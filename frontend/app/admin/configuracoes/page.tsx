@@ -17,6 +17,8 @@ import {
     MapPinIcon,
 } from '@heroicons/react/24/outline';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { ConfiguracoesSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
+import { SettingRow } from '@/components/settings/SettingRow';
 import AuthenticatorSettingsTotpBlock from '@/components/auth/AuthenticatorSettingsTotpBlock';
 import ChangePasswordSettingsPanel from '@/components/auth/ChangePasswordSettingsPanel';
 import { runAdminQuickExport, type QuickExportKey } from '@/lib/exports/adminQuickExport';
@@ -41,19 +43,6 @@ function Toggle({ checked, onChange, color = '#FFD600' }: { checked: boolean; on
                 display: 'block',
             }} />
         </button>
-    );
-}
-
-/* ── Section row ── */
-function SettingRow({ label, desc, children }: { label: string; desc?: string; children: React.ReactNode }) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.9rem 0', borderBottom: '1px solid #F3F4F6', gap: '1.5rem' }}>
-            <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#111827' }}>{label}</div>
-                {desc && <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: '0.15rem' }}>{desc}</div>}
-            </div>
-            <div style={{ flexShrink: 0 }}>{children}</div>
-        </div>
     );
 }
 
@@ -655,6 +644,7 @@ export default function ConfiguracoesPage() {
                     </div>
                 )}
             />
+            <ConfiguracoesSidebarTutorial />
 
             {/* ── TABS ── */}
             <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E5E7EB', padding: '0.5rem', display: 'flex', gap: '0.25rem', flexWrap: 'wrap', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
@@ -759,7 +749,7 @@ export default function ConfiguracoesPage() {
                                 { label: 'Nunca', value: '0' },
                             ]} />
                         </SettingRow>
-                        <SettingRow label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
+                        <SettingRow stack label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
                             {/* Estado: idle — 2FA desativado */}
                             {twoFAStep === 'idle' && !cfg.doisFatores && (
                                 <button
@@ -796,7 +786,7 @@ export default function ConfiguracoesPage() {
                                 </button>
                             )}
                             {twoFAStep === 'idle' && !cfg.doisFatores && twoFAError && (
-                                <div style={{ marginTop: '0.45rem', fontSize: '0.72rem', color: '#EF4444', maxWidth: 280, textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.72rem', color: '#EF4444', width: '100%', lineHeight: 1.45 }}>
                                     {twoFAError}
                                 </div>
                             )}
@@ -831,14 +821,48 @@ export default function ConfiguracoesPage() {
 
                             {/* Estado: active — 2FA ativado */}
                             {(twoFAStep === 'active' || (twoFAStep === 'idle' && cfg.doisFatores)) && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <span style={{ padding: '0.25rem 0.75rem', borderRadius: 20, background: '#DCFCE7', color: '#059669', fontWeight: 700, fontSize: '0.8rem', border: '1px solid #BBF7D0' }}>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        alignItems: 'flex-start',
+                                        gap: '0.75rem',
+                                        width: '100%',
+                                        minWidth: 0,
+                                    }}
+                                >
+                                    <span
+                                        style={{
+                                            padding: '0.25rem 0.75rem',
+                                            borderRadius: 20,
+                                            background: '#DCFCE7',
+                                            color: '#059669',
+                                            fontWeight: 700,
+                                            fontSize: '0.8rem',
+                                            border: '1px solid #BBF7D0',
+                                            flexShrink: 0,
+                                        }}
+                                    >
                                         ✓ 2FA Ativo
                                     </span>
                                     <button
+                                        type="button"
                                         onClick={() => { setTwoFAStep('disabling'); setTwoFAError(''); setTwoFADisableToken(''); }}
-                                        style={{ padding: '0.35rem 0.8rem', borderRadius: 8, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}
-                                    >Desativar</button>
+                                        style={{
+                                            padding: '0.35rem 0.8rem',
+                                            borderRadius: 8,
+                                            border: '1px solid #FED7AA',
+                                            background: '#FFF7ED',
+                                            color: '#EA580C',
+                                            fontWeight: 600,
+                                            fontSize: '0.78rem',
+                                            cursor: 'pointer',
+                                            flex: '0 1 auto',
+                                            minWidth: 0,
+                                        }}
+                                    >
+                                        Desativar
+                                    </button>
                                 </div>
                             )}
 

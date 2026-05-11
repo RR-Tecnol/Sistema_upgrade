@@ -11,9 +11,22 @@ import {
     TrophyIcon,
     DocumentTextIcon,
 } from '@heroicons/react/24/outline';
-import { RANKS, getRankConfig, calcXP, calcAchievements, RANK_PREV_KEY, type Achievement } from '@/lib/gamification';
+import {
+    RANKS,
+    getRankConfig,
+    calcXP,
+    calcAchievements,
+    RANK_PREV_KEY,
+    normalizeCertificateList,
+    filterActiveCertificates,
+    countClassesAtOrAbove75FromProgressItems,
+    getDashboardMissions,
+    type Achievement,
+    type DashboardMission,
+} from '@/lib/gamification';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import RankJourneyTrail from '@/components/student/RankJourneyTrail';
 
 // ── Títulos temáticos Solo Leveling ─────────────────────────────────────────
 const LEVEL_TITLES: Record<string, string> = {
@@ -175,27 +188,6 @@ function QuickDrawer({ open, onClose, title, children }: {
     );
 }
 
-// ── Missões ──────────────────────────────────────────────────────────────────
-interface DailyMission {
-    id: string; icon: string; title: string; description: string;
-    xpReward: number; completed: boolean;
-    progress: number; // 0.0 a 1.0
-}
-
-function calcDailyMissions(
-    attendance: { rate: number; presentCount: number; totalClasses: number },
-    certificates: any[],
-): DailyMission[] {
-    return [
-        { id: 'freq_75', icon: '📊', title: 'Frequência ≥ 75%', description: `Atual: ${attendance.rate}% — mínimo para aprovação`, xpReward: 50, completed: attendance.rate >= 75, progress: Math.min(1, attendance.rate / 75) },
-        { id: 'freq_90', icon: '🚀', title: 'Frequência ≥ 90%', description: 'Desempenho excepcional — Rank A', xpReward: 100, completed: attendance.rate >= 90, progress: Math.min(1, attendance.rate / 90) },
-        { id: 'pres_5',  icon: '✅', title: '5 Presenças',       description: `${attendance.presentCount} / 5 presenças registradas`, xpReward: 25, completed: attendance.presentCount >= 5, progress: Math.min(1, attendance.presentCount / 5) },
-        { id: 'pres_20', icon: '💪', title: '20 Presenças',      description: `${attendance.presentCount} / 20 presenças registradas`, xpReward: 75, completed: attendance.presentCount >= 20, progress: Math.min(1, attendance.presentCount / 20) },
-        { id: 'cert_1',  icon: '🏆', title: 'Primeiro Certificado', description: 'Conclua um curso com ≥ 75% de presença', xpReward: 150, completed: certificates.length >= 1, progress: Math.min(1, certificates.length / 1) },
-        { id: 'cert_3',  icon: '👑', title: '3 Certificados',    description: `${certificates.length} / 3 certificados obtidos`, xpReward: 300, completed: certificates.length >= 3, progress: Math.min(1, certificates.length / 3) },
-    ];
-}
-
 // ── Componente principal ─────────────────────────────────────────────────────
 export default function StudentDashboard() {
     const { user } = useAuthStore();
@@ -207,7 +199,7 @@ export default function StudentDashboard() {
     const [levelUpData, setLevelUpData] = useState<{ from: string; to: string; toColor: string; toLabel: string } | null>(null);
     const [mounted, setMounted] = useState(false);
     const [drawer, setDrawer] = useState<'matriculas' | 'frequencia' | 'certificados' | null>(null);
-    const [selectedMission, setSelectedMission] = useState<DailyMission | null>(null);
+    const [selectedMission, setSelectedMission] = useState<DashboardMission | null>(null);
     const [showFreqDetail, setShowFreqDetail] = useState(false);
 
     useEffect(() => { setMounted(true); }, []);
@@ -225,7 +217,8 @@ export default function StudentDashboard() {
                 setEnrollments(Array.isArray(data) ? data : data.data || []);
             }
             if (certRes.status === 'fulfilled') {
-                setCertificates(Array.isArray(certRes.value.data) ? certRes.value.data : []);
+                const raw = normalizeCertificateList(certRes.value.data);
+                setCertificates(filterActiveCertificates(raw) as any[]);
             }
             if (progRes.status === 'fulfilled' && progRes.value.data) {
                 setCertProgress(progRes.value.data as CertificateProgressPayload);
@@ -262,6 +255,7 @@ export default function StudentDashboard() {
 
     const certAlertItems = (certProgress?.items ?? []).filter(i => i.riskLevel !== 'ok').slice(0, 5);
     const worst = certProgress?.worstRisk ?? 'ok';
+    const classesAtOrAbove75 = countClassesAtOrAbove75FromProgressItems(certProgress?.items);
 
     if (loading) return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -276,7 +270,13 @@ export default function StudentDashboard() {
     const rankCfg      = getRankConfig(attendance.rate);
     const rankIdx      = RANKS.indexOf(rankCfg);
     const nextRank     = RANKS[rankIdx + 1] ?? null;
-    const allAchievements = calcAchievements(attendance.rate, attendance.presentCount, certificates.length);
+    const allAchievements = calcAchievements(
+        attendance.rate,
+        attendance.presentCount,
+        certificates.length,
+        0,
+        classesAtOrAbove75,
+    );
     const achievements    = allAchievements.filter(a => a.unlocked);
     const xp              = calcXP(attendance.presentCount, certificates.length);
     const progressToNext = nextRank
@@ -389,9 +389,10 @@ export default function StudentDashboard() {
                     border: `2px solid ${rankCfg.color}30`,
                     padding: '1.25rem 1.5rem',
                     boxShadow: `0 4px 24px ${rankCfg.glow}`,
-                    position: 'relative', overflow: 'hidden',
+                    /** `visible` evita cortar o último patamar (scale/glow do rank actual, ex.: S). */
+                    position: 'relative', overflow: 'visible',
                 }}>
-                    <div style={{ position: 'absolute', top: -20, right: -20, width: 120, height: 120, borderRadius: '50%', background: `${rankCfg.color}08`, pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', top: -20, right: -20, width: 120, height: 120, borderRadius: '50%', background: `${rankCfg.color}08`, pointerEvents: 'none', zIndex: 0 }} />
 
                     {/* Header */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', position: 'relative', zIndex: 1 }}>
@@ -442,34 +443,21 @@ export default function StudentDashboard() {
                         </div>
                     </div>
 
-                    {/* Rank Trail — E→D→C→B→A→S */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.85rem', position: 'relative', zIndex: 1, flexWrap: 'wrap' }}>
-                        {RANKS.map((r, i) => {
-                            const curIdx  = RANKS.indexOf(rankCfg);
-                            const isPast  = curIdx > i;
-                            const isCur   = r.rank === rankCfg.rank;
-                            return (
-                                <div key={r.rank} style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                    <div style={{
-                                        width: isCur ? 32 : 24, height: isCur ? 32 : 24,
-                                        borderRadius: isCur ? 8 : 6, flexShrink: 0,
-                                        background: isCur ? r.color : isPast ? `${r.color}60` : '#E5E7EB',
-                                        border: `${isCur ? 2 : 1}px solid ${isCur ? r.color : isPast ? `${r.color}40` : '#E5E7EB'}`,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontFamily: 'Orbitron', fontWeight: 900,
-                                        fontSize: isCur ? '0.75rem' : '0.6rem',
-                                        color: isCur ? '#fff' : isPast ? r.color : '#D1D5DB',
-                                        transition: 'all 0.3s',
-                                        ...(isCur ? { boxShadow: `0 2px 10px ${r.color}60` } : {}),
-                                    }}>
-                                        {r.rank}
-                                    </div>
-                                    {i < RANKS.length - 1 && (
-                                        <div style={{ width: 12, height: 1.5, background: isPast ? `${r.color}60` : '#E5E7EB', borderRadius: 1 }} />
-                                    )}
-                                </div>
-                            );
-                        })}
+                    <div style={{ marginBottom: '0.85rem', position: 'relative', zIndex: 1 }}>
+                        <RankJourneyTrail
+                            freqPct={attendance.rate}
+                            compact
+                            embedded
+                            sectionTitle="JORNADA DE RANKS"
+                            missionContext={{
+                                freqPct: attendance.rate,
+                                presentCount: attendance.presentCount,
+                                certCount: certificates.length,
+                                classesAtOrAbove75,
+                                activeEnrollmentCount: activeEnrollments.length,
+                            }}
+                            achievements={allAchievements}
+                        />
                     </div>
 
                     {/* Barra de progresso */}
@@ -533,7 +521,7 @@ export default function StudentDashboard() {
 
             {/* ── MISSÕES ── */}
             {attendance.totalClasses > 0 && (() => {
-                const missions  = calcDailyMissions(attendance, certificates);
+                const missions = getDashboardMissions(attendance, certificates.length, classesAtOrAbove75);
                 const completed = missions.filter(m => m.completed).length;
                 const totalXP   = missions.filter(m => m.completed).reduce((acc, m) => acc + m.xpReward, 0);
                 return (

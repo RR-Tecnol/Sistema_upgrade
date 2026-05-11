@@ -86,24 +86,22 @@ export class AuthService {
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) throw new UnauthorizedException('Invalid credentials');
 
-        // ── [DEV BYPASS] ──────────────────────────────────────────────────────
-        // Ativo APENAS quando AUTH_BYPASS_MFA=true no .env
-        // ⚠️  NUNCA deixar true em produção! Remove OTP e 2FA completamente.
-        // Para desativar: AUTH_BYPASS_MFA=false (ou remover do .env) + reiniciar.
-        const isBypassMode = this.configService.get('AUTH_BYPASS_MFA') === 'true';
-        if (isBypassMode) {
+        // ── [DEV BYPASS — completo] ────────────────────────────────────────────
+        // AUTH_BYPASS_MFA=true: JWT imediato (sem OTP por e-mail, sem 2FA). Só dev.
+        const isBypassFull = this.configService.get('AUTH_BYPASS_MFA') === 'true';
+        if (isBypassFull) {
             this.logger.warn(
-                `[DEV BYPASS] ⚠️  Login sem MFA: ${user.email} (${user.role}) — desative AUTH_BYPASS_MFA em produção!`,
+                `[DEV BYPASS] Login completo sem OTP/2FA: ${user.email} (${user.role}) — desative AUTH_BYPASS_MFA em produção!`,
             );
             const tokens = await this.generateTokens(user.id, user.email, user.role);
-            const studentData = await this.getStudentData(user.id, user.role);
+            const studentDataFull = await this.getStudentData(user.id, user.role);
             return {
                 user: { id: user.id, email: user.email, name: user.name, phone: user.phone, role: user.role },
                 ...tokens,
-                ...(studentData ? { student: studentData } : {}),
+                ...(studentDataFull ? { student: studentDataFull } : {}),
             };
         }
-        // ── [/DEV BYPASS] ─────────────────────────────────────────────────────
+        // ── [/DEV BYPASS — completo] ───────────────────────────────────────────
 
         // ── IT_ADMIN: primeiro login — pula OTP (e-mail placeholder não tem caixa) ──
         // Vai direto para a tela de definir e-mail + senha definitivos.
@@ -115,6 +113,29 @@ export class AuthService {
             return { requiresPasswordChange: true, preAuthToken: firstLoginToken };
         }
 
+        // ── [DEV BYPASS — só e-mail OTP] ───────────────────────────────────────
+        // AUTH_BYPASS_EMAIL_OTP=true: não envia e-mail nem exige código; mantém 2FA/setup.
+        // Só actua se AUTH_BYPASS_MFA não estiver true (ver acima).
+        const bypassEmailOtp = this.configService.get('AUTH_BYPASS_EMAIL_OTP') === 'true';
+        if (bypassEmailOtp) {
+            this.logger.warn(
+                `[DEV BYPASS] OTP por e-mail ignorado para ${user.email} (${user.role}) — fluxo 2FA mantido. Desative AUTH_BYPASS_EMAIL_OTP em produção.`,
+            );
+            await this.clearEmailOtpFields(user.id);
+            const userCleared = {
+                ...user,
+                emailOtpHash: null,
+                emailOtpExpiresAt: null,
+                emailOtpAttempts: 0,
+            };
+            const next = await this.afterEmailOtpVerified(userCleared);
+            return {
+                ...next,
+                ...(studentData ? { _studentHint: true } : {}),
+            };
+        }
+        // ── [/DEV BYPASS — só e-mail OTP] ──────────────────────────────────────
+
         // ── MFA Step 1: Sempre envia Email OTP ────────────────────────────────
         const { preAuthToken, emailMasked } = await this.sendEmailOtp(user.id, user.email, user.name);
 
@@ -124,6 +145,66 @@ export class AuthService {
             emailMasked,
             // Preserva studentData para reanexar ao completar login
             ...(studentData ? { _studentHint: true } : {}),
+        };
+    }
+
+    /** Limpa estado de OTP por e-mail (após verificação bem-sucedida ou bypass de e-mail em dev). */
+    private async clearEmailOtpFields(userId: string) {
+        await (this.prisma.user as any).update({
+            where: { id: userId },
+            data: { emailOtpHash: null, emailOtpExpiresAt: null, emailOtpAttempts: 0 },
+        });
+    }
+
+    /**
+     * Próximo passo após e-mail OTP validado (ou saltado em dev com AUTH_BYPASS_EMAIL_OTP).
+     * Mesma regra para IT_ADMIN / setup TOTP / TOTP / JWT final.
+     */
+    private async afterEmailOtpVerified(userSnapshot: any) {
+        const userId = userSnapshot.id;
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.active) {
+            throw new UnauthorizedException('Usuário inativo ou não encontrado');
+        }
+        const u = user as any;
+        const isStaff = STAFF_ROLES.includes(user.role);
+
+        if (user.role === 'IT_ADMIN' && u.requiresPasswordChange) {
+            const firstLoginToken = this.jwtService.sign(
+                { sub: userId, scope: 'pre_auth', step: 'first_login' },
+                { expiresIn: '30m' },
+            );
+            return { requiresPasswordChange: true, preAuthToken: firstLoginToken };
+        }
+
+        // 2FA já activo (ex.: activado em Configurações) — sempre exige TOTP neste login.
+        // Deve vir antes de requiresTwoFactorSetup para não mandar de volta ao "setup" nem emitir JWT.
+        const hasActiveTotp = Boolean(u.twoFactorEnabled && u.twoFactorSecret);
+        if (hasActiveTotp) {
+            const nextToken = this.jwtService.sign(
+                { sub: userId, scope: 'pre_auth', step: 'totp' },
+                { expiresIn: '10m' },
+            );
+            return { requiresTwoFactor: true, preAuthToken: nextToken };
+        }
+
+        if (isStaff && u.requiresTwoFactorSetup) {
+            const nextToken = this.jwtService.sign(
+                { sub: userId, scope: 'pre_auth', step: 'setup_totp' },
+                { expiresIn: '15m' },
+            );
+            return { requiresTwoFactorSetup: true, preAuthToken: nextToken };
+        }
+
+        const tokens = await this.generateTokens(user.id, user.email, user.role);
+        const studentData = await this.getStudentData(user.id, user.role);
+        const suggestTwoFactor = user.role === 'STUDENT' && !u.twoFactorEnabled;
+
+        return {
+            user: { id: user.id, email: user.email, name: user.name, phone: user.phone, role: user.role },
+            ...tokens,
+            ...(studentData ? { student: studentData } : {}),
+            ...(suggestTwoFactor ? { suggestTwoFactor: true } : {}),
         };
     }
 
@@ -198,55 +279,15 @@ export class AuthService {
             throw new UnauthorizedException(`Código inválido. ${remaining > 0 ? `${remaining} tentativa(s) restante(s)` : 'Solicite um novo código'}`);
         }
 
-        // Limpa OTP
-        await (this.prisma.user as any).update({
-            where: { id: userId },
-            data: { emailOtpHash: null, emailOtpExpiresAt: null, emailOtpAttempts: 0 },
-        });
+        await this.clearEmailOtpFields(userId);
 
-        const isStaff = STAFF_ROLES.includes(user.role);
-
-        // ── IT_ADMIN: 1º login — forçar troca de e-mail + senha ────────────
-        if (user.role === 'IT_ADMIN' && (user as any).requiresPasswordChange) {
-            const firstLoginToken = this.jwtService.sign(
-                { sub: userId, scope: 'pre_auth', step: 'first_login' },
-                { expiresIn: '30m' },
-            );
-            return { requiresPasswordChange: true, preAuthToken: firstLoginToken };
-        }
-
-        // ── Staff: verifica se precisa configurar TOTP ─────────────────────
-        if (isStaff && user.requiresTwoFactorSetup) {
-            const nextToken = this.jwtService.sign(
-                { sub: userId, scope: 'pre_auth', step: 'setup_totp' },
-                { expiresIn: '15m' },
-            );
-            return { requiresTwoFactorSetup: true, preAuthToken: nextToken };
-
-        }
-
-        // ── Qualquer usuário com TOTP ativo: solicita código ───────────────
-        if (user.twoFactorEnabled) {
-            const nextToken = this.jwtService.sign(
-                { sub: userId, scope: 'pre_auth', step: 'totp' },
-                { expiresIn: '10m' },
-            );
-            return { requiresTwoFactor: true, preAuthToken: nextToken };
-        }
-
-        // ── Student sem TOTP: emite JWT diretamente ────────────────────────
-        const tokens = await this.generateTokens(user.id, user.email, user.role);
-        const studentData = await this.getStudentData(user.id, user.role);
-
-        // Sugerir 2FA ao aluno nas primeiras sessões (máx 3 sugestões)
-        const suggestTwoFactor = user.role === 'STUDENT' && !user.twoFactorEnabled;
-
-        return {
-            user: { id: user.id, email: user.email, name: user.name, phone: user.phone, role: user.role },
-            ...tokens,
-            ...(studentData ? { student: studentData } : {}),
-            ...(suggestTwoFactor ? { suggestTwoFactor: true } : {}),
+        const userCleared = {
+            ...user,
+            emailOtpHash: null,
+            emailOtpExpiresAt: null,
+            emailOtpAttempts: 0,
         };
+        return this.afterEmailOtpVerified(userCleared);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -456,7 +497,10 @@ export class AuthService {
         const secret = this.decryptSecret(user.twoFactorSecret);
         const valid = authenticator.verify({ token, secret });
         if (!valid) throw new UnauthorizedException('Código inválido ou expirado');
-        await (this.prisma.user as any).update({ where: { id: userId }, data: { twoFactorEnabled: true } });
+        await (this.prisma.user as any).update({
+            where: { id: userId },
+            data: { twoFactorEnabled: true, requiresTwoFactorSetup: false },
+        });
     }
 
     async disable2FA(userId: string, token: string): Promise<void> {

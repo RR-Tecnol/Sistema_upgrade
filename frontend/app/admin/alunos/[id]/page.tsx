@@ -4,7 +4,16 @@ import { useParams, useRouter } from 'next/navigation';
 import { studentsApi } from '@/lib/api/students';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ENROLLMENT_DOC_LABELS, downloadEnrollmentFileFromUrl } from '@/components/enrollment/EnrollmentDocumentsPreview';
+import {
+    ENROLLMENT_DOC_LABELS,
+    downloadEnrollmentFileFromUrl,
+    getMissingEnrollmentDocumentEntries,
+} from '@/components/enrollment/EnrollmentDocumentsPreview';
+import StudentDocumentUploadList, {
+    buildDocumentsPayload,
+    parseStudentDocumentsFromApi,
+} from '@/components/documents/StudentDocumentUploadList';
+import { toast } from '@/components/ui/Toast';
 
 /* ── helpers ─────────────────────────────────────── */
 const fmt = (d?: string) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
@@ -212,6 +221,9 @@ export default function StudentDetailPage() {
   const [activeTab, setActiveTab] = useState('info');
   const [tabIn, setTabIn] = useState(true);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [docDraft, setDocDraft] = useState<Record<string, string>>({});
+  const [savingDocs, setSavingDocs] = useState(false);
+  const [remindingDocs, setRemindingDocs] = useState(false);
 
   useEffect(() => { if (params.id) load(); }, [params.id]);
 
@@ -221,6 +233,7 @@ export default function StudentDetailPage() {
       const d = await studentsApi.getById(params.id as string);
       setStudent(d);
       setPhotoUrl(d.photoUrl || null);
+      setDocDraft(parseStudentDocumentsFromApi(d.documents));
     } catch {
       router.push('/admin/alunos');
     } finally { setLoading(false); }
@@ -229,6 +242,34 @@ export default function StudentDetailPage() {
   const switchTab = (id: string) => {
     setTabIn(false);
     setTimeout(() => { setActiveTab(id); setTabIn(true); }, 180);
+  };
+
+  const missingRequiredDocs = getMissingEnrollmentDocumentEntries(docDraft).filter((m) => m.required);
+  const saveDocuments = async () => {
+    if (!params.id) return;
+    setSavingDocs(true);
+    try {
+      await studentsApi.update(params.id as string, { documents: buildDocumentsPayload(docDraft) } as any);
+      toast.success('Documentação guardada.');
+      await load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Erro ao guardar documentos.');
+    } finally {
+      setSavingDocs(false);
+    }
+  };
+
+  const remindDocuments = async () => {
+    if (!params.id) return;
+    setRemindingDocs(true);
+    try {
+      const r = await studentsApi.notifyPendingDocuments(params.id as string);
+      toast.success(r.message);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Erro ao enviar lembrete.');
+    } finally {
+      setRemindingDocs(false);
+    }
   };
 
   if (loading) return (
@@ -348,14 +389,63 @@ export default function StudentDetailPage() {
               <Row label="Naturalidade" value={student.birthCity ? `${student.birthCity}/${student.birthState}` : undefined}/>
             </div>
           </Section>
-          
-          {student.documents && Object.keys(student.documents).length > 0 && (
-            <Section emoji="📁" title="Documentos Anexados">
-              <div style={{ marginBottom: '0.75rem' }}>
+
+          <Section emoji="📁" title="Documentação (ficheiros)">
+            {missingRequiredDocs.length > 0 && (
+              <div style={{ marginBottom: '1rem', padding: '0.65rem 0.85rem', borderRadius: 10, background: '#FFFBEB', border: '1px solid #FDE68A', fontSize: '0.78rem', color: '#92400E', fontWeight: 600 }}>
+                Obrigatórios em falta: {missingRequiredDocs.map((m) => m.label).join(', ')}
+              </div>
+            )}
+            <StudentDocumentUploadList
+              value={docDraft}
+              onChange={setDocDraft}
+              variant="adminLight"
+              hint="Envie ou substitua ficheiros e clique em Guardar para gravar no perfil do aluno."
+            />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem', marginTop: '1.1rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => void saveDocuments()}
+                disabled={savingDocs}
+                style={{
+                  padding: '0.55rem 1.1rem',
+                  borderRadius: 10,
+                  border: '1px solid #B89B00',
+                  background: '#FFD600',
+                  color: '#111',
+                  fontWeight: 800,
+                  fontSize: '0.78rem',
+                  cursor: savingDocs ? 'wait' : 'pointer',
+                  opacity: savingDocs ? 0.75 : 1,
+                }}
+              >
+                {savingDocs ? 'A guardar…' : 'Guardar documentação'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void remindDocuments()}
+                disabled={remindingDocs || missingRequiredDocs.length === 0}
+                style={{
+                  padding: '0.55rem 1.1rem',
+                  borderRadius: 10,
+                  border: '1px solid #CBD5E1',
+                  background: '#fff',
+                  color: '#475569',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  cursor: missingRequiredDocs.length === 0 || remindingDocs ? 'not-allowed' : 'pointer',
+                  opacity: missingRequiredDocs.length === 0 ? 0.5 : 1,
+                }}
+              >
+                {remindingDocs ? '…' : 'Reenviar aviso ao aluno'}
+              </button>
+            </div>
+            {Object.keys(docDraft).some((k) => docDraft[k]?.trim()) && (
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #F3F4F6' }}>
                 <button
                   type="button"
                   onClick={async () => {
-                    const entries = Object.entries(student.documents || {}).filter(([, v]) => v && String(v).trim().length > 0);
+                    const entries = Object.entries(docDraft).filter(([, v]) => v && String(v).trim().length > 0);
                     const prefix = (student.cpf || 'aluno').replace(/\D/g, '') || 'aluno';
                     for (const [key, raw] of entries) {
                       const href = String(raw).trim();
@@ -374,45 +464,46 @@ export default function StudentDetailPage() {
                     background: '#fff',
                     color: '#374151',
                     cursor: 'pointer',
+                    marginBottom: '0.75rem',
                   }}
                 >
                   Baixar todos os documentos
                 </button>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(250px,1fr))', gap:'0.75rem' }}>
+                  {(['identidade', 'cpfDoc', 'addressProof', 'educationProof', 'photo'] as const).map((key) => {
+                    const href = docDraft[key];
+                    if (!href || !String(href).trim()) return null;
+                    const url = String(href).trim();
+                    const label = ENROLLMENT_DOC_LABELS[key] || key;
+                    const linkStyle = { flex: 1, minWidth: 0, padding: '0.75rem 1rem', background: '#F3F4F6', borderRadius: '12px', color: '#1F2937', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #E5E7EB' } as const;
+                    return (
+                      <div key={key} style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' }}>
+                        <a href={url} target="_blank" rel="noreferrer" style={linkStyle}>↗ {label}</a>
+                        <button
+                          type="button"
+                          title="Descarregar ficheiro"
+                          onClick={() => downloadEnrollmentFileFromUrl(url, `${(student.cpf || 'aluno').replace(/\D/g, '') || 'aluno'}_${key}`)}
+                          style={{
+                            padding: '0.75rem 0.85rem',
+                            borderRadius: 12,
+                            border: '1px solid #D1D5DB',
+                            background: '#fff',
+                            color: '#374151',
+                            fontWeight: 800,
+                            fontSize: '0.68rem',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Baixar
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(250px,1fr))', gap:'0.75rem' }}>
-                {(['identidade', 'cpfDoc', 'addressProof', 'educationProof', 'photo'] as const).map((key) => {
-                  const href = student.documents?.[key];
-                  if (!href || !String(href).trim()) return null;
-                  const url = String(href).trim();
-                  const label = ENROLLMENT_DOC_LABELS[key] || key;
-                  const linkStyle = { flex: 1, minWidth: 0, padding: '0.75rem 1rem', background: '#F3F4F6', borderRadius: '12px', color: '#1F2937', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #E5E7EB' } as const;
-                  return (
-                    <div key={key} style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' }}>
-                      <a href={url} target="_blank" rel="noreferrer" style={linkStyle}>↗ {label}</a>
-                      <button
-                        type="button"
-                        title="Descarregar ficheiro"
-                        onClick={() => downloadEnrollmentFileFromUrl(url, `${(student.cpf || 'aluno').replace(/\D/g, '') || 'aluno'}_${key}`)}
-                        style={{
-                          padding: '0.75rem 0.85rem',
-                          borderRadius: 12,
-                          border: '1px solid #D1D5DB',
-                          background: '#fff',
-                          color: '#374151',
-                          fontWeight: 800,
-                          fontSize: '0.68rem',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Baixar
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </Section>
-          )}
+            )}
+          </Section>
 
           <Section emoji="👨‍👩‍👧" title="Filiação">
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1.1rem' }}>

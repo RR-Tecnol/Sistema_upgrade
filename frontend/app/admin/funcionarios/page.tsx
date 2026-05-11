@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, type CSSProperties, type FocusEvent } from 'react';
 import api from '@/lib/api/client';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import { FuncionariosSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline';
@@ -1898,7 +1899,7 @@ export default function FuncionariosPage() {
                 </div>
             </div>
 
-
+            <FuncionariosSidebarTutorial />
 
             {/* ── TABS ── */}
             <div style={{ display: 'flex', gap: '0.4rem', borderBottom: '2px solid #F3F4F6', paddingBottom: 0 }}>

@@ -6,6 +6,7 @@ import { Cell } from 'recharts';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { RelatoriosSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import RelatorioPeriodDropdown from '@/components/admin/RelatorioPeriodDropdown';
 
@@ -159,8 +160,8 @@ export default function RelatoriosPage() {
             URL.revokeObjectURL(url);
         } catch (err: any) {
             toast.error(err?.response?.status === 500
-                ? 'Erro ao gerar PDF. Verifique logs do backend. Se aparecer Puppeteer/Chromium: npx puppeteer browsers install chrome na pasta do backend (há fallback nativo quando o HTML-PDF falha).'
-                : 'Erro ao gerar PDF. Verifique se o backend está rodando.');
+                ? 'Não foi possível gerar o PDF no servidor. Tente mais tarde ou peça apoio à equipa técnica.'
+                : 'Não foi possível gerar o PDF. Confirme se está ligado ao sistema e tente novamente.');
         } finally {
             setPdfLoading(null);
         }
@@ -269,6 +270,7 @@ export default function RelatoriosPage() {
                     </div>
                 )}
             />
+            <RelatoriosSidebarTutorial />
 
             {/* Filtro período — painel Upgrade (navy / amarelo / cyan) */}
             <div
@@ -774,7 +776,7 @@ export default function RelatoriosPage() {
                     <span style={{ fontSize: '1.2rem' }}>📋</span>
                     <div>
                         <div style={{ fontFamily: 'Orbitron', fontSize: '0.85rem', fontWeight: 900, color: '#92400E', letterSpacing: '0.08em' }}>DOCUMENTOS GOVERNAMENTAIS</div>
-                        <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 2 }}>PDFs gerados via Puppeteer — modelo provisório até template oficial (REQ-11 / REQ-12)</div>
+                        <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 2 }}>Documentos oficiais em PDF — modelo provisório até versão final aprovada</div>
                     </div>
                 </div>
                 <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: 16 }}>

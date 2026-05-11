@@ -7,6 +7,7 @@ import Link from 'next/link';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { AlunosSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -78,6 +79,7 @@ export default function AlunosPage() {
                     </Link>
                 )}
             />
+            <AlunosSidebarTutorial />
 
             {/* ── KPI STRIP ── */}
             {stats && (

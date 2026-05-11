@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminCollapsibleTutorial, { type AdminTutorialStep } from '@/components/admin/AdminCollapsibleTutorial';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
@@ -38,167 +39,74 @@ function useDragScroll() {
     };
 }
 
-function CoursesTutorial() {
-    const [expanded, setExpanded] = useState(false);
-
-    useEffect(() => {
-        try {
-            if (localStorage.getItem('courses-tutorial-expanded') === '1') setExpanded(true);
-        } catch {}
-    }, []);
-
-    const toggle = () => {
-        const next = !expanded;
-        setExpanded(next);
-        try { localStorage.setItem('courses-tutorial-expanded', next ? '1' : '0'); } catch {}
-    };
-
-    return (
-        <div
-            style={{
-                borderRadius: 16,
-                background: 'linear-gradient(135deg, rgba(255,214,0,0.10) 0%, rgba(255,255,255,0.95) 50%, rgba(239,246,255,0.95) 100%)',
-                border: '1px solid rgba(255,214,0,0.45)',
-                boxShadow: '0 4px 24px rgba(15,23,42,0.06)',
-                overflow: 'hidden',
-            }}
-        >
-            <button
-                type="button"
-                onClick={toggle}
-                style={{
-                    width: '100%',
-                    padding: '1rem 1.15rem',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    textAlign: 'left',
-                }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{
-                        width: 36, height: 36, borderRadius: 10,
-                        background: 'linear-gradient(135deg, #FFD600 0%, #F59E0B 100%)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '1.1rem',
-                        boxShadow: '0 2px 8px rgba(255,214,0,0.35)',
-                    }}>🎓</div>
-                    <div>
-                        <div style={{ fontFamily: 'Orbitron', fontSize: '0.82rem', letterSpacing: '0.08em', fontWeight: 800, color: '#0F172A' }}>
-                            COMO USAR A ÁREA DE CURSOS
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: 2 }}>
-                            {expanded ? 'Clique para recolher' : 'Clique para ver o tutorial passo-a-passo (6 passos)'}
-                        </div>
-                    </div>
-                </div>
-                <div style={{
-                    width: 32, height: 32, borderRadius: 8,
-                    background: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.1rem', color: '#475569',
-                    border: '1px solid #E5E7EB',
-                    transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                    transition: 'transform 0.2s',
-                }}>▼</div>
-            </button>
-
-            {expanded && (
-                <div style={{ padding: '0 1.15rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                    {[
-                        {
-                            num: '1',
-                            color: '#3B82F6',
-                            title: 'Cadastro e edição do curso',
-                            body: (
-                                <>
-                                    Use <strong>Novo Curso</strong> para cadastrar. No botão <strong>Editar</strong>, ajuste nome, descrição, carga horária,
-                                    disponibilidade por estado (MA/PI) e tipo (multicurso/único).
-                                </>
-                            ),
-                        },
-                        {
-                            num: '2',
-                            color: '#F59E0B',
-                            title: 'Ativação e inativação sem perder histórico',
-                            body: (
-                                <>
-                                    O botão <strong>Inativar/Reativar</strong> muda a disponibilidade operacional do curso sem apagar dados históricos,
-                                    turmas já criadas ou vínculos anteriores.
-                                </>
-                            ),
-                        },
-                        {
-                            num: '3',
-                            color: '#10B981',
-                            title: 'Cards do topo são filtros clicáveis',
-                            body: (
-                                <>
-                                    Os KPIs de <strong>Total</strong>, <strong>Ativos</strong>, <strong>Inativos</strong>, <strong>MA</strong> e <strong>PI</strong> funcionam
-                                    como filtros rápidos. Clique no card para aplicar o recorte da lista automaticamente.
-                                </>
-                            ),
-                        },
-                        {
-                            num: '4',
-                            color: '#8B5CF6',
-                            title: 'Busca e filtros combinados',
-                            body: (
-                                <>
-                                    Combine busca por texto + filtro de estado + tipo de curso e alterne entre visualização em
-                                    <strong> Tabela</strong> e <strong>Cards</strong> para análise operacional.
-                                </>
-                            ),
-                        },
-                        {
-                            num: '5',
-                            color: '#EF4444',
-                            title: 'Conexão com outras áreas do sistema',
-                            body: (
-                                <>
-                                    Cursos alimentam diretamente <strong>Turmas</strong>, impactam o fluxo de <strong>Inscrições</strong> e
-                                    refletem em <strong>Certificados</strong>, frequência e relatórios acadêmicos.
-                                </>
-                            ),
-                        },
-                        {
-                            num: '6',
-                            color: '#0EA5E9',
-                            title: 'Pontos de atenção (Admin/Coordenação)',
-                            body: (
-                                <>
-                                    Alterações de carga horária, estado e status do curso podem afetar elegibilidade, regras de
-                                    conclusão e emissão de certificados. Sempre revise os impactos antes de publicar mudanças.
-                                </>
-                            ),
-                        },
-                    ].map(step => (
-                        <div key={step.num} style={{ display: 'flex', gap: '0.85rem', padding: '0.85rem 1rem', background: '#fff', borderRadius: 12, border: '1px solid #E5E7EB' }}>
-                            <div style={{
-                                flexShrink: 0,
-                                width: 32, height: 32, borderRadius: '50%',
-                                background: step.color,
-                                color: '#fff',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontWeight: 800, fontSize: '0.85rem',
-                                fontFamily: 'Orbitron',
-                                boxShadow: `0 2px 6px ${step.color}55`,
-                            }}>{step.num}</div>
-                            <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 4, fontSize: '0.85rem' }}>{step.title}</div>
-                                <div style={{ fontSize: '0.78rem', color: '#374151', lineHeight: 1.6 }}>{step.body}</div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
+const COURSES_TUTORIAL_STEPS: AdminTutorialStep[] = [
+    {
+        num: '1',
+        color: '#3B82F6',
+        title: 'Cadastro e edição do curso',
+        body: (
+            <>
+                Use <strong>Novo Curso</strong> para cadastrar. No botão <strong>Editar</strong>, ajuste nome, descrição, carga horária,
+                disponibilidade por estado (MA/PI) e tipo (multicurso/único).
+            </>
+        ),
+    },
+    {
+        num: '2',
+        color: '#F59E0B',
+        title: 'Ativação e inativação sem perder histórico',
+        body: (
+            <>
+                O botão <strong>Inativar/Reativar</strong> muda a disponibilidade operacional do curso sem apagar dados históricos,
+                turmas já criadas ou vínculos anteriores.
+            </>
+        ),
+    },
+    {
+        num: '3',
+        color: '#10B981',
+        title: 'Cards do topo são filtros clicáveis',
+        body: (
+            <>
+                Os KPIs de <strong>Total</strong>, <strong>Ativos</strong>, <strong>Inativos</strong>, <strong>MA</strong> e <strong>PI</strong> funcionam
+                como filtros rápidos. Clique no card para aplicar o recorte da lista automaticamente.
+            </>
+        ),
+    },
+    {
+        num: '4',
+        color: '#8B5CF6',
+        title: 'Busca e filtros combinados',
+        body: (
+            <>
+                Combine busca por texto + filtro de estado + tipo de curso e alterne entre visualização em
+                <strong> Tabela</strong> e <strong>Cards</strong> para análise operacional.
+            </>
+        ),
+    },
+    {
+        num: '5',
+        color: '#EF4444',
+        title: 'Conexão com outras áreas do sistema',
+        body: (
+            <>
+                Cursos alimentam diretamente <strong>Turmas</strong>, impactam o fluxo de <strong>Inscrições</strong> e
+                refletem em <strong>Certificados</strong>, frequência e relatórios acadêmicos.
+            </>
+        ),
+    },
+    {
+        num: '6',
+        color: '#0EA5E9',
+        title: 'Pontos de atenção (Admin/Coordenação)',
+        body: (
+            <>
+                Alterações de carga horária, estado e status do curso podem afetar elegibilidade, regras de
+                conclusão e emissão de certificados. Sempre revise os impactos antes de publicar mudanças.
+            </>
+        ),
+    },
+];
 
 export default function CursosPage() {
     const [courses, setCourses] = useState<Course[]>([]);
@@ -297,7 +205,12 @@ export default function CursosPage() {
                     </Link>
                 )}
             />
-            <CoursesTutorial />
+            <AdminCollapsibleTutorial
+                storageKey="courses-tutorial-expanded"
+                emoji="🎓"
+                title="COMO USAR A ÁREA DE CURSOS"
+                steps={COURSES_TUTORIAL_STEPS}
+            />
 
             {/* ── KPI STRIP ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>

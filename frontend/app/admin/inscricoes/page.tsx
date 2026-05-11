@@ -13,6 +13,7 @@ import {
     ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { InscricoesSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import {
     EnrollmentDocumentsPreview,
@@ -27,6 +28,10 @@ import {
     EmployeeStyleSectionTitle,
 } from '@/components/admin/employee-style-admin-detail';
 import { customConfirm } from '@/components/ui/ConfirmModal';
+import StudentDocumentUploadList, {
+    buildDocumentsPayload,
+    parseStudentDocumentsFromApi,
+} from '@/components/documents/StudentDocumentUploadList';
 
 interface Enrollment {
     id: string;
@@ -34,6 +39,7 @@ interface Enrollment {
     status: string;
     createdAt: string;
     student: {
+        id?: string;
         user?: { name?: string };
         fullName?: string;
         cpf?: string;
@@ -353,6 +359,8 @@ export default function InscricoesPage() {
     const [selectedDocsDetail, setSelectedDocsDetail] = useState<EnrollmentDetail | null>(null);
     const [docsLoading, setDocsLoading] = useState(false);
     const [docReviews, setDocReviews] = useState<DocReviewMap>({});
+    const [docsModalDraft, setDocsModalDraft] = useState<Record<string, string>>({});
+    const [docsModalSaving, setDocsModalSaving] = useState(false);
     const [rejectReason, setRejectReason] = useState('');
     const [rejectModal, setRejectModal] = useState<string | null>(null);
     const [view, setView] = useState<'kanban' | 'list'>('kanban');
@@ -484,6 +492,15 @@ export default function InscricoesPage() {
         }
         setDocReviews({});
     }, [selectedDocsDetail?.notes, selectedDocs?.notes]);
+
+    useEffect(() => {
+        if (!selectedDocs) {
+            setDocsModalDraft({});
+            return;
+        }
+        const raw = selectedDocsDetail?.student?.documents ?? selectedDocs.student?.documents;
+        setDocsModalDraft(parseStudentDocumentsFromApi(raw));
+    }, [selectedDocs?.id, selectedDocsDetail?.id, selectedDocsDetail?.student?.documents, selectedDocs?.student?.documents]);
 
     useEffect(() => {
         const modalOpen = !!(selected || selectedDocs || rejectModal);
@@ -678,6 +695,27 @@ export default function InscricoesPage() {
         }
     };
 
+    const saveStudentDocumentsFromModal = async () => {
+        const studentId = selectedDocsDetail?.student?.id ?? selectedDocs?.student?.id;
+        if (!studentId || !selectedDocs) {
+            toast.error('Não foi possível identificar o aluno.');
+            return;
+        }
+        setDocsModalSaving(true);
+        try {
+            await api.put(`/admin/students/${studentId}`, { documents: buildDocumentsPayload(docsModalDraft) });
+            toast.success('Documentação do aluno actualizada.');
+            await fetchEnrollments();
+            const detailRes = await api.get(`/enrollments/${selectedDocs.id}`);
+            setSelectedDocsDetail(detailRes.data);
+            setSelectedDocs(detailRes.data as Enrollment);
+        } catch (e: any) {
+            toast.error(e?.response?.data?.message || 'Erro ao guardar documentos do aluno.');
+        } finally {
+            setDocsModalSaving(false);
+        }
+    };
+
     const approveReviewedDocuments = async () => {
         if (!selectedDocs) return;
         const summary = summarizeDocAudit(
@@ -778,6 +816,7 @@ export default function InscricoesPage() {
                     </div>
                 )}
             />
+            <InscricoesSidebarTutorial />
 
             {/* Stats bar */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '0.75rem' }}>
@@ -1541,6 +1580,36 @@ export default function InscricoesPage() {
                                     </div>
                                 );
                             })()}
+                        </div>
+                        <div>
+                            <EmployeeStyleSectionTitle icon="📤" title="Anexar em nome do aluno" color="#0369A1" />
+                            <p style={{ fontSize: '0.76rem', color: '#64748B', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
+                                Os ficheiros ficam no perfil do aluno e aparecem na pré-visualização abaixo após guardar.
+                            </p>
+                            <StudentDocumentUploadList
+                                value={docsModalDraft}
+                                onChange={setDocsModalDraft}
+                                variant="adminLight"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => void saveStudentDocumentsFromModal()}
+                                disabled={docsModalSaving}
+                                style={{
+                                    marginTop: '0.75rem',
+                                    padding: '0.5rem 1rem',
+                                    borderRadius: 10,
+                                    border: '1px solid #86EFAC',
+                                    background: '#DCFCE7',
+                                    color: '#14532D',
+                                    fontWeight: 800,
+                                    fontSize: '0.8rem',
+                                    cursor: docsModalSaving ? 'wait' : 'pointer',
+                                    opacity: docsModalSaving ? 0.75 : 1,
+                                }}
+                            >
+                                {docsModalSaving ? 'A guardar…' : 'Guardar documentos no perfil do aluno'}
+                            </button>
                         </div>
                         {docsLoading ? (
                             <div style={{ fontSize: '0.82rem', color: '#64748B', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: '0.85rem 1rem' }}>

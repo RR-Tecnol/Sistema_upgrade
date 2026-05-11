@@ -2,6 +2,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { studentsApi } from '@/lib/api/students';
+import StudentDocumentUploadList, { buildDocumentsPayload } from '@/components/documents/StudentDocumentUploadList';
 import Link from 'next/link';
 import { AdminCreationSuccessScreen } from '@/components/admin/AdminCreationSuccessScreen';
 
@@ -119,6 +120,7 @@ export default function NovoAlunoPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
+  const [documents, setDocuments] = useState<Record<string, string>>({});
 
   const set = useCallback((k: string, v: unknown) => {
     setForm(p => ({ ...p, [k]: v }));
@@ -191,6 +193,7 @@ export default function NovoAlunoPage() {
         previousQualification: form.previousQualification || undefined,
         professionalInterest: form.professionalInterest || undefined,
         howHeardAbout: form.howHeardAbout || undefined,
+        documents: buildDocumentsPayload(documents),
       } as any);
       setSuccess(true);
       setTimeout(() => router.push('/admin/alunos'), 2200);
@@ -293,6 +296,11 @@ export default function NovoAlunoPage() {
                   <NI name='cpf' value={form.cpf} onChange={(e: React.ChangeEvent<HTMLInputElement>) => set('cpf', maskCpf(e.target.value))} placeholder='123.456.789-00' hasErr={!!errors.cpf} />
                 </FG>
               </div>
+              <div className='na-sl' style={{ marginTop: '1rem' }}>Arquivos (RG, selfie, comprovantes)</div>
+              <p className='na-hint' style={{ marginBottom: '0.75rem' }}>
+                Opcional neste passo: pode anexar já ou o aluno completar depois no portal (receberá aviso se faltar obrigatório).
+              </p>
+              <StudentDocumentUploadList value={documents} onChange={setDocuments} variant='adminLight' />
               <div className='na-sl'>Dados Pessoais</div>
               <div className='na-g3' style={{ marginBottom: '1.25rem' }}>
                 <FG label='Data de Nascimento' req error={errors.birthDate}><NI name='birthDate' type='date' value={form.birthDate} onChange={handle} hasErr={!!errors.birthDate} /></FG>

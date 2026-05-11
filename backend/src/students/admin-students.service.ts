@@ -1,7 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStudentDto, UpdateStudentDto } from './dto';
 import * as bcrypt from 'bcryptjs';
+import { NotificationType, Prisma } from '@prisma/client';
+import {
+    mergeStudentDocuments,
+    sanitizeStudentDocumentsPatch,
+    isStudentDocumentsComplete,
+    getMissingRequiredStudentDocumentLabels,
+} from '../common/student-documents.util';
+import { NotificationsSenderService } from '../notifications/notifications-sender.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 interface StudentFilters {
     search?: string;
@@ -14,7 +23,51 @@ interface StudentFilters {
 
 @Injectable()
 export class AdminStudentsService {
-    constructor(private prisma: PrismaService) { }
+    private readonly logger = new Logger(AdminStudentsService.name);
+
+    constructor(
+        private prisma: PrismaService,
+        private readonly notificationsSender: NotificationsSenderService,
+        private readonly notificationsGateway: NotificationsGateway,
+    ) {}
+
+    /** Notifica o aluno (in-app + WS) quando faltam documentos obrigatórios. */
+    async notifyPendingDocuments(studentId: string): Promise<{ sent: boolean; message: string }> {
+        const student = await this.prisma.student.findUnique({
+            where: { id: studentId },
+            select: { id: true, userId: true, documents: true },
+        });
+        if (!student) throw new NotFoundException('Student not found');
+        if (isStudentDocumentsComplete(student.documents)) {
+            return { sent: false, message: 'Documentação já está completa.' };
+        }
+        await this.sendDocumentsPendingNotification(student.userId, student.documents);
+        return { sent: true, message: 'Lembrete enviado ao aluno.' };
+    }
+
+    private async sendDocumentsPendingNotification(userId: string, documentsJson: unknown): Promise<void> {
+        try {
+            const missing = getMissingRequiredStudentDocumentLabels(documentsJson as Prisma.JsonValue);
+            const message =
+                missing.length > 0
+                    ? `Complete no portal os documentos obrigatórios em falta: ${missing.join(', ')}.`
+                    : 'Complete a documentação obrigatória em Meu perfil.';
+            const { id: notificationId } = await this.notificationsSender.send({
+                userId,
+                type: NotificationType.GENERAL_ANNOUNCEMENT,
+                title: 'Documentação pendente',
+                message,
+                link: '/student/profile#documentos',
+                extraData: { kind: 'documentacao_pendente' },
+            });
+            this.notificationsGateway.notifyUser(userId, 'documentacao_pendente', {
+                notificationId,
+                timestamp: new Date().toISOString(),
+            });
+        } catch (e) {
+            this.logger.warn(`Falha ao notificar documentação pendente (userId=${userId}): ${e}`);
+        }
+    }
 
     async findAll(filters: StudentFilters) {
         const { search, state, active, page = 1, limit = 10, courseId } = filters;
@@ -191,8 +244,11 @@ export class AdminStudentsService {
             socialProgram, hasDisability, disabilityType, disabilityAdaptation,
             publicSchoolOnly,
             // Professional fields
-            previousQualification, professionalInterest, careerGoal, howHeardAbout, motivation
+            previousQualification, professionalInterest, careerGoal, howHeardAbout, motivation,
+            documents: documentsInput,
         } = createStudentDto;
+
+        const mergedDocuments = mergeStudentDocuments(null, sanitizeStudentDocumentsPatch(documentsInput as Record<string, unknown>));
 
         // Check if CPF already exists
         const existingStudent = await this.prisma.student.findUnique({
@@ -230,6 +286,7 @@ export class AdminStudentsService {
                 birthState,
                 socialName,
                 active: true,
+                documents: Object.keys(mergedDocuments).length ? mergedDocuments : undefined,
                 user: {
                     create: {
                         name,
@@ -302,6 +359,10 @@ export class AdminStudentsService {
             },
         });
 
+        if (!isStudentDocumentsComplete(student.documents)) {
+            await this.sendDocumentsPendingNotification(student.userId, student.documents);
+        }
+
         return student;
     }
 
@@ -330,9 +391,9 @@ export class AdminStudentsService {
             socialProgram, hasDisability, disabilityType, disabilityAdaptation,
             // Professional fields
             previousQualification, professionalInterest, careerGoal, howHeardAbout, motivation,
+            documents: documentsInput,
             // Ignore password in update
             password: _password,
-            ...rest
         } = updateStudentDto;
 
         // Check if new CPF is already in use
@@ -357,10 +418,16 @@ export class AdminStudentsService {
             }
         }
 
+        const documentsPatch =
+            documentsInput !== undefined
+                ? mergeStudentDocuments(student.documents, sanitizeStudentDocumentsPatch(documentsInput as Record<string, unknown>))
+                : undefined;
+
         // Update student and all relations
         const updated = await this.prisma.student.update({
             where: { id },
             data: {
+                ...(documentsPatch !== undefined && { documents: documentsPatch }),
                 ...(cpf && { cpf: cpf.replace(/\D/g, '') }),
                 ...(birthDate && { birthDate: new Date(birthDate) }),
                 ...(gender && { gender }),

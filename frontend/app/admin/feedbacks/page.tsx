@@ -6,6 +6,7 @@ import { FunnelIcon, ArrowPathIcon, BanknotesIcon } from '@heroicons/react/24/ou
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminCollapsibleTutorial from '@/components/admin/AdminCollapsibleTutorial';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -128,7 +129,6 @@ export default function AdminFeedbacksList() {
     const [lifecycleFilter, setLifecycleFilter] = useState('');
     const [rewardFilter, setRewardFilter] = useState('');
     const [showRewardFilter, setShowRewardFilter] = useState(false);
-    const [showTutorial, setShowTutorial] = useState(false);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
@@ -403,53 +403,45 @@ export default function AdminFeedbacksList() {
                 />
             ) : null}
 
-            <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #E5E7EB', background: '#fff' }}>
-                <button
-                    type="button"
-                    onClick={() => setShowTutorial(v => !v)}
-                    style={{
-                        width: '100%',
-                        padding: '0.9rem 1.25rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        background: showTutorial ? 'linear-gradient(135deg, #FFFDF5, #FFFDE7)' : '#FAFAFA',
-                        border: 'none',
-                        cursor: 'pointer',
-                        borderBottom: showTutorial ? '1px solid #FDE68A' : 'none',
-                        transition: 'background 0.2s',
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                        <span style={{ fontSize: '1.1rem' }}>📖</span>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151' }}>Como usar esta página — guia rápido</span>
-                    </div>
-                    <span style={{ fontSize: '0.7rem', color: '#9CA3AF', fontWeight: 600 }}>{showTutorial ? '▲ Fechar' : '▼ Ver'}</span>
-                </button>
-
-                {showTutorial && (
-                    <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <div style={{ fontSize: '0.82rem', color: '#374151', lineHeight: 1.7 }}>
-                            Filtros: <strong>Aguardando triagem</strong>, <strong>Triagem OK</strong>, <strong>Pendente pagamento</strong>, <strong>Pago</strong>, <strong>Rejeitados</strong>. Use <strong>Gerar Conta a pagar</strong> se o PIX foi aprovado sem lançamento (legado).
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#92400E', padding: '0.65rem 1rem', borderRadius: 10, background: '#FEF3C7', border: '1px solid #FDE68A', lineHeight: 1.5 }}>
-                            Rejeitados podem reenviar; a coluna <strong>Reenvio</strong> indica se o aluno já voltou a submeter após a última rejeição.
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#9CA3AF', textTransform: 'uppercase' }}>Passos sugeridos</div>
-                            {[
-                                'Triagem OK → Aprovar PIX gera Conta a Pagar.',
-                                'Pendente pagamento → acompanhar em Contas a pagar até marcar pago.',
-                                'Aprovado sem conta? Clique «Gerar Conta a pagar» na coluna Pagamento.',
-                            ].map((t, i) => (
-                                <div key={i} style={{ fontSize: '0.76rem', color: '#374151', paddingLeft: '0.5rem', borderLeft: '3px solid #F59E0B' }}>
-                                    {t}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
+            <AdminCollapsibleTutorial
+                storageKey="admin-feedbacks-tutorial-expanded"
+                emoji="📖"
+                title="COMO USAR ESTA PÁGINA — FEEDBACKS"
+                steps={[
+                    {
+                        num: '1',
+                        color: '#3B82F6',
+                        title: 'Filtros de ciclo de vida',
+                        body: (
+                            <>
+                                Use os filtros <strong>Aguardando triagem</strong>, <strong>Triagem OK</strong>, <strong>Pendente pagamento</strong>, <strong>Pago</strong> e <strong>Rejeitados</strong>.
+                                Se o PIX foi aprovado sem lançamento financeiro (legado), use <strong>Gerar Conta a pagar</strong> quando disponível.
+                            </>
+                        ),
+                    },
+                    {
+                        num: '2',
+                        color: '#F59E0B',
+                        title: 'Rejeições e reenvio',
+                        body: (
+                            <>
+                                Alunos rejeitados podem voltar a submeter. A coluna <strong>Reenvio</strong> indica se já houve nova submissão após a última rejeição.
+                            </>
+                        ),
+                    },
+                    {
+                        num: '3',
+                        color: '#059669',
+                        title: 'Fluxo financeiro sugerido',
+                        body: (
+                            <>
+                                <strong>Triagem OK</strong> → aprovar PIX cria <strong>Conta a Pagar</strong>. Em <strong>Pendente pagamento</strong>, acompanhe em Contas a pagar até marcar como pago.
+                                Se estiver <strong>aprovado sem conta</strong>, use «Gerar Conta a pagar» na coluna Pagamento.
+                            </>
+                        ),
+                    },
+                ]}
+            />
 
             {kpis && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(158px, 1fr))', gap: '0.75rem' }}>

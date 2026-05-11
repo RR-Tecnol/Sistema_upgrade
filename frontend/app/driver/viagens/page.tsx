@@ -4,6 +4,7 @@ import api from '@/lib/api/client';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { toast } from '@/components/ui/Toast';
+import { TripOdometerPhotosPreview } from '@/components/admin/TripOdometerPhotosPreview';
 
 interface Trip {
     id: string; status: string; notes?: string;
@@ -17,6 +18,9 @@ interface Trip {
     destination?: string;
     originCityName?: string;
     destinationCityName?: string;
+    /** URLs das fotos enviadas pelo motorista (mesmo modelo de pré-visualização das inscrições). */
+    startOdometerPhotoUrl?: string | null;
+    endOdometerPhotoUrl?: string | null;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -58,6 +62,8 @@ export default function DriverViagens() {
             ...source,
             originCity: source.originCity?.name ? source.originCity : { name: originName || 'Origem não informada', state: '' },
             destinationCity: source.destinationCity?.name ? source.destinationCity : { name: destinationName || 'Destino não informado', state: '' },
+            startOdometerPhotoUrl: source.startOdometerPhotoUrl ?? null,
+            endOdometerPhotoUrl: source.endOdometerPhotoUrl ?? null,
         };
     };
 
@@ -105,7 +111,7 @@ export default function DriverViagens() {
     };
 
     const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR');
-    const cardStyle: CSSProperties = { background: '#FFFFFF', borderRadius: 14, padding: '1.1rem', border: '1px solid #E5E7EB', marginBottom: '0.75rem', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' };
+    const cardStyle: CSSProperties = { background: '#FFFFFF', borderRadius: 14, padding: '1.1rem', border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' };
     const btnStyle: CSSProperties = { padding: '0.6rem 1rem', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', minHeight: 40 };
 
     const handleDecision = async (tripId: string, decision: 'ACCEPTED' | 'REJECTED', reason?: string) => {
@@ -128,20 +134,21 @@ export default function DriverViagens() {
     };
 
     return (
-        <div className="animate-fade-in" style={{ maxWidth: 560, margin: '0 auto' }}>
+        <div className="animate-fade-in" style={{ maxWidth: 720, margin: '0 auto', padding: '0 0.75rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <AdminHeaderHero
                 title="VIAGENS"
                 subtitle="Acompanhe viagens em andamento, planejadas e concluídas"
                 badge="MOTORISTA"
             />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem', marginBottom: '0.25rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
                 <AnimatedKpiCard label="Em Andamento" value={trips.filter(t => t.status === 'IN_TRANSIT').length} color="#10B981" bg="#F0FDF4" border="#BBF7D0" compact />
                 <AnimatedKpiCard label="Planejadas" value={trips.filter(t => t.status === 'PLANNED').length} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" compact />
                 <AnimatedKpiCard label="Concluídas" value={trips.filter(t => t.status === 'COMPLETED').length} color="#6B7280" bg="#F3F4F6" border="#E5E7EB" compact />
             </div>
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.25rem', background: '#F3F4F6', padding: '0.35rem', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', background: '#F3F4F6', padding: '0.35rem', borderRadius: 10, border: '1px solid #E5E7EB' }}>
                 {(['IN_TRANSIT', 'PLANNED', 'COMPLETED'] as const).map(s => (
                     <button key={s} onClick={() => setTab(s)} style={{
                         flex: 1, padding: '0.5rem', borderRadius: 7, border: 'none', cursor: 'pointer',
@@ -165,7 +172,9 @@ export default function DriverViagens() {
                     <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🛣️</div>
                     <div style={{ color: '#6B7280', fontSize: '0.85rem' }}>Nenhuma viagem {STATUS_LABELS[tab].label.toLowerCase()}</div>
                 </div>
-            ) : filtered.map(trip => {
+            ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {filtered.map(trip => {
                 const st = STATUS_LABELS[trip.status];
                 const kmPercorrida = trip.kmEnd && trip.kmStart ? trip.kmEnd - trip.kmStart : null;
                 return (
@@ -190,6 +199,24 @@ export default function DriverViagens() {
                         {trip.notes && (
                             <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '0.6rem 0.75rem', marginBottom: '0.75rem', fontSize: '0.75rem', color: '#6B7280', fontStyle: 'italic', maxHeight: 60, overflow: 'hidden', border: '1px solid #E5E7EB' }}>
                                 📝 {trip.notes.split('\n').pop()}
+                            </div>
+                        )}
+
+                        {(trip.status !== 'PLANNED' ||
+                            trip.startOdometerPhotoUrl ||
+                            trip.endOdometerPhotoUrl) && (
+                            <div style={{ marginBottom: '0.85rem' }}>
+                                <TripOdometerPhotosPreview
+                                    tripId={trip.id}
+                                    startUrl={trip.startOdometerPhotoUrl}
+                                    endUrl={trip.endOdometerPhotoUrl}
+                                    scope="driver"
+                                    emptyMessage={
+                                        trip.status === 'IN_TRANSIT'
+                                            ? 'Envie a foto da ida ao iniciar a viagem. A foto da volta ao finalizar.'
+                                            : 'Nenhuma foto do hodômetro nesta viagem.'
+                                    }
+                                />
                             </div>
                         )}
 
@@ -232,6 +259,10 @@ export default function DriverViagens() {
                     </div>
                 );
             })}
+            </div>
+            )}
+
+            </div>
 
             {/* Modal km */}
             {showModal && (

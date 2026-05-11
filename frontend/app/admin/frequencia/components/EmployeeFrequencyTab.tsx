@@ -175,7 +175,7 @@ export default function EmployeeFrequencyTab({ role }: EmployeeFrequencyTabProps
             URL.revokeObjectURL(url);
             const engine = String(res.headers['x-pdf-engine'] || '');
             if (engine === 'pdf-lib') {
-                toast.success('PDF gerado em modo compatível (fallback sem Chromium).');
+                toast.success('PDF gerado em modo compatível.');
             }
         } catch (e: any) {
             toast.error(e?.response?.data?.message || 'Erro ao gerar PDF do período.');

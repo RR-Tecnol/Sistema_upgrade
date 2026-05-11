@@ -11,7 +11,7 @@ function completeLogin(data: any, router: any, setAuthUser: any) {
     setAuthUser(data.user, data.access_token);
     if (data.student) sessionStorage.setItem('student', JSON.stringify(data.student));
     const role = data.user.role;
-    if (role === 'IT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR') router.push('/admin/dashboard');
+    if (role === 'IT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR' || role === 'FINANCIAL') router.push('/admin/dashboard');
     else if (role === 'STUDENT') router.push('/student/dashboard');
     else if (role === 'DRIVER') router.push('/driver/dashboard');
     else router.push('/teacher/dashboard');
@@ -70,7 +70,7 @@ export default function Setup2FAPage() {
             <div style={{ position: 'absolute', top: '-10%', left: '-5%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(255,214,0,0.12)', filter: 'blur(80px)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.04) 1px,transparent 1px)', backgroundSize: '28px 28px', pointerEvents: 'none' }} />
 
-            <div style={{ position: 'relative', width: '100%', maxWidth: 480, background: '#fff', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.10)', border: '1px solid rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: 480, minWidth: 0, boxSizing: 'border-box', background: '#fff', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.10)', border: '1px solid rgba(0,0,0,0.07)', overflow: 'hidden' }}>
                 {/* Header */}
                 <div style={{ background: 'linear-gradient(135deg,#FFD600 0%,#F59E0B 100%)', padding: '28px 32px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
@@ -142,9 +142,9 @@ export default function Setup2FAPage() {
                             </p>
 
                             {/* QR Code */}
-                            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
-                                <div style={{ padding: 16, background: '#fff', border: '3px solid #FFD600', borderRadius: 16, boxShadow: '0 4px 20px rgba(255,214,0,0.2)' }}>
-                                    {qrUrl && <img src={qrUrl} alt="QR Code Google Authenticator" style={{ width: 200, height: 200, display: 'block' }} />}
+                            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20, width: '100%', minWidth: 0 }}>
+                                <div style={{ padding: 16, background: '#fff', border: '3px solid #FFD600', borderRadius: 16, boxShadow: '0 4px 20px rgba(255,214,0,0.2)', maxWidth: '100%', boxSizing: 'border-box' }}>
+                                    {qrUrl && <img src={qrUrl} alt="QR Code Google Authenticator" style={{ width: 'min(100%, 200px)', height: 'auto', maxWidth: '100%', display: 'block' }} />}
                                 </div>
                             </div>
 
@@ -170,12 +170,28 @@ export default function Setup2FAPage() {
                                 Digite o código de <strong>6 dígitos</strong> que aparece no<br /><strong>Google Authenticator</strong> agora:
                             </p>
 
-                            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+                            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
                                 <input ref={codeRef} type="text" inputMode="numeric" maxLength={6} value={code}
                                     onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(''); }}
                                     onKeyDown={e => { if (e.key === 'Enter' && code.length === 6) handleConfirm(); }}
                                     placeholder="000000"
-                                    style={{ width: 180, height: 64, textAlign: 'center', fontSize: '2rem', fontWeight: 900, fontFamily: 'Orbitron,monospace', border: '2.5px solid #FFD600', borderRadius: 12, background: '#FFFBEB', color: '#111827', outline: 'none', letterSpacing: '0.2em' }} />
+                                    style={{
+                                        width: '100%',
+                                        maxWidth: 280,
+                                        minWidth: 0,
+                                        boxSizing: 'border-box',
+                                        height: 64,
+                                        textAlign: 'center',
+                                        fontSize: 'clamp(1.25rem, 6.5vw, 2rem)',
+                                        fontWeight: 900,
+                                        fontFamily: 'Orbitron,monospace',
+                                        border: '2.5px solid #FFD600',
+                                        borderRadius: 12,
+                                        background: '#FFFBEB',
+                                        color: '#111827',
+                                        outline: 'none',
+                                        letterSpacing: 'clamp(0.08em, 1.5vw, 0.2em)',
+                                    }} />
                             </div>
 
                             <p style={{ margin: '0 0 20px', fontSize: '0.75rem', color: '#9CA3AF', textAlign: 'center' }}>

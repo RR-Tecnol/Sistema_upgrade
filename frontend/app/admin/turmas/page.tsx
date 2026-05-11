@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import dynamic from 'next/dynamic';
 import { classesApi, Class } from '@/lib/api/classes';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { toast } from '@/components/ui/Toast';
@@ -11,13 +13,36 @@ import {
     MagnifyingGlassIcon,
     FunnelIcon,
     ArrowPathIcon,
+    ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+
+const TurmaDetailWorkspace = dynamic(
+    () => import('@/components/admin/turmas/TurmaDetailWorkspace'),
+    { ssr: false },
+);
+const TurmaEstatisticasWorkspace = dynamic(
+    () => import('@/components/admin/turmas/TurmaEstatisticasWorkspace'),
+    { ssr: false },
+);
+
+type TurmaWorkspaceOpen = null | { view: 'detail' | 'stats'; classId: string; openEditOnMount?: boolean };
+
+const ALL_CLASS_STATUSES = [
+    'PLANNED',
+    'ENROLLMENT_OPEN',
+    'ENROLLMENT_CLOSED',
+    'IN_PROGRESS',
+    'COMPLETED',
+    'CANCELLED',
+] as const;
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { TurmasSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import { computeClassReadinessWarnings } from '@/lib/admin/classReadiness';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
     PLANNED: { label: 'Planejada', color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-subtle)' },
@@ -44,11 +69,54 @@ export default function TurmasPage() {
     const [deleteClassId, setDeleteClassId] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [statusModalClass, setStatusModalClass] = useState<Class | null>(null);
+    const [statusDetail, setStatusDetail] = useState<Class | null>(null);
+    const [statusDetailLoading, setStatusDetailLoading] = useState(false);
     const [statusTarget, setStatusTarget] = useState('');
     const [statusSaving, setStatusSaving] = useState(false);
     const [listViewMode, setListViewMode] = usePersistedAdminViewMode('admin:turmas:list', 'table');
+    const [turmaWorkspace, setTurmaWorkspace] = useState<TurmaWorkspaceOpen>(null);
+
+    useEffect(() => {
+        if (!turmaWorkspace) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setTurmaWorkspace(null);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [turmaWorkspace]);
 
     useEffect(() => { loadClasses(); }, [statusFilter]);
+
+    useEffect(() => {
+        if (!statusModalClass) {
+            setStatusDetail(null);
+            setStatusDetailLoading(false);
+            return;
+        }
+        let cancelled = false;
+        setStatusDetail(null);
+        setStatusDetailLoading(true);
+        classesApi
+            .getOne(statusModalClass.id)
+            .then((d) => {
+                if (!cancelled) setStatusDetail(d);
+            })
+            .catch(() => {
+                if (!cancelled) setStatusDetail(null);
+            })
+            .finally(() => {
+                if (!cancelled) setStatusDetailLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [statusModalClass?.id]);
+
+    const statusReadinessWarnings = useMemo(() => {
+        const base = statusDetail ?? statusModalClass;
+        if (!base || !statusTarget) return [];
+        return computeClassReadinessWarnings(base as Class & { enrollments?: Array<{ status?: string }>; _count?: { enrollments?: number } }, statusTarget);
+    }, [statusDetail, statusModalClass, statusTarget]);
 
     useEffect(() => {
         if (searchParams.get('created') !== '1') return;
@@ -102,7 +170,15 @@ export default function TurmasPage() {
         try {
             await classesApi.updateStatus(statusModalClass.id, statusTarget);
             toast.success('Status da turma atualizado com sucesso.');
+            const postSave = computeClassReadinessWarnings(
+                (statusDetail ?? statusModalClass) as Class & { enrollments?: Array<{ status?: string }>; _count?: { enrollments?: number } },
+                statusTarget,
+            );
+            if (postSave.some((w) => w.severity === 'warning')) {
+                toast.warning('Status gravado. Ainda há avisos de consistência — reveja no módulo da turma ou em Períodos de curso.');
+            }
             setStatusModalClass(null);
+            setStatusDetail(null);
             await loadClasses();
         } catch {
             toast.error('Não foi possível atualizar o status da turma.');
@@ -140,6 +216,7 @@ export default function TurmasPage() {
                     </Link>
                 )}
             />
+            <TurmasSidebarTutorial />
 
             {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
@@ -278,7 +355,19 @@ export default function TurmasPage() {
                                 >
                                     <div className="adm-kpi-grid" />
                                     <div className="adm-kpi-topline" style={{ background: `linear-gradient(90deg, transparent, ${borderAccent}, transparent)` }} />
-                                    <div style={{ position: 'relative', zIndex: 1, padding: '14px 14px 10px' }}>
+                                    <div
+                                        role="button"
+                                        tabIndex={0}
+                                        title="Abrir módulo Gerenciar turma"
+                                        onClick={() => setTurmaWorkspace({ view: 'detail', classId: item.id })}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                setTurmaWorkspace({ view: 'detail', classId: item.id });
+                                            }
+                                        }}
+                                        style={{ position: 'relative', zIndex: 1, padding: '14px 14px 10px', cursor: 'pointer' }}
+                                    >
                                         <div style={{ fontFamily: 'JetBrains Mono', fontWeight: 700, color: 'var(--neon-yellow)', fontSize: '0.85rem', marginBottom: 6 }}>{item.classIdentifier}</div>
                                         <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)', marginBottom: 4 }}>{item.course?.name || '—'}</div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.city?.name || '—'} · {PERIOD_LABELS[item.period] || item.period}</div>
@@ -291,12 +380,54 @@ export default function TurmasPage() {
                                         {item.truck ? <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>Carreta: {item.truck.identifier}</div> : null}
                                     </div>
                                     <div style={{ position: 'relative', zIndex: 1, borderTop: '1px solid rgba(148,163,184,.22)', padding: '10px 12px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                        <Link href={`/admin/turmas/${item.id}`} title="Editar" style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(0,245,255,0.08)', color: 'var(--neon-cyan)', border: '1px solid rgba(0,245,255,0.2)', display: 'flex' }}><PencilIcon style={{ width: 14, height: 14 }} /></Link>
-                                        <Link href={`/admin/turmas/${item.id}/estatisticas`} title="Estatísticas" style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(191,90,242,0.08)', color: 'var(--neon-purple)', border: '1px solid rgba(191,90,242,0.2)', display: 'flex' }}><ChartBarIcon style={{ width: 14, height: 14 }} /></Link>
                                         <button
                                             type="button"
-                                            onClick={() => item.status === 'CANCELLED' ? handleOpenStatusModal(item) : setDeleteClassId(item.id)}
-                                            title={item.status === 'CANCELLED' ? 'Reativar' : 'Cancelar'}
+                                            title="Editar dados da turma"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setTurmaWorkspace({ view: 'detail', classId: item.id, openEditOnMount: true });
+                                            }}
+                                            style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(0,245,255,0.08)', color: 'var(--neon-cyan)', border: '1px solid rgba(0,245,255,0.2)', display: 'flex', cursor: 'pointer' }}
+                                        >
+                                            <PencilIcon style={{ width: 14, height: 14 }} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            title="Estatísticas e visão geral"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setTurmaWorkspace({ view: 'stats', classId: item.id });
+                                            }}
+                                            style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(191,90,242,0.08)', color: 'var(--neon-purple)', border: '1px solid rgba(191,90,242,0.2)', display: 'flex', cursor: 'pointer' }}
+                                        >
+                                            <ChartBarIcon style={{ width: 14, height: 14 }} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            title="Alterar status"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenStatusModal(item);
+                                            }}
+                                            style={{
+                                                padding: '0.4rem',
+                                                borderRadius: 7,
+                                                background: 'rgba(14,116,144,0.08)',
+                                                color: '#0E7490',
+                                                border: '1px solid rgba(14,116,144,0.22)',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                            }}
+                                        >
+                                            <ArrowsRightLeftIcon style={{ width: 14, height: 14 }} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                item.status === 'CANCELLED' ? handleOpenStatusModal(item) : setDeleteClassId(item.id);
+                                            }}
+                                            title={item.status === 'CANCELLED' ? 'Reativar' : 'Cancelar turma'}
                                             style={{
                                                 padding: '0.4rem',
                                                 borderRadius: 7,
@@ -351,7 +482,11 @@ export default function TurmasPage() {
                                 {filtered.map((item) => {
                                     const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.PLANNED;
                                     return (
-                                        <tr key={item.id}>
+                                        <tr
+                                            key={item.id}
+                                            onClick={() => setTurmaWorkspace({ view: 'detail', classId: item.id })}
+                                            style={{ cursor: 'pointer' }}
+                                        >
                                             <td>
                                                 <div style={{ fontFamily: 'JetBrains Mono', fontWeight: 600, color: 'var(--neon-yellow)', fontSize: '0.8rem' }}>{item.classIdentifier}</div>
                                                 {item.truck && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>Carreta: {item.truck.identifier}</div>}
@@ -388,17 +523,55 @@ export default function TurmasPage() {
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                                    <Link href={`/admin/turmas/${item.id}`} title="Editar"
-                                                        style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(0,245,255,0.08)', color: 'var(--neon-cyan)', border: '1px solid rgba(0,245,255,0.2)', display: 'flex', transition: 'all 0.2s' }}>
-                                                        <PencilIcon style={{ width: 14, height: 14 }} />
-                                                    </Link>
-                                                    <Link href={`/admin/turmas/${item.id}/estatisticas`} title="Ver mais"
-                                                        style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(191,90,242,0.08)', color: 'var(--neon-purple)', border: '1px solid rgba(191,90,242,0.2)', display: 'flex', transition: 'all 0.2s' }}>
-                                                        <ChartBarIcon style={{ width: 14, height: 14 }} />
-                                                    </Link>
                                                     <button
-                                                        onClick={() => item.status === 'CANCELLED' ? handleOpenStatusModal(item) : setDeleteClassId(item.id)}
-                                                        title={item.status === 'CANCELLED' ? 'Reativar' : 'Cancelar'}
+                                                        type="button"
+                                                        title="Editar dados da turma"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setTurmaWorkspace({ view: 'detail', classId: item.id, openEditOnMount: true });
+                                                        }}
+                                                        style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(0,245,255,0.08)', color: 'var(--neon-cyan)', border: '1px solid rgba(0,245,255,0.2)', display: 'flex', transition: 'all 0.2s', cursor: 'pointer' }}
+                                                    >
+                                                        <PencilIcon style={{ width: 14, height: 14 }} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        title="Estatísticas e visão geral"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setTurmaWorkspace({ view: 'stats', classId: item.id });
+                                                        }}
+                                                        style={{ padding: '0.4rem', borderRadius: 7, background: 'rgba(191,90,242,0.08)', color: 'var(--neon-purple)', border: '1px solid rgba(191,90,242,0.2)', display: 'flex', transition: 'all 0.2s', cursor: 'pointer' }}
+                                                    >
+                                                        <ChartBarIcon style={{ width: 14, height: 14 }} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        title="Alterar status"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleOpenStatusModal(item);
+                                                        }}
+                                                        style={{
+                                                            padding: '0.4rem',
+                                                            borderRadius: 7,
+                                                            background: 'rgba(14,116,144,0.08)',
+                                                            color: '#0E7490',
+                                                            border: '1px solid rgba(14,116,144,0.22)',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            transition: 'all 0.2s',
+                                                        }}
+                                                    >
+                                                        <ArrowsRightLeftIcon style={{ width: 14, height: 14 }} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            item.status === 'CANCELLED' ? handleOpenStatusModal(item) : setDeleteClassId(item.id);
+                                                        }}
+                                                        title={item.status === 'CANCELLED' ? 'Reativar' : 'Cancelar turma'}
                                                         style={{
                                                             padding: '0.4rem',
                                                             borderRadius: 7,
@@ -436,41 +609,229 @@ export default function TurmasPage() {
             onCancel={() => setDeleteClassId(null)}
         />
 
+        {turmaWorkspace && typeof document !== 'undefined' &&
+            createPortal(
+                <div
+                    className="fade-backdrop"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 9998,
+                        background: 'rgba(15,23,42,0.5)',
+                        backdropFilter: 'blur(4px)',
+                    }}
+                    onClick={() => setTurmaWorkspace(null)}
+                >
+                    <div
+                        className="slide-right"
+                        style={{
+                            position: 'absolute',
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: '100%',
+                            maxWidth: 920,
+                            background: '#F1F5F9',
+                            boxShadow: '-12px 0 48px rgba(0,0,0,0.2)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div
+                            style={{
+                                flexShrink: 0,
+                                padding: '0.85rem 1.1rem',
+                                borderBottom: '1px solid rgba(15,23,42,0.08)',
+                                background: 'linear-gradient(135deg, #FFD600 0%, #F59E0B 100%)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.75rem',
+                            }}
+                        >
+                            <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.72rem', color: '#0F172A', letterSpacing: '0.1em' }}>
+                                {turmaWorkspace.view === 'detail' ? 'MÓDULO — GERENCIAR TURMA' : 'MÓDULO — ESTATÍSTICAS'}
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="Fechar módulo"
+                                onClick={() => setTurmaWorkspace(null)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: '#0F172A', lineHeight: 1 }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', WebkitOverflowScrolling: 'touch' }}>
+                            {turmaWorkspace.view === 'detail' ? (
+                                <TurmaDetailWorkspace
+                                    classId={turmaWorkspace.classId}
+                                    mode="drawer"
+                                    openEditOnMount={!!turmaWorkspace.openEditOnMount}
+                                    onClose={() => setTurmaWorkspace(null)}
+                                    onUpdated={loadClasses}
+                                    onRequestStats={() =>
+                                        setTurmaWorkspace({ view: 'stats', classId: turmaWorkspace.classId })
+                                    }
+                                />
+                            ) : (
+                                <TurmaEstatisticasWorkspace
+                                    classId={turmaWorkspace.classId}
+                                    mode="drawer"
+                                    onClose={() => setTurmaWorkspace(null)}
+                                    onBackToTurma={() =>
+                                        setTurmaWorkspace({ view: 'detail', classId: turmaWorkspace.classId })
+                                    }
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>,
+                document.body,
+            )}
+
         {statusModalClass && (
             <div
                 className="modal-overlay"
                 onClick={() => setStatusModalClass(null)}
-                style={{ zIndex: 1200 }}
+                style={{ zIndex: 10050 }}
             >
-                <div
-                    className="modal-content"
-                    style={{ maxWidth: 460 }}
-                    onClick={e => e.stopPropagation()}
-                >
-                    <h3 style={{ fontFamily: 'Orbitron', fontSize: '0.9rem', marginBottom: 8 }}>
-                        REATIVAR TURMA
+                <div className="modal-content modal-content--sm" onClick={e => e.stopPropagation()}>
+                    <h3 style={{ fontFamily: 'Orbitron', fontSize: '0.95rem', marginBottom: 10, color: '#111827' }}>
+                        Alterar status da turma
                     </h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>
-                        Defina o novo status para <strong>{statusModalClass.classIdentifier}</strong>.
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 14 }}>
+                        Turma: <strong style={{ fontFamily: 'JetBrains Mono' }}>{statusModalClass.classIdentifier}</strong>
                     </p>
-                    <select
-                        value={statusTarget}
-                        onChange={e => setStatusTarget(e.target.value)}
-                        className="form-input"
-                        style={{ marginBottom: 14 }}
-                    >
-                        <option value="PLANNED">Planejada</option>
-                        <option value="ENROLLMENT_OPEN">Matrículas Abertas</option>
-                        <option value="ENROLLMENT_CLOSED">Matrículas Fechadas</option>
-                        <option value="IN_PROGRESS">Em Andamento</option>
-                        <option value="COMPLETED">Concluída</option>
-                    </select>
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        <button className="btn-ghost" onClick={() => setStatusModalClass(null)}>
-                            Fechar
+                    <div className="modal-status-options" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                        {ALL_CLASS_STATUSES.map((s) => {
+                            const c = STATUS_CONFIG[s] || STATUS_CONFIG.PLANNED;
+                            const isSelected = statusTarget === s;
+                            return (
+                                <button
+                                    key={s}
+                                    type="button"
+                                    onClick={() => setStatusTarget(s)}
+                                    style={{
+                                        padding: '0.65rem 1rem',
+                                        borderRadius: 10,
+                                        cursor: 'pointer',
+                                        width: '100%',
+                                        boxSizing: 'border-box',
+                                        minWidth: 0,
+                                        display: 'grid',
+                                        gridTemplateColumns: 'auto 1fr auto',
+                                        alignItems: 'center',
+                                        gap: 10,
+                                        border: `1.5px solid ${isSelected ? c.color : '#E5E7EB'}`,
+                                        background: isSelected ? c.bg : 'transparent',
+                                        textAlign: 'left',
+                                    }}
+                                >
+                                    <span
+                                        style={{
+                                            width: 10,
+                                            height: 10,
+                                            borderRadius: '50%',
+                                            background: c.color,
+                                            flexShrink: 0,
+                                            boxShadow: isSelected ? `0 0 8px ${c.color}` : 'none',
+                                        }}
+                                    />
+                                    <span
+                                        style={{
+                                            fontSize: '0.82rem',
+                                            fontWeight: 700,
+                                            color: isSelected ? c.color : '#374151',
+                                            minWidth: 0,
+                                            overflowWrap: 'break-word',
+                                        }}
+                                    >
+                                        {c.label}
+                                    </span>
+                                    {(statusDetail?.status ?? statusModalClass.status) === s ? (
+                                        <span style={{ fontSize: '0.65rem', color: '#9CA3AF', whiteSpace: 'nowrap' }}>Atual</span>
+                                    ) : (
+                                        <span />
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {statusDetailLoading ? (
+                        <p style={{ fontSize: '0.78rem', color: '#64748B', marginBottom: 14 }}>Carregando verificações…</p>
+                    ) : statusDetail ? (
+                        statusReadinessWarnings.length > 0 ? (
+                            <div
+                                style={{
+                                    marginBottom: 16,
+                                    padding: '0.75rem 0.9rem',
+                                    borderRadius: 10,
+                                    background: '#FFFBEB',
+                                    border: '1px solid #FDE68A',
+                                }}
+                            >
+                                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#92400E', letterSpacing: '0.06em', marginBottom: 8 }}>
+                                    Antes de confirmar
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#78350F', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                                    {statusReadinessWarnings.map((w) => (
+                                        <li key={w.code} style={{ marginBottom: 6 }}>
+                                            <strong>{w.severity === 'warning' ? 'Atenção: ' : 'Info: '}</strong>
+                                            {w.message}
+                                        </li>
+                                    ))}
+                                </ul>
+                                <Link
+                                    href="/admin/acoes"
+                                    style={{
+                                        display: 'inline-block',
+                                        marginTop: 8,
+                                        fontSize: '0.76rem',
+                                        fontWeight: 700,
+                                        color: '#B45309',
+                                    }}
+                                >
+                                    Abrir períodos de curso →
+                                </Link>
+                            </div>
+                        ) : (
+                            <div
+                                style={{
+                                    marginBottom: 16,
+                                    padding: '0.75rem 0.9rem',
+                                    borderRadius: 10,
+                                    background: '#ECFDF5',
+                                    border: '1px solid #A7F3D0',
+                                }}
+                            >
+                                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#047857', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                    Verificação rápida
+                                </div>
+                                <p style={{ margin: 0, color: '#065F46', fontSize: '0.78rem', lineHeight: 1.45, fontWeight: 600 }}>
+                                    Com os dados atuais, não há inconsistências para o estado que escolheu. Pode confirmar.
+                                </p>
+                            </div>
+                        )
+                    ) : (
+                        <p style={{ fontSize: '0.76rem', color: '#94A3B8', marginBottom: 14 }}>
+                            Não foi possível carregar o detalhe da turma para verificações automáticas.
+                        </p>
+                    )}
+
+                    <div className="modal-actions-row">
+                        <button type="button" className="btn-ghost" onClick={() => setStatusModalClass(null)}>
+                            Cancelar
                         </button>
-                        <button className="btn-primary" onClick={handleSaveStatus} disabled={statusSaving}>
-                            {statusSaving ? 'Salvando...' : 'Salvar status'}
+                        <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={handleSaveStatus}
+                            disabled={statusSaving || statusTarget === (statusDetail?.status ?? statusModalClass.status)}
+                        >
+                            {statusSaving ? 'Salvando...' : 'Confirmar'}
                         </button>
                     </div>
                 </div>

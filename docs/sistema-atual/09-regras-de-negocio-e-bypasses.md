@@ -4,20 +4,36 @@
 
 ---
 
-## 1. Autenticação — bypass de MFA (desenvolvimento)
+## 1. Autenticação — bypasses de desenvolvimento (backend)
+
+### 1.1 `AUTH_BYPASS_MFA` — bypass completo
 
 | Item | Detalhe |
 |------|---------|
-| **Variável** | `AUTH_BYPASS_MFA` no ambiente do **backend** (`true` / `false`, lida via `ConfigService`). |
-| **Comportamento** | Se `true`, após validar email e palavra-passe, o `AuthService.login` **não** envia OTP por e-mail nem exige TOTP: gera tokens JWT de imediato e devolve `access_token`, `user`, etc. |
-| **Código** | `backend/src/auth/auth.service.ts` (bloco marcado `[DEV BYPASS]`). |
-| **Frontend** | `frontend/app/login/page.tsx` — se a resposta já trouxer `access_token` e `user`, grava em `sessionStorage`, atualiza a store e redireciona por `role` (IT_ADMIN, ADMIN, COORDINATOR → `/admin/dashboard`; STUDENT → `/student/dashboard`; DRIVER → `/driver/dashboard`; caso contrário → `/teacher/dashboard`). |
-| **Produção** | **Proibido** manter `AUTH_BYPASS_MFA=true` em produção (comentário explícito no serviço). |
-| **`.env.example`** | `backend/.env.example` documenta `AUTH_BYPASS_MFA` e `IS_DEMO_MODE` (revisão 2026-05-11). |
+| **Variável** | `AUTH_BYPASS_MFA` no **backend** (`'true'` / ausente / `false`, via `ConfigService`). |
+| **Comportamento** | Se `true`, após validar identificador e palavra-passe, o `AuthService.login` **não** envia OTP por e-mail nem exige TOTP: gera JWT de imediato (`access_token`, `user`, etc.). **Tem precedência** sobre `AUTH_BYPASS_EMAIL_OTP`. |
+| **Código** | `backend/src/auth/auth.service.ts` (bloco `[DEV BYPASS — completo]`). |
+| **Produção** | **Proibido** `true` em produção. |
 
-### Primeiro login IT_ADMIN (não é bypass de MFA)
+### 1.2 `AUTH_BYPASS_EMAIL_OTP` — só saltar OTP por e-mail (2FA mantido)
 
-Utilizadores `IT_ADMIN` com `requiresPasswordChange` recebem `requiresPasswordChange` + `preAuthToken` e **saltam** OTP no primeiro acesso — fluxo distinto, descrito no mesmo `auth.service.ts` e tratado no `login/page.tsx` com redirecionamento para `/primeiro-login`.
+| Item | Detalhe |
+|------|---------|
+| **Variável** | `AUTH_BYPASS_EMAIL_OTP` no **backend**. Só é avaliada se `AUTH_BYPASS_MFA` **não** for `true`. |
+| **Comportamento** | Após password válida: **não** envia e-mail nem exige código de OTP; executa o mesmo ramo que após OTP válido (`afterEmailOtpVerified`): primeiro login IT_ADMIN, `requiresTwoFactorSetup`, `requiresTwoFactor` (TOTP), ou JWT final. Útil para testar authenticator sem caixa de e-mail. |
+| **Código** | `backend/src/auth/auth.service.ts` — `afterEmailOtpVerified`, ramo `[DEV BYPASS — só e-mail OTP]`. |
+| **Produção** | **Proibido** `true` em produção (continua a ser bypass de posse de e-mail). |
+
+### 1.3 Frontend — `login/page.tsx`
+
+- Se `access_token` + `user` → sessão e redirect por `role` (inclui `FINANCIAL` → `/admin/dashboard` com os demais staff admin).
+- Caso contrário, mesma ordem que `verify-email-otp`: `requiresPasswordChange` → `/primeiro-login`; `requiresTwoFactorSetup` → `/setup-2fa`; `requiresTwoFactor` → `/verify-2fa`; `requiresEmailOtp` → `/verify-email-otp`.
+
+**`.env.example`:** `AUTH_BYPASS_MFA`, `AUTH_BYPASS_EMAIL_OTP` e `IS_DEMO_MODE`.
+
+### Primeiro login IT_ADMIN (regra de negócio, não env)
+
+Utilizadores `IT_ADMIN` com `requiresPasswordChange` recebem `requiresPasswordChange` + `preAuthToken` **antes** de OTP por e-mail e **antes** do ramo `AUTH_BYPASS_EMAIL_OTP` — fluxo no mesmo `auth.service.ts` e redirect em `login/page.tsx` para `/primeiro-login`.
 
 ---
 

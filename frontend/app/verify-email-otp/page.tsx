@@ -11,7 +11,7 @@ function completeLogin(data: any, router: any, setAuthUser: any) {
     setAuthUser(data.user, data.access_token);
     if (data.student) sessionStorage.setItem('student', JSON.stringify(data.student));
     const role = data.user.role;
-    if (role === 'IT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR') router.push('/admin/dashboard');
+    if (role === 'IT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR' || role === 'FINANCIAL') router.push('/admin/dashboard');
     else if (role === 'STUDENT') router.push('/student/dashboard');
     else if (role === 'DRIVER') router.push('/driver/dashboard');
     else router.push('/teacher/dashboard');

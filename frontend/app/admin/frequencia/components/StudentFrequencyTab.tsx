@@ -104,7 +104,7 @@ export default function StudentFrequencyTab() {
             a.click();
             URL.revokeObjectURL(url);
             if (engine === 'pdf-lib') {
-                toast.success('PDF gerado (modo compatível sem Chromium neste servidor).');
+                toast.success('PDF gerado com sucesso (modo compatível neste servidor).');
             }
         } catch (e: unknown) {
             const ax = e as { response?: { status?: number; data?: { message?: string } } };
@@ -113,14 +113,14 @@ export default function StudentFrequencyTab() {
             if (st === 500) {
                 toast.error(
                     apiMsg ||
-                        'Erro 500 ao gerar PDF. O servidor tentou Chromium e o fallback — verifique os logs do backend.',
+                        'O servidor não conseguiu concluir o PDF. Tente de novo ou contacte a equipa técnica.',
                 );
             } else if (st === 401 || st === 403) {
                 toast.error('Sessão expirada ou sem permissão para relatórios.');
             } else {
                 toast.error(
                     apiMsg ||
-                        'Não foi possível baixar o PDF. Confirme que o backend está ativo e que você tem perfil admin/coord/professor.',
+                        'Não foi possível baixar o PDF. Confirme a ligação e que está autenticado com permissão para relatórios.',
                 );
             }
         } finally {

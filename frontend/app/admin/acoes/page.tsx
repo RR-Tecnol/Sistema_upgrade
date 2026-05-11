@@ -7,6 +7,7 @@ import { acoesApi, Acao, AcaoStatus, AcaoEstatisticas } from '@/lib/api/acoes';
 import api from '@/lib/api/acoes'; // axios com interceptor de auth
 import { LocationFields, LocationFieldsValue } from '@/components/admin/LocationFields';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { AcoesSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 
@@ -1052,6 +1053,7 @@ export default function AcoesPage() {
                     </button>
                 )}
             />
+            <AcoesSidebarTutorial />
 
             {/* KPIs */}
             {estatisticas && (

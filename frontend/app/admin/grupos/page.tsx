@@ -5,6 +5,7 @@ import { groupsApi, Group } from '@/lib/api/groups';
 import { PencilIcon, TrashIcon, PlusIcon, BuildingOfficeIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { toast } from '@/components/ui/Toast';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { GruposSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { CreationSuccessScreen } from '@/components/CreationSuccessScreen';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
@@ -194,6 +195,7 @@ export default function GruposPage() {
                     </button>
                 )}
             />
+            <GruposSidebarTutorial />
 
             {/* STATS */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>

@@ -29,6 +29,17 @@ export class TripsController {
         return this.tripsService.findByDriver(req.user.id, status);
     }
 
+    @Get(':id/odometer-photo-url')
+    @ApiOperation({ summary: 'URL assinada para pré-visualizar foto do hodômetro (privado MinIO)' })
+    @ApiQuery({ name: 'kind', required: true, enum: ['start', 'end'] })
+    async getOdometerPhotoDriver(
+        @Request() req: any,
+        @Param('id') id: string,
+        @Query('kind') kind: 'start' | 'end',
+    ) {
+        return this.tripsService.getOdometerPhotoPresignedUrlForDriver(id, req.user.id, kind);
+    }
+
     @Get(':id')
     @ApiOperation({ summary: 'Detalhe de uma viagem do motorista' })
     async findOne(@Request() req: any, @Param('id') id: string) {
@@ -118,6 +129,13 @@ export class AdminTripsController {
         return this.tripsService.findAllAdmin(status, driverUserId);
     }
 
+    @Get(':id/odometer-photo-url')
+    @ApiOperation({ summary: '[Admin] URL assinada para pré-visualizar foto do hodômetro (privado MinIO)' })
+    @ApiQuery({ name: 'kind', required: true, enum: ['start', 'end'] })
+    async getOdometerPhotoAdmin(@Param('id') id: string, @Query('kind') kind: 'start' | 'end') {
+        return this.tripsService.getOdometerPhotoPresignedUrlForAdmin(id, kind);
+    }
+
     @Post('manual')
     @ApiOperation({ summary: '[Admin] Criar viagem manual (cidade-cidade ou intra-cidade)' })
     async createManual(
@@ -156,6 +174,12 @@ export class AdminTripsController {
         @Body('adminNote') adminNote?: string,
     ) {
         return this.tripsService.applyRejectionPenalty(id, req.user.id, penaltyAmount, adminNote);
+    }
+
+    @Patch(':id/validate-audit')
+    @ApiOperation({ summary: '[Admin] Registar validação de auditoria operacional (viagem concluída)' })
+    async validateAudit(@Request() req: any, @Param('id') id: string) {
+        return this.tripsService.validateAuditTrip(id, req.user.id);
     }
 
     /**

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsEmail, IsOptional, IsDateString, IsEnum, IsBoolean, IsInt, MinLength } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsDateString, IsEnum, IsBoolean, IsInt, MinLength, IsObject } from 'class-validator';
 import {
     Gender,
     RaceColor,
@@ -198,4 +198,10 @@ export class CreateStudentDto {
     @IsOptional()
     @IsString()
     motivation?: string;
+
+    /** URLs dos ficheiros (mesmas chaves da inscrição pública: photo, identidade, addressProof, …). Opcional no cadastro manual. */
+    @ApiProperty({ required: false, example: { photo: 'https://...', identidade: 'https://...' } })
+    @IsOptional()
+    @IsObject()
+    documents?: Record<string, string>;
 }

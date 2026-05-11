@@ -87,8 +87,8 @@ async function main() {
     if (pwValid) pass('Senha temporária bate com hash no banco ✓'); else fail('Senha temporária não confere');
 
     const flowCheck = user.role === 'IT_ADMIN' && user.requiresPasswordChange === true;
-    if (flowCheck) pass('Condição bypass OTP: IT_ADMIN + requiresPasswordChange → ativa ✓');
-    else fail('Condição bypass OTP inativa');
+    if (flowCheck) pass('IT_ADMIN + requiresPasswordChange → primeiro login sem OTP de e-mail (regra de produto) ✓');
+    else fail('Condição primeiro-login IT_ADMIN inativa');
 
     // ── 4. ESTRUTURA DE ARQUIVOS CRÍTICOS ────────────────────────
     section('4. ARQUIVOS CRÍTICOS — EXISTÊNCIA');

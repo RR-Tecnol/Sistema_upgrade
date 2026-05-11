@@ -11,11 +11,15 @@ import {
     calcAchievements,
     calcXPToNext,
     saveRankCache,
+    normalizeCertificateList,
+    filterActiveCertificates,
+    countClassesAtOrAbove75FromProgressItems,
     type RankConfig,
     type Achievement,
 } from '@/lib/gamification';
 import { ShareIcon, ClockIcon } from '@heroicons/react/24/outline';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import RankJourneyTrail from '@/components/student/RankJourneyTrail';
 
 // ── Títulos temáticos Solo Leveling ─────────────────────────────────────────
 const LEVEL_TITLES: Record<string, string> = {
@@ -59,6 +63,7 @@ export default function HunterProfilePage() {
     const [stats, setStats] = useState({
         freqPct: 0, presentCount: 0, absentCount: 0,
         certCount: 0, classCount: 0, streak: 0,
+        classesAtOrAbove75: 0,
     });
     const [achievements, setAchievements] = useState<Achievement[]>([]);
     const [xpHistory, setXpHistory] = useState<XPHistoryItem[]>([]);
@@ -71,14 +76,16 @@ export default function HunterProfilePage() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [attendanceRes, certsRes, classesRes] = await Promise.all([
+            const [attendanceRes, certsRes, classesRes, progRes] = await Promise.all([
                 api.get('/students/me/attendance-summary').catch(() => ({ data: null })),
-                api.get('/certificates').catch(() => ({ data: [] })),
+                api.get('/students/me/certificates').catch(() => ({ data: [] })),
                 api.get('/students/me/classes').catch(() => ({ data: [] })),
+                api.get('/students/me/certificate-progress').catch(() => ({ data: null })),
             ]);
 
             const att = attendanceRes.data || {};
-            const certs = Array.isArray(certsRes.data) ? certsRes.data : [];
+            const certsRaw = normalizeCertificateList(certsRes.data);
+            const certs = filterActiveCertificates(certsRaw);
             const classes = Array.isArray(classesRes.data) ? classesRes.data : [];
 
             const freqPct = att.rate ?? 0;
@@ -87,13 +94,15 @@ export default function HunterProfilePage() {
             const certCount = certs.length;
             const classCount = classes.length;
             const streak = att.streak ?? 0;
+            const progPayload = progRes?.data as { items?: Array<{ attendanceRatePct?: number }> } | null | undefined;
+            const classesAtOrAbove75 = countClassesAtOrAbove75FromProgressItems(progPayload?.items);
 
-            setStats({ freqPct, presentCount, absentCount, certCount, classCount, streak });
+            setStats({ freqPct, presentCount, absentCount, certCount, classCount, streak, classesAtOrAbove75 });
 
             const rank = getRankConfig(freqPct);
             setRankConfig(rank);
 
-            const achs = calcAchievements(freqPct, presentCount, certCount, streak);
+            const achs = calcAchievements(freqPct, presentCount, certCount, streak, classesAtOrAbove75);
             setAchievements(achs);
 
             // Gerar histórico de XP simulado baseado em dados reais
@@ -114,13 +123,15 @@ export default function HunterProfilePage() {
                 });
             }
 
-            // Adicionar XP de certificados
+            // Adicionar XP de certificados válidos (ACTIVE)
             certs.forEach((cert: any, i: number) => {
                 const date = cert.issuedAt ? new Date(cert.issuedAt) : new Date(now);
+                const courseLabel =
+                    cert.courseName || cert.class?.course?.name || cert.class?.course?.title || 'Curso';
                 history.push({
                     id: `cert_${i}`,
                     type: 'certificate',
-                    label: `Certificado: ${cert.courseName || 'Curso'}`,
+                    label: `Certificado: ${courseLabel}`,
                     xp: 100,
                     date: date.toISOString(),
                     icon: '🏆',
@@ -298,62 +309,17 @@ export default function HunterProfilePage() {
                 </div>
             </div>
 
-            {/* ── RANK TRAIL ── */}
-            <div style={{
-                background: '#fff', borderRadius: 16, padding: '1.5rem',
-                border: '1px solid #E5E7EB',
-            }}>
-                <h2 style={{
-                    fontFamily: 'Orbitron', fontSize: '0.75rem', fontWeight: 800,
-                    letterSpacing: '0.15em', color: '#6B7280', marginBottom: '1rem',
-                }}>
-                    🎯 JORNADA DE RANKS
-                </h2>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {RANKS.map((r, i) => {
-                        const isUnlocked = stats.freqPct >= r.minFreq;
-                        const isCurrent = r.rank === rankConfig.rank;
-                        return (
-                            <div key={r.rank} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <div style={{
-                                    width: 44, height: 44, borderRadius: 12,
-                                    background: isUnlocked
-                                        ? `linear-gradient(135deg, ${r.color}20, ${r.color}10)`
-                                        : '#F3F4F6',
-                                    border: `2px solid ${isUnlocked ? r.color : '#E5E7EB'}`,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    position: 'relative',
-                                    boxShadow: isCurrent ? `0 0 16px ${r.color}50` : 'none',
-                                    transform: isCurrent ? 'scale(1.15)' : 'scale(1)',
-                                    transition: 'all 0.3s',
-                                }}>
-                                    <span style={{
-                                        fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1rem',
-                                        color: isUnlocked ? r.color : '#D1D5DB',
-                                    }}>
-                                        {r.rank}
-                                    </span>
-                                    {isUnlocked && (
-                                        <span style={{
-                                            position: 'absolute', top: -4, right: -4,
-                                            width: 16, height: 16, borderRadius: '50%',
-                                            background: '#10B981', color: '#fff',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '0.6rem', fontWeight: 900,
-                                        }}>✓</span>
-                                    )}
-                                </div>
-                                {i < RANKS.length - 1 && (
-                                    <div style={{
-                                        width: 24, height: 2, borderRadius: 1,
-                                        background: stats.freqPct >= RANKS[i + 1].minFreq ? RANKS[i + 1].color : '#E5E7EB',
-                                    }} />
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+            <RankJourneyTrail
+                freqPct={stats.freqPct}
+                missionContext={{
+                    freqPct: stats.freqPct,
+                    presentCount: stats.presentCount,
+                    certCount: stats.certCount,
+                    streak: stats.streak,
+                    classesAtOrAbove75: stats.classesAtOrAbove75,
+                }}
+                achievements={achievements}
+            />
 
             {/* ── ESTATÍSTICAS (mesmo padrão admin: AnimatedKpiCard + count-up) ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))', gap: '0.85rem' }}>

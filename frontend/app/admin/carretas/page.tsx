@@ -6,6 +6,7 @@ import Link from 'next/link';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { toast } from '@/components/ui/Toast';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { CarretasSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 
 // ── Keyframes CSS ─────────────────────────────────────────────────────────────
 
@@ -398,6 +399,7 @@ export default function CarretasPage() {
                         </Link>
                     )}
                 />
+                <CarretasSidebarTutorial />
 
                 {/* ── KPIs ── */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '1rem' }}>

@@ -22,6 +22,7 @@ import { formatCalendarDatePtBR } from '@/lib/calendar-date-display';
 import { toast } from '@/components/ui/Toast';
 import { useAdminFinanceRefresh } from '@/hooks/useAdminFinanceRefresh';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { ImprevistosSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -631,6 +632,7 @@ export default function AdminImprevistos() {
                     </div>
                 )}
             />
+            <ImprevistosSidebarTutorial />
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
                 <AnimatedKpiCard label="Total" value={stats.total} color="#B89B00" bg="#FFFDE7" border="#FEF08A" />

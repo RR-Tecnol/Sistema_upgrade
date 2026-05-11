@@ -5,6 +5,7 @@ import { CameraIcon, UserCircleIcon, BellIcon, ShieldCheckIcon, Cog6ToothIcon, C
 import api from '@/lib/api/client';
 import { useAuthStore } from '@/stores/useAuthStore';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { SettingRow } from '@/components/settings/SettingRow';
 import AuthenticatorSettingsTotpBlock from '@/components/auth/AuthenticatorSettingsTotpBlock';
 import ChangePasswordSettingsPanel from '@/components/auth/ChangePasswordSettingsPanel';
 
@@ -20,18 +21,6 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
                 transition: 'left 0.25s cubic-bezier(0.34,1.56,0.64,1)', display: 'block',
             }} />
         </button>
-    );
-}
-
-function SettingRow({ label, desc, children }: { label: string; desc?: string; children: React.ReactNode }) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.9rem 0', borderBottom: '1px solid #F3F4F6', gap: '1.5rem' }}>
-            <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#111827' }}>{label}</div>
-                {desc && <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: '0.15rem' }}>{desc}</div>}
-            </div>
-            <div style={{ flexShrink: 0 }}>{children}</div>
-        </div>
     );
 }
 
@@ -310,7 +299,7 @@ export default function StudentConfiguracoes() {
                             <ChangePasswordSettingsPanel />
                         </div>
 
-                        <SettingRow label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
+                        <SettingRow stack label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
                             {/* idle — desativado */}
                             {twoFAStep === 'idle' && !doisFatores && (
                                 <button onClick={async () => {
@@ -334,7 +323,7 @@ export default function StudentConfiguracoes() {
                                 </button>
                             )}
                             {twoFAStep === 'idle' && !doisFatores && twoFAError && (
-                                <div style={{ marginTop: '0.45rem', fontSize: '0.72rem', color: '#EF4444', maxWidth: 280, textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.72rem', color: '#EF4444', width: '100%', lineHeight: 1.45 }}>
                                     {twoFAError}
                                 </div>
                             )}
@@ -364,9 +353,9 @@ export default function StudentConfiguracoes() {
 
                             {/* active */}
                             {(twoFAStep === 'active' || (twoFAStep === 'idle' && doisFatores)) && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <span style={{ padding: '0.25rem 0.75rem', borderRadius: 20, background: '#DCFCE7', color: '#059669', fontWeight: 700, fontSize: '0.8rem', border: '1px solid #BBF7D0' }}>✓ 2FA Ativo</span>
-                                    <button onClick={() => { setTwoFAStep('disabling'); setTwoFAError(''); setTwoFADisableToken(''); }} style={{ padding: '0.35rem 0.8rem', borderRadius: 8, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}>Desativar</button>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '0.75rem', width: '100%', minWidth: 0 }}>
+                                    <span style={{ padding: '0.25rem 0.75rem', borderRadius: 20, background: '#DCFCE7', color: '#059669', fontWeight: 700, fontSize: '0.8rem', border: '1px solid #BBF7D0', flexShrink: 0 }}>✓ 2FA Ativo</span>
+                                    <button type="button" onClick={() => { setTwoFAStep('disabling'); setTwoFAError(''); setTwoFADisableToken(''); }} style={{ padding: '0.35rem 0.8rem', borderRadius: 8, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', flex: '0 1 auto', minWidth: 0 }}>Desativar</button>
                                 </div>
                             )}
 

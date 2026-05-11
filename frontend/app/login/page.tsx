@@ -23,36 +23,46 @@ export default function LoginPage() {
             clearAuth();
             const response = await authApi.login(formData) as any;
 
-            // ── [DEV BYPASS] Bypass ativo: backend retorna JWT direto ──────────
-            // Ativado por AUTH_BYPASS_MFA=true no .env do backend.
+            // ── [DEV BYPASS — completo] AUTH_BYPASS_MFA=true: JWT imediato ─────
             if (response.access_token && response.user) {
                 sessionStorage.setItem('token', response.access_token);
                 sessionStorage.setItem('user', JSON.stringify(response.user));
                 setAuthUser(response.user, response.access_token);
                 if (response.student) sessionStorage.setItem('student', JSON.stringify(response.student));
                 const role = response.user.role;
-                if (role === 'IT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR') router.push('/admin/dashboard');
+                if (role === 'IT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR' || role === 'FINANCIAL') router.push('/admin/dashboard');
                 else if (role === 'STUDENT') router.push('/student/dashboard');
                 else if (role === 'DRIVER') router.push('/driver/dashboard');
                 else router.push('/teacher/dashboard');
                 return;
             }
-            // ── [/DEV BYPASS] ─────────────────────────────────────────────────
+            // ── [/DEV BYPASS — completo] ───────────────────────────────────────
 
-            // IT_ADMIN — primeiro login: pula OTP e vai direto para definir e-mail + senha
+            // Alinhar com verify-email-otp: primeiro login, setup 2FA, TOTP, depois OTP por e-mail
             if (response.requiresPasswordChange && response.preAuthToken) {
                 sessionStorage.setItem('preAuthToken', response.preAuthToken);
                 router.push('/primeiro-login');
                 return;
             }
+            if (response.requiresTwoFactorSetup && response.preAuthToken) {
+                sessionStorage.setItem('preAuthToken', response.preAuthToken);
+                router.push('/setup-2fa');
+                return;
+            }
+            if (response.requiresTwoFactor && response.preAuthToken) {
+                sessionStorage.setItem('preAuthToken', response.preAuthToken);
+                router.push('/verify-2fa');
+                return;
+            }
 
-            // Fluxo normal — envia OTP para o e-mail
             if (response.requiresEmailOtp) {
                 sessionStorage.setItem('preAuthToken', response.preAuthToken);
                 sessionStorage.setItem('emailMasked', response.emailMasked);
                 router.push('/verify-email-otp');
                 return;
             }
+
+            setError('Resposta inesperada do servidor. Tente novamente.');
         } catch (err: any) {
             setError(err.response?.data?.message || 'Credenciais inválidas');
         } finally {

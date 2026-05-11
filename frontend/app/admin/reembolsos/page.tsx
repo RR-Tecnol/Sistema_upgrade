@@ -5,6 +5,7 @@ import api from '@/lib/api/client'; // corrigido: era @/lib/api/acoes
 import { toast } from '@/components/ui/Toast';
 import { useAdminFinanceRefresh } from '@/hooks/useAdminFinanceRefresh';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { ReembolsosSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -416,6 +417,7 @@ export default function ReembolsosPage() {
                     </button>
                 )}
             />
+            <ReembolsosSidebarTutorial />
 
             {/* KPIs */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>

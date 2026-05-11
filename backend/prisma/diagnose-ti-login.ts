@@ -18,22 +18,22 @@ async function main() {
     console.log('  requiresPasswordChange:', user.requiresPasswordChange);
     console.log('  requiresTwoFactorSetup:', user.requiresTwoFactorSetup);
     console.log('  twoFactorEnabled:', user.twoFactorEnabled);
+    console.log('  twoFactorSecret:', user.twoFactorSecret ? '(definido)' : '(null)');
 
     const isStaff = STAFF_ROLES.includes(user.role);
-    console.log('\n🔍 Simulando lógica verifyEmailOtp...');
-    console.log('  isStaff:', isStaff);
+    const hasActiveTotp = Boolean(user.twoFactorEnabled && user.twoFactorSecret);
+    console.log('\n🔍 Simulando afterEmailOtpVerified (pós OTP)...');
+    console.log('  isStaff:', isStaff, '| hasActiveTotp:', hasActiveTotp);
 
-    // Lógica exata do backend
     if (user.role === 'IT_ADMIN' && user.requiresPasswordChange) {
         console.log('\n✅ RESULTADO: requiresPasswordChange → /primeiro-login');
-        console.log('   O backend DEVERIA retornar: { requiresPasswordChange: true, preAuthToken }');
+        console.log('   O backend retorna: { requiresPasswordChange: true, preAuthToken }');
+    } else if (hasActiveTotp) {
+        console.log('\n✅ RESULTADO: requiresTwoFactor → /verify-2fa');
     } else if (isStaff && user.requiresTwoFactorSetup) {
-        console.log('\n⚠️  RESULTADO: requiresTwoFactorSetup → /setup-2fa');
-        console.log('   PROBLEMA! A condição requiresPasswordChange não foi ativada.');
-    } else if (user.twoFactorEnabled) {
-        console.log('\n⚠️  RESULTADO: requiresTwoFactor → /verify-2fa');
+        console.log('\n✅ RESULTADO: requiresTwoFactorSetup → /setup-2fa');
     } else {
-        console.log('\n⚠️  RESULTADO: JWT direto → dashboard');
+        console.log('\n✅ RESULTADO: JWT direto → dashboard');
     }
 }
 

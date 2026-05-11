@@ -6,7 +6,9 @@ import dynamic from 'next/dynamic';
 import Draggable from 'react-draggable';
 import { customConfirm, customAlert } from '@/components/ui/ConfirmModal';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import AdminCollapsibleTutorial from '@/components/admin/AdminCollapsibleTutorial';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
+import { CERTIFICATE_EDITOR_TUTORIAL_STEPS } from './certificate-tutorial-steps';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import { formatCertificateIssueError } from '@/lib/certificate-issue-error';
@@ -14,193 +16,14 @@ import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
 const QRCodeSVG = dynamic(() => import('qrcode.react').then(m => m.QRCodeSVG), { ssr: false });
 
-/**
- * CertificateTutorial — banner colapsável com tutorial passo-a-passo.
- * Substitui o antigo banner curto de "PREENCHIMENTO AUTOMÁTICO".
- * Persiste o estado expandido/recolhido em localStorage.
- */
 function CertificateTutorial() {
-    const [expanded, setExpanded] = useState(false);
-
-    useEffect(() => {
-        try {
-            const saved = localStorage.getItem('cert-tutorial-expanded');
-            if (saved === '1') setExpanded(true);
-        } catch { /* ignora */ }
-    }, []);
-
-    const toggle = () => {
-        const next = !expanded;
-        setExpanded(next);
-        try { localStorage.setItem('cert-tutorial-expanded', next ? '1' : '0'); } catch { /* ignora */ }
-    };
-
     return (
-        <div
-            style={{
-                borderRadius: 16,
-                background: 'linear-gradient(135deg, rgba(255,214,0,0.10) 0%, rgba(255,255,255,0.95) 50%, rgba(239,246,255,0.95) 100%)',
-                border: '1px solid rgba(255,214,0,0.45)',
-                boxShadow: '0 4px 24px rgba(15,23,42,0.06)',
-                overflow: 'hidden',
-            }}
-        >
-            <button
-                type="button"
-                onClick={toggle}
-                style={{
-                    width: '100%',
-                    padding: '1rem 1.15rem',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    fontFamily: 'inherit',
-                    textAlign: 'left',
-                }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{
-                        width: 36, height: 36, borderRadius: 10,
-                        background: 'linear-gradient(135deg, #FFD600 0%, #F59E0B 100%)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '1.1rem',
-                        boxShadow: '0 2px 8px rgba(255,214,0,0.35)',
-                    }}>📚</div>
-                    <div>
-                        <div style={{ fontFamily: 'Orbitron', fontSize: '0.82rem', letterSpacing: '0.08em', fontWeight: 800, color: '#0F172A' }}>
-                            COMO USAR O EDITOR DE CERTIFICADOS
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: 2 }}>
-                            {expanded ? 'Clique para recolher' : 'Clique para ver o tutorial passo-a-passo (5 passos)'}
-                        </div>
-                    </div>
-                </div>
-                <div style={{
-                    width: 32, height: 32, borderRadius: 8,
-                    background: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.1rem', color: '#475569',
-                    border: '1px solid #E5E7EB',
-                    transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                    transition: 'transform 0.2s',
-                }}>▼</div>
-            </button>
-
-            {expanded && (
-                <div style={{ padding: '0 1.15rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                    {[
-                        {
-                            num: '1',
-                            color: '#3B82F6',
-                            title: 'Os 2 Moldes Mestre são automáticos',
-                            body: (
-                                <>
-                                    O sistema vem com <strong>modelos oficiais por UF</strong>. Cada um usa o fundo limpo (frente + verso) das pastas{' '}
-                                    <code className="mono" style={{ fontSize: '0.72rem', background: '#F1F5F9', padding: '1px 5px', borderRadius: 4 }}>certificados/maranhao/</code> e{' '}
-                                    <code className="mono" style={{ fontSize: '0.72rem', background: '#F1F5F9', padding: '1px 5px', borderRadius: 4 }}>certificados/piaui/</code>.
-                                    Eles aplicam-se automaticamente a <strong>qualquer curso</strong> da UF, sem precisar criar um por curso.
-                                </>
-                            ),
-                        },
-                        {
-                            num: '2',
-                            color: '#F59E0B',
-                            title: 'Como editar um modelo (texto, posição, cores)',
-                            body: (
-                                <>
-                                    Clique num modelo na lista abaixo para abrir o editor. À esquerda você ajusta:{' '}
-                                    <strong>caminho do PDF/imagem</strong>, <strong>parágrafo principal</strong>,{' '}
-                                    <strong>data extensa</strong>, <strong>texto da página 2</strong> e as{' '}
-                                    <strong>coordenadas (X/Y/tamanho)</strong> de cada elemento.
-                                    À direita, a <strong>pré-visualização ao vivo</strong> atualiza-se enquanto você digita.
-                                    Use o botão <strong>Ver PDF Final</strong> para gerar o PDF real do backend a qualquer momento.
-                                </>
-                            ),
-                        },
-                        {
-                            num: '3',
-                            color: '#10B981',
-                            title: 'Variáveis disponíveis (preenchidas automaticamente)',
-                            body: (
-                                <>
-                                    No editor de texto use chaves duplas. Estas variáveis são substituídas pelos dados reais do aluno na hora de emitir:
-                                    <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6 }}>
-                                        {[
-                                            { v: '{{ALUNO_NOME}}', d: 'Nome cadastrado' },
-                                            { v: '{{CURSO}}', d: 'Nome do curso' },
-                                            { v: '{{CARGA_HORARIA}}', d: 'Horas do curso' },
-                                            { v: '{{CIDADE}}', d: 'Cidade da turma' },
-                                            { v: '{{UF}}', d: 'Estado (UF dinâmica)' },
-                                            { v: '{{DATA_EXTENSO}}', d: 'Data por extenso' },
-                                            { v: '{{TURMA}}', d: 'ID da turma' },
-                                            { v: '{{CODIGO_VERIFICACAO}}', d: 'Código UPG-...' },
-                                        ].map(item => (
-                                            <div key={item.v} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6, padding: '6px 8px' }}>
-                                                <code className="mono" style={{ fontSize: '0.7rem', color: '#0F172A', fontWeight: 700 }}>{item.v}</code>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 2 }}>{item.d}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div style={{ marginTop: 6, fontSize: '0.74rem', color: '#475569' }}>
-                                        💡 Use <code className="mono" style={{ fontSize: '0.7rem' }}>**texto**</code> para deixar em <strong>negrito</strong>.
-                                        Ex: <code className="mono" style={{ fontSize: '0.7rem' }}>{'**{{ALUNO_NOME}}** concluiu o curso de **{{CURSO}}**'}</code>
-                                    </div>
-                                </>
-                            ),
-                        },
-                        {
-                            num: '4',
-                            color: '#8B5CF6',
-                            title: 'Como pré-visualizar com dados reais',
-                            body: (
-                                <>
-                                    1. Vá à aba <strong>Elegíveis</strong> e clique em <strong>👁️ Pré-visualizar PDF</strong> num aluno.
-                                    O PDF baixa para o seu computador com os dados reais já preenchidos — <em>sem emitir</em> o certificado.<br/>
-                                    2. Ou, dentro do editor, selecione o aluno na lista de teste e clique em <strong>📄 Ver PDF Final</strong>.
-                                    Esse modal mostra o PDF gerado pelo backend com todos os textos e variáveis substituídos.
-                                </>
-                            ),
-                        },
-                        {
-                            num: '5',
-                            color: '#EF4444',
-                            title: 'Como emitir um certificado de verdade',
-                            body: (
-                                <>
-                                    Na aba <strong>Elegíveis</strong>, clique em <strong>🎓 Emitir Certificado</strong>.
-                                    O aluno precisa ter <strong>frequência ≥ 75%</strong>. O sistema gera um código único{' '}
-                                    <code className="mono" style={{ fontSize: '0.7rem', background: '#FEF3C7', padding: '1px 5px', borderRadius: 4 }}>UPG-...</code>,
-                                    cria o PDF, salva no MinIO e envia notificação ao aluno.
-                                    Depois disso, o aluno aparece na aba <strong>Histórico</strong> e o certificado pode ser{' '}
-                                    <strong>verificado publicamente</strong> via QR Code (sem login).
-                                </>
-                            ),
-                        },
-                    ].map(step => (
-                        <div key={step.num} style={{ display: 'flex', gap: '0.85rem', padding: '0.85rem 1rem', background: '#fff', borderRadius: 12, border: '1px solid #E5E7EB' }}>
-                            <div style={{
-                                flexShrink: 0,
-                                width: 32, height: 32, borderRadius: '50%',
-                                background: step.color,
-                                color: '#fff',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontWeight: 800, fontSize: '0.85rem',
-                                fontFamily: 'Orbitron',
-                                boxShadow: `0 2px 6px ${step.color}55`,
-                            }}>{step.num}</div>
-                            <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 4, fontSize: '0.85rem' }}>{step.title}</div>
-                                <div style={{ fontSize: '0.78rem', color: '#374151', lineHeight: 1.6 }}>{step.body}</div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
+        <AdminCollapsibleTutorial
+            storageKey="cert-tutorial-expanded"
+            emoji="📚"
+            title="COMO USAR O EDITOR DE CERTIFICADOS"
+            steps={CERTIFICATE_EDITOR_TUTORIAL_STEPS}
+        />
     );
 }
 
@@ -2926,7 +2749,7 @@ export default function CertificadosPage() {
                                         <button
                                             onClick={() => void openRealPdfModal()}
                                             style={{ padding: '4px 10px', fontSize: '0.62rem', background: '#0F172A', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}
-                                            title="Ver o PDF final gerado pelo backend (com dados reais)"
+                                            title="Ver o PDF final com os dados reais do aluno"
                                         >📄 Ver PDF Final</button>
                                     </div>
                                 </div>
@@ -3259,7 +3082,7 @@ export default function CertificadosPage() {
                             {pdfModalLoading && (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94A3B8', gap: 10, fontSize: '0.88rem' }}>
                                     <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
-                                    A gerar PDF real com dados do backend…
+                                    A gerar o PDF final com os dados do aluno…
                                 </div>
                             )}
                             {!pdfModalLoading && pdfModalUrl && (

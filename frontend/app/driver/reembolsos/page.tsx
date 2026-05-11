@@ -36,10 +36,10 @@ const CSS = `
     border-radius: 14px;
     padding: 1.1rem 1.25rem;
     border: 1px solid #E5E7EB;
-    margin-bottom: 0.75rem;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     transition: box-shadow .2s, border-color .2s;
 }
+.rmb-list { display: flex; flex-direction: column; gap: 1rem; }
 .rmb-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-color: rgba(255,214,0,0.4); }
 .rmb-modal-overlay {
     position: fixed; inset: 0;
@@ -179,7 +179,8 @@ export default function DriverReembolsos() {
     return (
         <>
         <style>{CSS}</style>
-        <div className="rmb-page" style={{ maxWidth: 580, margin: '0 auto' }}>
+        <div className="rmb-page animate-fade-in" style={{ maxWidth: 580, margin: '0 auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
             <AdminHeaderHero
                 title="REEMBOLSOS"
@@ -190,7 +191,7 @@ export default function DriverReembolsos() {
 
             {/* Resumo rápido */}
             {reembolsos.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
                     {[
                         { label: 'Pendentes', count: reembolsos.filter(r => r.status === 'PENDING').length, color: '#92400E', bg: '#FFFDE7', border: '#FEF08A' },
                         { label: 'Aprovados', count: reembolsos.filter(r => r.status === 'APPROVED').length, color: '#065F46', bg: '#F0FDF4', border: '#BBF7D0' },
@@ -217,7 +218,9 @@ export default function DriverReembolsos() {
                         Clique em &quot;+ Novo&quot; para solicitar seu primeiro reembolso
                     </p>
                 </div>
-            ) : reembolsos.map((r: any) => {
+            ) : (
+                <div className="rmb-list">
+                {reembolsos.map((r: any) => {
                 const st   = STATUS_STYLE[r.status] || STATUS_STYLE.PENDING;
                 const tipo = TIPOS.find(t => t.value === r.type);
                 const data = r.createdAt ? new Date(r.createdAt).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' }) : '';
@@ -265,6 +268,10 @@ export default function DriverReembolsos() {
                     </div>
                 );
             })}
+                </div>
+            )}
+
+            </div>
 
             {detailRb && (() => {
                 const r = detailRb as {

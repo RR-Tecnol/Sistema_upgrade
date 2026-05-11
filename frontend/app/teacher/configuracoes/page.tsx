@@ -5,6 +5,7 @@ import { CameraIcon, UserCircleIcon, BellIcon, ShieldCheckIcon, Cog6ToothIcon, C
 import api from '@/lib/api/client';
 import { useAuthStore } from '@/stores/useAuthStore';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { SettingRow } from '@/components/settings/SettingRow';
 import AuthenticatorSettingsTotpBlock from '@/components/auth/AuthenticatorSettingsTotpBlock';
 import ChangePasswordSettingsPanel from '@/components/auth/ChangePasswordSettingsPanel';
 
@@ -15,18 +16,6 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
         </button>
     );
 }
-function SettingRow({ label, desc, children }: { label: string; desc?: string; children: React.ReactNode }) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.9rem 0', borderBottom: '1px solid #F3F4F6', gap: '1.5rem' }}>
-            <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#111827' }}>{label}</div>
-                {desc && <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: '0.15rem' }}>{desc}</div>}
-            </div>
-            <div style={{ flexShrink: 0 }}>{children}</div>
-        </div>
-    );
-}
-
 const TABS = [
     { id: 'perfil', label: 'Meu Perfil', icon: UserCircleIcon },
     { id: 'notificacoes', label: 'Notificações', icon: BellIcon },
@@ -182,14 +171,14 @@ export default function TeacherConfiguracoes() {
                             <div style={{ ...SECTION_TITLE, marginBottom: '0.65rem' }}>Alterar senha</div>
                             <ChangePasswordSettingsPanel />
                         </div>
-                        <SettingRow label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
+                        <SettingRow stack label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
                             {twoFAStep === 'idle' && !doisFatores && (
                                 <button onClick={async () => { setTwoFAError(''); setTwoFALoading(true); try { const res = await api.post('/auth/2fa/generate'); const qr = res.data?.qrCodeDataUrl || res.data?.qrCode || ''; if (!qr) throw new Error('QR Code não retornado pelo servidor.'); setQrCodeUrl(qr); setTwoFAStep('setup'); } catch (e: any) { const status = e?.response?.status; if (status === 401 || status === 403) setTwoFAError('Sessão expirada ou sem permissão. Faça login novamente.'); else setTwoFAError(e?.response?.data?.message || e?.message || 'Erro ao gerar QR Code'); } finally { setTwoFALoading(false); } }} disabled={twoFALoading} style={{ padding: '0.45rem 1.15rem', borderRadius: 10, border: '2px solid #0F172A', background: twoFALoading ? '#E5E7EB' : '#FFD600', color: twoFALoading ? '#9CA3AF' : '#000', fontWeight: 800, fontSize: '0.82rem', cursor: twoFALoading ? 'not-allowed' : 'pointer', boxShadow: twoFALoading ? 'none' : '0 4px 12px rgba(255,214,0,0.35)' }}>
                                     {twoFALoading ? 'Gerando...' : '🔐 Ativar 2FA'}
                                 </button>
                             )}
                             {twoFAStep === 'idle' && !doisFatores && twoFAError && (
-                                <div style={{ marginTop: '0.45rem', fontSize: '0.72rem', color: '#EF4444', maxWidth: 280, textAlign: 'right' }}>{twoFAError}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#EF4444', width: '100%', lineHeight: 1.45 }}>{twoFAError}</div>
                             )}
                             {twoFAStep === 'setup' && (
                                 <AuthenticatorSettingsTotpBlock
@@ -213,9 +202,9 @@ export default function TeacherConfiguracoes() {
                                 />
                             )}
                             {(twoFAStep === 'active' || (twoFAStep === 'idle' && doisFatores)) && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <span style={{ padding: '0.25rem 0.75rem', borderRadius: 20, background: '#DCFCE7', color: '#059669', fontWeight: 700, fontSize: '0.8rem', border: '1px solid #BBF7D0' }}>✓ 2FA Ativo</span>
-                                    <button onClick={() => { setTwoFAStep('disabling'); setTwoFAError(''); setTwoFADisableToken(''); }} style={{ padding: '0.35rem 0.8rem', borderRadius: 8, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}>Desativar</button>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '0.75rem', width: '100%', minWidth: 0 }}>
+                                    <span style={{ padding: '0.25rem 0.75rem', borderRadius: 20, background: '#DCFCE7', color: '#059669', fontWeight: 700, fontSize: '0.8rem', border: '1px solid #BBF7D0', flexShrink: 0 }}>✓ 2FA Ativo</span>
+                                    <button type="button" onClick={() => { setTwoFAStep('disabling'); setTwoFAError(''); setTwoFADisableToken(''); }} style={{ padding: '0.35rem 0.8rem', borderRadius: 8, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', flex: '0 1 auto', minWidth: 0 }}>Desativar</button>
                                 </div>
                             )}
                             {twoFAStep === 'disabling' && (

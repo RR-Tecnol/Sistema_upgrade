@@ -2,7 +2,8 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException, 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { UpdateEnrollmentDto, EnrollmentStatus } from './dto/update-enrollment.dto';
-import { Prisma } from '@prisma/client';
+import { Prisma, NotificationType } from '@prisma/client';
+import { isStudentDocumentsComplete, getMissingRequiredStudentDocumentLabels } from '../common/student-documents.util';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
@@ -64,6 +65,31 @@ export class EnrollmentsService {
                 privacyPolicyAccepted: true,
             },
         });
+
+        if (!isStudentDocumentsComplete(enrollment.student.documents)) {
+            try {
+                const missing = getMissingRequiredStudentDocumentLabels(enrollment.student.documents);
+                const userId = enrollment.student.user.id;
+                const message =
+                    missing.length > 0
+                        ? `Complete no portal os documentos obrigatórios em falta: ${missing.join(', ')}.`
+                        : 'Complete a documentação obrigatória em Meu perfil.';
+                const { id: notificationId } = await this.notificationsSender.send({
+                    userId,
+                    type: NotificationType.GENERAL_ANNOUNCEMENT,
+                    title: 'Documentação pendente',
+                    message,
+                    link: '/student/profile#documentos',
+                    extraData: { kind: 'documentacao_pendente', enrollmentId: enrollment.id },
+                });
+                this.notifications.notifyUser(userId, 'documentacao_pendente', {
+                    notificationId,
+                    timestamp: new Date().toISOString(),
+                });
+            } catch {
+                /* não bloquear matrícula manual */
+            }
+        }
 
         return enrollment;
     }

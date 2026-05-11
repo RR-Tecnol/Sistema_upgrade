@@ -70,10 +70,10 @@ export async function downloadEmployeeFrequencyDashboardXlsx(
     const dash = wb.addWorksheet('📊 Dashboard', {
         views: [{ state: 'frozen', ySplit: 9, xSplit: 1, showGridLines: false }],
     });
-    dash.setColumn(1, 1, 2);
-    dash.setColumn(2, 2, 32);
-    dash.setColumn(3, 5, 12);
-    dash.setColumn(6, 10, 11);
+    dash.getColumn(1).width = 2;
+    dash.getColumn(2).width = 32;
+    for (let c = 3; c <= 5; c += 1) dash.getColumn(c).width = 12;
+    for (let c = 6; c <= 10; c += 1) dash.getColumn(c).width = 11;
     dash.mergeCells('B2:F2');
     dash.getCell('B2').value = `DASHBOARD DE FREQUÊNCIA — ${data.meta.roleLabel.toUpperCase()}`;
     dash.getCell('B2').font = { bold: true, size: 20, color: { argb: 'FF1E3A8A' } };

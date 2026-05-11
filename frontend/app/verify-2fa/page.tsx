@@ -11,7 +11,7 @@ function completeLogin(data: any, router: any, setAuthUser: any) {
     setAuthUser(data.user, data.access_token);
     if (data.student) sessionStorage.setItem('student', JSON.stringify(data.student));
     const role = data.user.role;
-    if (role === 'IT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR') router.push('/admin/dashboard');
+    if (role === 'IT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR' || role === 'FINANCIAL') router.push('/admin/dashboard');
     else if (role === 'STUDENT') router.push('/student/dashboard');
     else if (role === 'DRIVER') router.push('/driver/dashboard');
     else router.push('/teacher/dashboard');
@@ -53,7 +53,7 @@ export default function Verify2FAPage() {
             <div style={{ position: 'absolute', top: '-10%', left: '-5%', width: 400, height: 400, borderRadius: '50%', background: 'rgba(255,214,0,0.12)', filter: 'blur(80px)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.04) 1px,transparent 1px)', backgroundSize: '28px 28px', pointerEvents: 'none' }} />
 
-            <div style={{ position: 'relative', width: '100%', maxWidth: 420, background: '#fff', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.10)', border: '1px solid rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: 420, minWidth: 0, boxSizing: 'border-box', background: '#fff', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.10)', border: '1px solid rgba(0,0,0,0.07)', overflow: 'hidden' }}>
                 <div style={{ background: 'linear-gradient(135deg,#FFD600 0%,#F59E0B 100%)', padding: '28px 32px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
                         <span style={{ fontSize: 28 }}>🔑</span>
@@ -72,12 +72,28 @@ export default function Verify2FAPage() {
 
                     <p style={{ margin: '0 0 20px', fontSize: '0.82rem', color: '#6B7280', textAlign: 'center' }}>Código atual (válido por 30 segundos)</p>
 
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
                         <input ref={inputRef} type="text" inputMode="numeric" maxLength={6} value={code}
                             onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(''); }}
                             onKeyDown={e => { if (e.key === 'Enter' && code.length === 6) handleVerify(); }}
                             placeholder="000000"
-                            style={{ width: 200, height: 68, textAlign: 'center', fontSize: '2.2rem', fontWeight: 900, fontFamily: 'Orbitron,monospace', border: '2.5px solid #FFD600', borderRadius: 14, background: '#FFFBEB', color: '#111827', outline: 'none', letterSpacing: '0.2em' }} />
+                            style={{
+                                width: '100%',
+                                maxWidth: 280,
+                                minWidth: 0,
+                                boxSizing: 'border-box',
+                                height: 68,
+                                textAlign: 'center',
+                                fontSize: 'clamp(1.35rem, 7vw, 2.2rem)',
+                                fontWeight: 900,
+                                fontFamily: 'Orbitron,monospace',
+                                border: '2.5px solid #FFD600',
+                                borderRadius: 14,
+                                background: '#FFFBEB',
+                                color: '#111827',
+                                outline: 'none',
+                                letterSpacing: 'clamp(0.08em, 1.5vw, 0.2em)',
+                            }} />
                     </div>
 
                     <button onClick={handleVerify} disabled={loading || code.length < 6}

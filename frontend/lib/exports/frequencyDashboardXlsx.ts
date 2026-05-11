@@ -180,10 +180,11 @@ export async function downloadFrequencyDashboardXlsx(
     const dash = wb.addWorksheet('Dash_Executive', {
         views: [{ state: 'frozen', ySplit: 9, xSplit: 1, showGridLines: false }],
     });
-    dash.setColumn(1, 1, 2);
-    dash.setColumn(2, 2, 30);
-    dash.setColumn(3, 5, 12);
-    dash.setColumn(6, Math.max(6, 6 + dates.length + 4), 5);
+    dash.getColumn(1).width = 2;
+    dash.getColumn(2).width = 30;
+    for (let c = 3; c <= 5; c += 1) dash.getColumn(c).width = 12;
+    const endCol = Math.max(6, 6 + dates.length + 4);
+    for (let c = 6; c <= endCol; c += 1) dash.getColumn(c).width = 5;
 
     dash.getCell('B2').value = 'DASHBOARD DE FREQUÊNCIA E RETENÇÃO';
     dash.getCell('B2').font = { bold: true, size: 20, color: { argb: 'FF1E3A8A' } };

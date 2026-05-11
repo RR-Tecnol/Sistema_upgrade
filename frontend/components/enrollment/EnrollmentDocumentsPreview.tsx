@@ -93,11 +93,22 @@ export function getMissingEnrollmentDocumentEntries(documents: EnrollmentDocumen
     return out;
 }
 
+function resolveDocTitle(key: string, customLabels?: Record<string, string>): string {
+    if (customLabels?.[key]) return customLabels[key]!;
+    return ENROLLMENT_DOC_LABELS[key] || key;
+}
+
 export function EnrollmentDocumentsPreview({
     documents,
     variant = 'dark',
     adminDownloads = false,
     enableLightbox = false,
+    /** Título da secção (ex.: «Documentos enviados», «Fotos comprobatórias»). */
+    heading = 'Documentos enviados',
+    /** Rótulos por chave — sobrepõe os nomes fixos de inscrição (útil para viagens, reembolsos, etc.). */
+    customLabels,
+    /** Se não houver ficheiros e este texto for definido, mostra um cartão vazio em vez de ocultar o bloco. */
+    emptyMessage,
 }: {
     documents: EnrollmentDocumentsMap;
     variant?: Variant;
@@ -105,12 +116,14 @@ export function EnrollmentDocumentsPreview({
     adminDownloads?: boolean;
     /** Permite expandir preview em tela cheia ao clicar no ficheiro. */
     enableLightbox?: boolean;
+    heading?: string;
+    customLabels?: Record<string, string>;
+    emptyMessage?: string;
 }) {
     const [downloading, setDownloading] = useState<string | null>(null);
     const [lightbox, setLightbox] = useState<{ key: string; title: string; url: string; pdf: boolean } | null>(null);
 
     const entries = Object.entries(documents || {}).filter(([, v]) => v && String(v).trim().length > 0);
-    if (entries.length === 0) return null;
 
     const card =
         variant === 'dark'
@@ -126,6 +139,25 @@ export function EnrollmentDocumentsPreview({
                   label: { fontSize: '0.68rem', fontWeight: 700, color: '#6B7280', marginBottom: 6 } as const,
                   frame: { borderRadius: 10, overflow: 'hidden' as const, border: '1px solid #E5E7EB', background: '#fff', maxHeight: 280 } as const,
               };
+
+    if (entries.length === 0) {
+        if (!emptyMessage) return null;
+        return (
+            <div style={card.wrap}>
+                <p style={{ ...card.title, marginBottom: '0.65rem' }}>{heading}</p>
+                <p
+                    style={{
+                        fontSize: '0.82rem',
+                        color: variant === 'dark' ? '#9CA3AF' : '#64748B',
+                        margin: 0,
+                        lineHeight: 1.45,
+                    }}
+                >
+                    {emptyMessage}
+                </p>
+            </div>
+        );
+    }
 
     const btnOutline =
         variant === 'dark'
@@ -169,7 +201,7 @@ export function EnrollmentDocumentsPreview({
                     marginBottom: adminDownloads ? '0.75rem' : 0,
                 }}
             >
-                <p style={{ ...card.title, marginBottom: adminDownloads ? 0 : card.title.marginBottom }}>Documentos enviados</p>
+                <p style={{ ...card.title, marginBottom: adminDownloads ? 0 : card.title.marginBottom }}>{heading}</p>
                 {adminDownloads && (
                     <button
                         type="button"
@@ -198,7 +230,7 @@ export function EnrollmentDocumentsPreview({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {entries.map(([key, raw]) => {
                     const url = String(raw).trim();
-                    const title = ENROLLMENT_DOC_LABELS[key] || key;
+                    const title = resolveDocTitle(key, customLabels);
                     const pdf = isPdfUrl(url);
                     const busy = downloading === `one:${key}` || downloading === 'all';
 
