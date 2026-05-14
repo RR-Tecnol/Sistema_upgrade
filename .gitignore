@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output
+
+# Production
+build/
+dist/
+.next/
+docs/.next/
+out/
+
+# Cache local de PDFs (certificados)
+tmp/certificates/
+backend/tmp/
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+# Nunca versionar ficheiros de segredos de produção
+backend/.env.production
+frontend/.env.production
+**/.env.production
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.vs/
+
+# Prisma — NÃO ignorar migrations (necessário para `npx prisma migrate deploy`)
+# prisma/migrations/  ← mantido no repositório
+*.db
+*.db-journal
+
+
+# Docker
+docker-compose.override.yml
+
+# Uploads
+uploads/
+temp/
+
+# Misc
+.cache/
+.temp/
+.tmp/
+
+# Python (scripts auxiliares no repo)
+**/__pycache__/
+*.pyc
+
+# Artefactos locais de desenvolvimento (não versionar)
+backend/error.txt
+backend/test.pdf
+backend/test_clean.pdf
+backend/test_piaui.pdf

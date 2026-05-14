@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # ── PostgreSQL ────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: upgrade-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: cursos_user
+      POSTGRES_PASSWORD: cursos_password
+      POSTGRES_DB: cursos_db
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    volumes:
+      - upgrade_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cursos_user -d cursos_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - upgrade-net
+
+  # ── Redis ─────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: upgrade-redis
+    restart: always
+    command: redis-server --requirepass RR@@Upgrade
+    volumes:
+      - upgrade_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "RR@@Upgrade", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - upgrade-net
+
+  # ── MinIO ─────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: upgrade-minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - upgrade_minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - upgrade-net
+
+  # ── Backend NestJS ────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: upgrade-backend
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://cursos_user:cursos_password@postgres:5432/cursos_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_PUBLIC_BROWSER_URL: https://sistemaupgrade.com.br/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - upgrade-net
+
+  # ── Frontend Next.js ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: upgrade-frontend
+    restart: always
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      BACKEND_URL: http://backend:3001
+    depends_on:
+      - backend
+    networks:
+      - upgrade-net
+
+volumes:
+  upgrade_postgres_data:
+    driver: local
+  upgrade_redis_data:
+    driver: local
+  upgrade_minio_data:
+    driver: local
+
+networks:
+  upgrade-net:
+    name: upgrade-prod-network

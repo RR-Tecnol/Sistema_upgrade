@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database — porta host 5434 (5432 ocupada por outros projetos)
+  postgres:
+    image: postgres:15-alpine
+    container_name: upgrade-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cursos_user
+      POSTGRES_PASSWORD: cursos_password
+      POSTGRES_DB: cursos_db
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      - "5434:5432"
+    volumes:
+      - upgrade_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cursos_user -d cursos_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache — porta host 6381 (6379 e 6380 ocupadas)
+  redis:
+    image: redis:7-alpine
+    container_name: upgrade-redis
+    restart: unless-stopped
+    command: redis-server --requirepass RR@@Upgrade
+    ports:
+      - "6381:6379"
+    volumes:
+      - upgrade_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "RR@@Upgrade", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Object Storage — portas 9010/9011 (livres)
+  minio:
+    image: minio/minio:latest
+    container_name: upgrade-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9010:9000"  # API
+      - "9011:9001"  # Console Web
+    volumes:
+      - upgrade_minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+volumes:
+  upgrade_postgres_data:
+    driver: local
+  upgrade_redis_data:
+    driver: local
+  upgrade_minio_data:
+    driver: local
+
+networks:
+  default:
+    name: upgrade-dev-network
