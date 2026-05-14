@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
+import { storageUrlForBrowser } from '@/lib/storageDisplayUrl';
 
 export type EmployeePreviewDoc = {
     key: string;
@@ -16,15 +17,17 @@ function isPdfUrl(url: string): boolean {
 }
 
 function extensionFromUrl(url: string): string {
+    const t = url.trim();
+    let pathname: string;
     try {
-        const pathname = new URL(url.trim()).pathname.toLowerCase();
-        if (pathname.endsWith('.pdf')) return '.pdf';
-        if (pathname.endsWith('.png')) return '.png';
-        if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg')) return '.jpg';
-        if (pathname.endsWith('.webp')) return '.webp';
+        pathname = t.includes('://') ? new URL(t).pathname.toLowerCase() : (t.split('?')[0]?.toLowerCase() ?? '');
     } catch {
-        // URL relativa
+        pathname = t.split('?')[0]?.toLowerCase() ?? '';
     }
+    if (pathname.endsWith('.pdf')) return '.pdf';
+    if (pathname.endsWith('.png')) return '.png';
+    if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg')) return '.jpg';
+    if (pathname.endsWith('.webp')) return '.webp';
     return '';
 }
 
@@ -37,7 +40,8 @@ async function downloadFileFromUrl(url: string, baseFileName: string): Promise<'
     const downloadName = (safeBase + ext).replace(/^\.+/, '') || 'documento';
 
     try {
-        const res = await fetch(trimmed, { mode: 'cors', credentials: 'omit' });
+        const fetchUrl = storageUrlForBrowser(trimmed);
+        const res = await fetch(fetchUrl, { mode: 'cors', credentials: 'omit' });
         if (!res.ok) throw new Error(String(res.status));
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
@@ -51,7 +55,7 @@ async function downloadFileFromUrl(url: string, baseFileName: string): Promise<'
         URL.revokeObjectURL(objectUrl);
         return 'blob';
     } catch {
-        window.open(trimmed, '_blank', 'noopener,noreferrer');
+        window.open(storageUrlForBrowser(trimmed), '_blank', 'noopener,noreferrer');
         return 'tab';
     }
 }
@@ -128,14 +132,14 @@ export function EmployeeDocumentsPreview({ docs }: { docs: EmployeePreviewDoc[] 
                             </div>
                             <div style={{ background: '#0B1220', maxHeight: 'calc(92vh - 46px)', overflow: 'auto' }}>
                                 {lightbox.pdf ? (
-                                    <object data={lightbox.url} type="application/pdf" title={lightbox.title} style={{ width: '100%', height: 'calc(92vh - 46px)', display: 'block', background: '#fff' }}>
+                                    <object data={storageUrlForBrowser(lightbox.url)} type="application/pdf" title={lightbox.title} style={{ width: '100%', height: 'calc(92vh - 46px)', display: 'block', background: '#fff' }}>
                                         <div style={{ padding: '1rem', color: '#E2E8F0', fontSize: '0.85rem' }}>
                                             Pré-visualização de PDF indisponível. Use o botão de download.
                                         </div>
                                     </object>
                                 ) : (
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={lightbox.url} alt={lightbox.title} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain', background: '#fff' }} />
+                                    <img src={storageUrlForBrowser(lightbox.url)} alt={lightbox.title} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain', background: '#fff' }} />
                                 )}
                             </div>
                         </div>

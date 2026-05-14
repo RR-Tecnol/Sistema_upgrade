@@ -5,6 +5,7 @@ import { NotificationsSenderService } from '../notifications/notifications-sende
 import { EmployeeRole, EmployeeDepartment, NotificationType, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import { staffRoleRequiresTotpSetupOnCreate } from '../common/staff-mfa-roles';
 
 @Injectable()
 export class EmployeesService {
@@ -51,6 +52,7 @@ export class EmployeesService {
                 OTHER: 'TEACHER',
                 COORDINATOR: 'COORDINATOR',
                 DRIVER: 'DRIVER',
+                ADMIN: 'ADMIN',
             };
             const userRole = roleMap[dto.role] ?? 'TEACHER';
             const hashed = await bcrypt.hash(dto.password, 10);
@@ -60,6 +62,7 @@ export class EmployeesService {
                     email: dto.email,
                     password: hashed,
                     role: userRole as any,
+                    requiresTwoFactorSetup: staffRoleRequiresTotpSetupOnCreate(userRole),
                 },
             });
             userId = user.id;
@@ -212,16 +215,25 @@ export class EmployeesService {
                     email: request.email,
                     password: hashed,
                     role: userRole as any,
-                    // ADMIN e COORDINATOR exigem setup de TOTP no primeiro login
-                    requiresTwoFactorSetup: ['ADMIN', 'COORDINATOR'].includes(userRole),
+                    requiresTwoFactorSetup: staffRoleRequiresTotpSetupOnCreate(userRole),
                 } as any,
             });
             userId = user.id;
         }
 
-        const dailyCostFromAdmin = options?.dailyCost;
-        if (dailyCostFromAdmin == null || Number.isNaN(Number(dailyCostFromAdmin)) || Number(dailyCostFromAdmin) <= 0) {
-            throw new BadRequestException('Defina um valor de diária válido para aprovar o cadastro.');
+        const isAdminRegistration = request.token.role === 'ADMIN';
+
+        let resolvedDailyCost: number | undefined;
+        const rawDaily = options?.dailyCost;
+        if (isAdminRegistration) {
+            if (rawDaily != null && !Number.isNaN(Number(rawDaily)) && Number(rawDaily) > 0) {
+                resolvedDailyCost = Number(rawDaily);
+            }
+        } else {
+            if (rawDaily == null || Number.isNaN(Number(rawDaily)) || Number(rawDaily) <= 0) {
+                throw new BadRequestException('Defina um valor de diária válido para aprovar o cadastro.');
+            }
+            resolvedDailyCost = Number(rawDaily);
         }
 
         const employee = await this.prisma.employee.create({
@@ -233,7 +245,7 @@ export class EmployeesService {
                 role: request.token.role,
                 department: request.token.department,
                 active: true,
-                dailyCost: Number(dailyCostFromAdmin),
+                ...(resolvedDailyCost != null ? { dailyCost: resolvedDailyCost } : {}),
                 photoUrl: data.documents?.selfieUrl || data.photoUrl,
                 specialty: data.teacher?.fieldOfStudy || data.driver?.cnhCategory || data.coordinator?.formation || data.specialty, 
                 contractType: data.contractType || 'CLT',

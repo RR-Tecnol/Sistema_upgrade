@@ -75,7 +75,7 @@ function ModalRegistrar({ onClose, onSuccess }: { onClose: () => void; onSuccess
                 try {
                     const formData = new FormData();
                     formData.append('file', docFile);
-                    // Mesmo endpoint que inscrições/funcionários (`UploadsModule` → `POST /api/public/upload`)
+                    // Upload anónimo (Nest `POST /api/public/upload` via rewrite `/api`)
                     const uploadRes = await api.post<{ url?: string; filename?: string }>('/public/upload', formData, {
                         headers: { 'Content-Type': 'multipart/form-data' },
                     });

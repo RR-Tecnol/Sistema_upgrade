@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
 import { CreationSuccessScreen } from '@/components/CreationSuccessScreen';
+import { getPublicApiBaseUrl } from '@/lib/publicApiBase';
 
 /* ── Particle System ───────────────────────────────── */
 function ParticleField() {
@@ -55,9 +56,8 @@ const ROLE_LABELS: Record<string, string> = {
     DRIVER: 'Motorista',
     COORDINATOR: 'Coordenador(a)',
     ADMINISTRATIVE: 'Administrativo(a)',
+    ADMIN: 'Administrador(a) do sistema',
 };
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api';
 
 function onlyDigits(value: string) {
     return value.replace(/\D/g, '');
@@ -99,7 +99,7 @@ function FileUploadField({ label, onUpload, value, required = false }: { label: 
         formData.append('file', file);
         
         try {
-            const res = await axios.post(`${API_BASE_URL}/public/upload`, formData, {
+            const res = await axios.post(`${getPublicApiBaseUrl()}/public/upload`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             onUpload(res.data.url);
@@ -189,7 +189,7 @@ export default function RegistroFuncionarioPage() {
         if (!token) return;
         const validateToken = async () => {
             try {
-                const res = await axios.get(`${API_BASE_URL}/employees/registration/${token}`);
+                const res = await axios.get(`${getPublicApiBaseUrl()}/employees/registration/${token}`);
                 setTokenData(res.data);
             } catch (err: any) {
                 setError(err.response?.data?.message || 'Link inválido ou expirado.');
@@ -256,7 +256,7 @@ export default function RegistroFuncionarioPage() {
                     password
                 }
             };
-            await axios.post(`${API_BASE_URL}/employees/registration/${token}`, payload);
+            await axios.post(`${getPublicApiBaseUrl()}/employees/registration/${token}`, payload);
             setSuccess(true);
         } catch (err: any) {
             alert(err.response?.data?.message || 'Erro ao enviar cadastro.');
@@ -312,8 +312,9 @@ export default function RegistroFuncionarioPage() {
     const isTeacher = tokenData?.role === 'INSTRUCTOR';
     const isDriver = tokenData?.role === 'DRIVER';
     const isCoordinator = tokenData?.role === 'COORDINATOR';
+    const isAdminInvite = tokenData?.role === 'ADMIN';
 
-    const steps = ['Identificação', 'Endereço', 'Documentos Obrigatórios', isTeacher ? 'Área Acadêmica' : isDriver ? 'CNH e Permissões' : isCoordinator ? 'Formação' : 'Dados Profissionais', 'Acesso Seguro'];
+    const steps = ['Identificação', 'Endereço', 'Documentos Obrigatórios', isTeacher ? 'Área Acadêmica' : isDriver ? 'CNH e Permissões' : isCoordinator ? 'Formação' : isAdminInvite ? 'Perfil de gestão' : 'Dados Profissionais', 'Acesso Seguro'];
 
     return (
         <div style={{ minHeight: '100vh', display: 'flex', background: '#F3F4F6', fontFamily: 'Inter, sans-serif' }}>
@@ -516,6 +517,16 @@ export default function RegistroFuncionarioPage() {
                                             <FileUploadField label="Certificado Especialização/Gestão" value={specializationUrl} onUpload={setSpecializationUrl} required />
                                         </div>
                                     </>
+                                ) : isAdminInvite ? (
+                                    <div style={{ padding: '1rem', background: '#F5F3FF', borderRadius: 12, border: '1px solid #DDD6FE' }}>
+                                        <p style={{ margin: 0, fontSize: '0.9rem', color: '#4C1D95', lineHeight: 1.6 }}>
+                                            Como <strong>administrador</strong>, confirme sua área de atuação e experiência em gestão. Estes dados serão analisados pelo RH.
+                                        </p>
+                                        <div className="form-group" style={{ marginTop: '1rem' }}>
+                                            <label className="form-label" style={{ fontWeight: 600 }}>Formação / experiência em gestão *</label>
+                                            <input className="form-input" value={education} onChange={e => setEducation(e.target.value)} placeholder="Ex: Administração, experiência em equipes..." />
+                                        </div>
+                                    </div>
                                 ) : (
                                     <div className="form-group">
                                         <label className="form-label" style={{ fontWeight: 600 }}>Especialidade / Função</label>

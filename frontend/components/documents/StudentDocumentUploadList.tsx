@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import axios from 'axios';
+import { getPublicApiBaseUrl } from '@/lib/publicApiBase';
 import { CheckCircleIcon, DocumentIcon } from '@heroicons/react/24/outline';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api';
 
 export const STUDENT_DOCUMENT_SLOTS = [
     { key: 'photo', label: 'Selfie de rosto', required: true },
@@ -96,7 +95,7 @@ export default function StudentDocumentUploadList({
         const form = new FormData();
         form.append('file', file);
         try {
-            const res = await axios.post(`${API_BASE_URL}/public/upload`, form, {
+            const res = await axios.post(`${getPublicApiBaseUrl()}/public/upload`, form, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             const url = res.data?.url as string;

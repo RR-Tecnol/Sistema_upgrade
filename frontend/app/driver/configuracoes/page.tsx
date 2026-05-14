@@ -45,7 +45,7 @@ export default function DriverConfiguracoes() {
     const [twoFADisableToken, setTwoFADisableToken] = useState('');
     const [doisFatores, setDoisFatores] = useState(false);
 
-    const [cfg, setCfg] = useState({ nome: '', email: '', notifEmail: true, notifViagemAtribuida: true, notifReembolsos: true, logAcesso: true, animacoes: true });
+    const [cfg, setCfg] = useState({ nome: '', email: '', notifEmail: true, notifViagemAtribuida: true, notifReembolsos: true, logAcesso: true, animacoes: true, emailOtpEnabled: true });
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -58,7 +58,7 @@ export default function DriverConfiguracoes() {
         api.get('/users/me').then(res => {
             const p = res.data;
             setUser(p);
-            setCfg(c => ({ ...c, nome: p.name || '', email: p.email || '' }));
+            setCfg(c => ({ ...c, nome: p.name || '', email: p.email || '', emailOtpEnabled: p.emailOtpEnabled !== false }));
             setDoisFatores(!!p.twoFactorEnabled);
             // BUG-07: não usar localStorage.setItem('user') — Zustand persiste em auth-storage
         }).catch(() => {
@@ -84,7 +84,7 @@ export default function DriverConfiguracoes() {
     const handleSave = async () => {
         try {
             await Promise.all([
-                api.patch('/users/me', { name: cfg.nome }),
+                api.patch('/users/me', { name: cfg.nome, emailOtpEnabled: cfg.emailOtpEnabled }),
                 api.patch('/users/me/preferences', {
                     animacoes: cfg.animacoes,
                 }),
@@ -169,6 +169,9 @@ export default function DriverConfiguracoes() {
                             <div style={{ ...SECTION_TITLE, marginBottom: '0.65rem' }}>Alterar senha</div>
                             <ChangePasswordSettingsPanel />
                         </div>
+                        <SettingRow label="Código por e-mail no login" desc="Após a palavra-passe, enviar código de 6 dígitos por e-mail. Se desactivar, o login avança para o Authenticator ou para o sistema, conforme a sua conta.">
+                            <Toggle checked={cfg.emailOtpEnabled} onChange={v => set('emailOtpEnabled', v)} />
+                        </SettingRow>
                         <SettingRow stack label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
                             {twoFAStep === 'idle' && !doisFatores && (
                                 <button onClick={async () => { setTwoFAError(''); setTwoFALoading(true); try { const res = await api.post('/auth/2fa/generate'); const qr = res.data?.qrCodeDataUrl || res.data?.qrCode || ''; if (!qr) throw new Error('QR Code não retornado pelo servidor.'); setQrCodeUrl(qr); setTwoFAStep('setup'); } catch (e: any) { const status = e?.response?.status; if (status === 401 || status === 403) setTwoFAError('Sessão expirada ou sem permissão. Faça login novamente.'); else setTwoFAError(e?.response?.data?.message || e?.message || 'Erro ao gerar QR Code'); } finally { setTwoFALoading(false); } }} disabled={twoFALoading} style={{ padding: '0.45rem 1.15rem', borderRadius: 10, border: '2px solid #0F172A', background: twoFALoading ? '#E5E7EB' : '#FFD600', color: twoFALoading ? '#9CA3AF' : '#000', fontWeight: 800, fontSize: '0.82rem', cursor: twoFALoading ? 'not-allowed' : 'pointer', boxShadow: twoFALoading ? 'none' : '0 4px 12px rgba(255,214,0,0.35)' }}>

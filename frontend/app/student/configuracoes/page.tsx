@@ -66,6 +66,7 @@ export default function StudentConfiguracoes() {
         nome: '', email: '',
         notifEmail: true, notifCertificado: true, notifInscricao: true, notifFrequencia: true,
         logAcesso: true, animacoes: true, fonteGrande: false,
+        emailOtpEnabled: true,
     });
 
     useEffect(() => {
@@ -94,6 +95,7 @@ export default function StudentConfiguracoes() {
                     animacoes: prefRes.data.animacoes,
                     fonteGrande: prefRes.data.fonteGrande,
                 } : {}),
+                emailOtpEnabled: p.emailOtpEnabled !== false,
             }));
             setDoisFatores(!!p.twoFactorEnabled);
             // BUG-07: não usar localStorage.setItem('user') — Zustand persiste em auth-storage
@@ -130,7 +132,7 @@ export default function StudentConfiguracoes() {
         try {
             // Salva nome e preferências em paralelo
             await Promise.all([
-                api.patch('/users/me', { name: cfg.nome }),
+                api.patch('/users/me', { name: cfg.nome, emailOtpEnabled: cfg.emailOtpEnabled }),
                 api.patch('/users/me/preferences', {
                     notifEmail: cfg.notifEmail,
                     notifCertificado: cfg.notifCertificado,
@@ -298,6 +300,10 @@ export default function StudentConfiguracoes() {
                             <div style={{ ...SECTION_TITLE, marginBottom: '0.65rem' }}>Alterar senha</div>
                             <ChangePasswordSettingsPanel />
                         </div>
+
+                        <SettingRow label="Código por e-mail no login" desc="Após a palavra-passe, enviar código de 6 dígitos por e-mail. Se desactivar, o login avança directamente para o Authenticator ou para o portal, conforme a sua conta.">
+                            <Toggle checked={cfg.emailOtpEnabled} onChange={v => set('emailOtpEnabled', v)} />
+                        </SettingRow>
 
                         <SettingRow stack label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
                             {/* idle — desativado */}

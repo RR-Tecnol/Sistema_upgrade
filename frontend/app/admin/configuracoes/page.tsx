@@ -435,6 +435,7 @@ export default function ConfiguracoesPage() {
         // Segurança
         sessaoTimeout: '480',
         doisFatores: false,
+        emailOtpEnabled: true,
         logAcesso: true,
         senhaComplexidade: 'media',
         // Sistema
@@ -473,6 +474,7 @@ export default function ConfiguracoesPage() {
                 nomeAdmin: u.name || '',
                 emailAdmin: u.email || '',
                 doisFatores: Boolean(u.twoFactorEnabled),
+                emailOtpEnabled: u.emailOtpEnabled !== false,
             }));
         }).catch(() => {
             // BUG-07: fallback usa Zustand (auth-storage), não localStorage.getItem('user') que não existe
@@ -570,9 +572,9 @@ export default function ConfiguracoesPage() {
                     notifFrequencia: cfg.notifFrequenciaBaixa,
                 }),
             ];
-            if (nomeTrim) {
-                requests.push(api.patch('/users/me', { name: nomeTrim }));
-            }
+            const mePatch: Record<string, unknown> = { emailOtpEnabled: cfg.emailOtpEnabled };
+            if (nomeTrim) mePatch.name = nomeTrim;
+            requests.push(api.patch('/users/me', mePatch));
             await Promise.all(requests);
             setSaved(true);
             // BUG-07: atualiza Zustand store (fonte real de auth) — localStorage.getItem('user') não existe
@@ -748,6 +750,9 @@ export default function ConfiguracoesPage() {
                                 { label: '8 horas', value: '480' },
                                 { label: 'Nunca', value: '0' },
                             ]} />
+                        </SettingRow>
+                        <SettingRow label="Código por e-mail no login" desc="Após a palavra-passe, enviar código de 6 dígitos por e-mail. Se desactivar, o login avança para o Authenticator (ou para dentro do sistema, conforme a política da conta).">
+                            <Toggle checked={cfg.emailOtpEnabled} onChange={v => set('emailOtpEnabled', v)} color="#059669" />
                         </SettingRow>
                         <SettingRow stack label="Autenticação em 2 Fatores" desc="Proteja sua conta com código TOTP (Google Authenticator)">
                             {/* Estado: idle — 2FA desativado */}

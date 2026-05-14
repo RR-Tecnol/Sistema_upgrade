@@ -9,9 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { getPrimaryFrontendUrl } from '../common/cors-origins';
-
-/** Roles que exigem Email OTP + Google Authenticator obrigatórios */
-const STAFF_ROLES = ['IT_ADMIN', 'ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER', 'DRIVER'];
+import { isStaffMfaRole } from '../common/staff-mfa-roles';
 
 @Injectable()
 export class AuthService {
@@ -24,6 +22,12 @@ export class AuthService {
         private usersService: UsersService,
         private mail: MailService,
     ) { }
+
+    /** OTP por e-mail no login: desligado globalmente (dev) ou pelo próprio utilizador em /users/me. */
+    private shouldSkipEmailOtpForLogin(user: { emailOtpEnabled?: boolean | null }): boolean {
+        if (this.configService.get('AUTH_BYPASS_EMAIL_OTP') === 'true') return true;
+        return user.emailOtpEnabled === false;
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // REGISTRO
@@ -113,14 +117,13 @@ export class AuthService {
             return { requiresPasswordChange: true, preAuthToken: firstLoginToken };
         }
 
-        // ── [DEV BYPASS — só e-mail OTP] ───────────────────────────────────────
-        // AUTH_BYPASS_EMAIL_OTP=true: não envia e-mail nem exige código; mantém 2FA/setup.
-        // Só actua se AUTH_BYPASS_MFA não estiver true (ver acima).
-        const bypassEmailOtp = this.configService.get('AUTH_BYPASS_EMAIL_OTP') === 'true';
-        if (bypassEmailOtp) {
-            this.logger.warn(
-                `[DEV BYPASS] OTP por e-mail ignorado para ${user.email} (${user.role}) — fluxo 2FA mantido. Desative AUTH_BYPASS_EMAIL_OTP em produção.`,
-            );
+        // ── OTP por e-mail (dev global ou preferência do utilizador) ───────────
+        if (this.shouldSkipEmailOtpForLogin(user)) {
+            if (this.configService.get('AUTH_BYPASS_EMAIL_OTP') === 'true') {
+                this.logger.warn(
+                    `[DEV BYPASS] OTP por e-mail ignorado para ${user.email} (${user.role}) — fluxo 2FA mantido. Desative AUTH_BYPASS_EMAIL_OTP em produção.`,
+                );
+            }
             await this.clearEmailOtpFields(user.id);
             const userCleared = {
                 ...user,
@@ -134,9 +137,8 @@ export class AuthService {
                 ...(studentData ? { _studentHint: true } : {}),
             };
         }
-        // ── [/DEV BYPASS — só e-mail OTP] ──────────────────────────────────────
 
-        // ── MFA Step 1: Sempre envia Email OTP ────────────────────────────────
+        // ── MFA Step 1: envia código por e-mail ────────────────────────────────
         const { preAuthToken, emailMasked } = await this.sendEmailOtp(user.id, user.email, user.name);
 
         return {
@@ -167,7 +169,7 @@ export class AuthService {
             throw new UnauthorizedException('Usuário inativo ou não encontrado');
         }
         const u = user as any;
-        const isStaff = STAFF_ROLES.includes(user.role);
+        const isStaff = isStaffMfaRole(user.role);
 
         if (user.role === 'IT_ADMIN' && u.requiresPasswordChange) {
             const firstLoginToken = this.jwtService.sign(
@@ -325,9 +327,27 @@ export class AuthService {
         });
 
         // ── Etapa 2.5: Verificar o NOVO e-mail real via OTP ──────────────────
-        // Agora que o e-mail definitivo foi salvo, enviamos um OTP para validar
-        // que o usuário tem acesso real à caixa. Após confirmar o OTP,
-        // o fluxo segue automaticamente para /setup-2fa (verifyEmailOtp já trata isso).
+        // Em produção: OTP para o novo e-mail prova posse da caixa; depois 2FA.
+        // Em equipas sem Brevo / e-mail ainda não configurado no servidor: use
+        // AUTH_BYPASS_EMAIL_OTP=true — salta este OTP e segue para setup TOTP
+        // (mesma flag já usada no login() para não bloquear dev).
+        const userFresh = await (this.prisma.user as any).findUnique({ where: { id: userId } });
+        if (!userFresh) throw new UnauthorizedException('Usuário não encontrado');
+        if (this.shouldSkipEmailOtpForLogin(userFresh)) {
+            if (this.configService.get('AUTH_BYPASS_EMAIL_OTP') === 'true') {
+                this.logger.warn(
+                    '[AUTH_BYPASS_EMAIL_OTP] Primeiro login IT_ADMIN: OTP pós-troca de e-mail ignorado — segue para 2FA (Authenticator).',
+                );
+            }
+            await this.clearEmailOtpFields(userId);
+            return this.afterEmailOtpVerified({
+                ...userFresh,
+                emailOtpHash: null,
+                emailOtpExpiresAt: null,
+                emailOtpAttempts: 0,
+            });
+        }
+
         const { preAuthToken: otpToken, emailMasked } = await this.sendEmailOtp(
             userId,
             newEmail,

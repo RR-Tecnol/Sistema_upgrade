@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
-const ALL_ROLES = ['IT_ADMIN', 'ADMIN', 'COORDINATOR', 'TEACHER', 'DRIVER', 'STUDENT'];
+const ALL_ROLES = ['IT_ADMIN', 'ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER', 'DRIVER', 'STUDENT'];
 
 @ApiTags('users')
 @Controller('users')
@@ -38,7 +38,7 @@ export class UsersController {
     @ApiResponse({ status: 200, description: 'Profile updated successfully' })
     async updateMe(
         @Request() req: any,
-        @Body() data: { name?: string; phone?: string },
+        @Body() data: { name?: string; phone?: string; emailOtpEnabled?: boolean },
     ) {
         return this.usersService.update(req.user.userId || req.user.id, data);
     }

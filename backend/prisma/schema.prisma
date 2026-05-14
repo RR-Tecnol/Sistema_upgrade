@@ -309,6 +309,8 @@ model User {
   twoFactorSecret  String?                  // segredo TOTP — armazenado criptografado
 
   // ── MFA: Email OTP (novo) ─────────────────────────────────────────────────
+  /// Se false, o login não envia código por e-mail (avança para TOTP/setup ou JWT). Perfil: Configurações.
+  emailOtpEnabled      Boolean    @default(true)
   emailOtpHash         String?    // SHA-256 do código de 6 dígitos
   emailOtpExpiresAt    DateTime?  // expira em 10 minutos
   emailOtpAttempts     Int        @default(0)  // máx 3 tentativas → código invalidado
@@ -1270,6 +1272,8 @@ enum EmployeeRole {
   NURSE
   TECHNICIAN
   ADMINISTRATIVE
+  /// Perfil de gestão (convite IT_ADMIN → UserRole ADMIN)
+  ADMIN
   OTHER
 }
 

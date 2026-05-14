@@ -43,6 +43,7 @@ export class UsersService {
                 createdAt: true,
                 updatedAt: true,
                 twoFactorEnabled: true,
+                emailOtpEnabled: true,
                 student: {
                     select: {
                         id: true,
@@ -71,8 +72,8 @@ export class UsersService {
         return user;
     }
 
-    async update(id: string, data: { name?: string; phone?: string; active?: boolean }) {
-        const user = await this.findOne(id);
+    async update(id: string, data: { name?: string; phone?: string; active?: boolean; emailOtpEnabled?: boolean }) {
+        await this.findOne(id);
 
         return this.prisma.user.update({
             where: { id },
@@ -85,6 +86,8 @@ export class UsersService {
                 role: true,
                 active: true,
                 updatedAt: true,
+                emailOtpEnabled: true,
+                twoFactorEnabled: true,
             },
         });
     }

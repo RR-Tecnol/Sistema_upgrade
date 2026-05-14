@@ -4,8 +4,7 @@ import { useState } from 'react';
 import { useEnrollmentStore } from '@/stores/useEnrollmentStore';
 import { CheckCircleIcon, DocumentIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api';
+import { getPublicApiBaseUrl } from '@/lib/publicApiBase';
 
 export default function Step6Documents() {
     const { formData, updateDocuments, nextStep, prevStep } = useEnrollmentStore();
@@ -26,7 +25,7 @@ export default function Step6Documents() {
         form.append('file', file);
 
         try {
-            const res = await axios.post(`${API_BASE_URL}/public/upload`, form, {
+            const res = await axios.post(`${getPublicApiBaseUrl()}/public/upload`, form, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setDocuments(prev => ({ ...prev, [key]: res.data.url }));

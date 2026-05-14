@@ -44,6 +44,7 @@ import { InstitutionsModule } from './institutions/institutions.module';
 import { HealthModule } from './health/health.module';
 // EST-01: Módulo de Estoque (StockItem / TruckStockItem / StockMovement / StockPurchaseRequest)
 import { StockModule } from './stock/stock.module';
+import { PublicUploadModule } from './public-upload/public-upload.module';
 
 
 @Module({
@@ -87,6 +88,7 @@ import { StockModule } from './stock/stock.module';
         InstitutionsModule, // F7: multi-instituição (white-label)
         HealthModule,         // Probes: GET /api/health, GET /api/ready
         StockModule,          // EST-01: Módulo de Estoque
+        PublicUploadModule,   // POST /api/public/upload — cadastro público (funcionário, inscrição, etc.)
     ],
     providers: [
         // ThrottlerGuard global — aplica rate limiting em TODOS os endpoints

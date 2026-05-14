@@ -10,9 +10,10 @@ import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { CreationSuccessScreen } from '@/components/CreationSuccessScreen';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import { EmployeeDocumentsPreview } from '@/components/admin/EmployeeDocumentsPreview';
+import { storageUrlForBrowser } from '@/lib/storageDisplayUrl';
 
 /* ── Types ─────────────────────────────────────────── */
-type EmployeeRole = 'INSTRUCTOR' | 'DRIVER' | 'COORDINATOR' | 'TECHNICIAN' | 'ADMINISTRATIVE' | 'OTHER';
+type EmployeeRole = 'INSTRUCTOR' | 'DRIVER' | 'COORDINATOR' | 'TECHNICIAN' | 'ADMINISTRATIVE' | 'ADMIN' | 'OTHER';
 type EmployeeDepartment = 'ACADEMIC' | 'OPERATIONS' | 'HEALTH' | 'FINANCIAL' | 'ADMINISTRATION' | 'LOGISTICS';
 
 interface Employee {
@@ -43,6 +44,7 @@ const ROLE_CONFIG: Record<EmployeeRole, { label: string; icon: string; color: st
     INSTRUCTOR: { label: 'Instrutor', icon: '🎓', color: '#FFD600', glow: 'rgba(255,214,0,0.5)', bg: 'rgba(255,214,0,0.08)' },
     DRIVER: { label: 'Motorista', icon: '🚛', color: '#0891B2', glow: 'rgba(8,145,178,0.5)', bg: 'rgba(8,145,178,0.08)' },
     COORDINATOR: { label: 'Coordenador', icon: '🎯', color: '#7C3AED', glow: 'rgba(124,58,237,0.5)', bg: 'rgba(124,58,237,0.08)' },
+    ADMIN: { label: 'Administrador', icon: '🛡️', color: '#4F46E5', glow: 'rgba(79,70,229,0.5)', bg: 'rgba(79,70,229,0.08)' },
     TECHNICIAN: { label: 'Técnico', icon: '🔧', color: '#EA580C', glow: 'rgba(234,88,12,0.5)', bg: 'rgba(234,88,12,0.08)' },
     ADMINISTRATIVE: { label: 'Administrativo', icon: '📋', color: '#059669', glow: 'rgba(5,150,105,0.5)', bg: 'rgba(5,150,105,0.08)' },
     OTHER: { label: 'Outros', icon: '👤', color: '#6B7280', glow: 'rgba(107,114,128,0.5)', bg: 'rgba(107,114,128,0.08)' },
@@ -109,6 +111,7 @@ function DocumentPreviewField({ label, value, onChange, acceptNoPossui = false }
     const [lightboxOpen, setLightboxOpen] = useState(false);
     const fileInputId = `doc-upload-${label.replace(/\s+/g, '-').toLowerCase()}`;
     const resolved = (value || '').trim();
+    const displayUrl = storageUrlForBrowser(resolved);
     const isNoPossui = resolved.toLowerCase() === 'não possui' || resolved.toLowerCase() === 'nao possui';
     const isPdf = /\.pdf(\?.*)?$/i.test(resolved);
 
@@ -145,7 +148,7 @@ function DocumentPreviewField({ label, value, onChange, acceptNoPossui = false }
                     <span style={{ fontSize: '1.6rem' }}>📄</span>
                 ) : (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={resolved} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <img src={displayUrl} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 )}
             </div>
             <div style={{ padding: '0.5rem 0.6rem', display: 'flex', gap: 6, justifyContent: 'space-between', alignItems: 'center' }}>
@@ -177,12 +180,12 @@ function DocumentPreviewField({ label, value, onChange, acceptNoPossui = false }
                             </div>
                             <div style={{ background: '#0B1220', maxHeight: 'calc(92vh - 46px)', overflow: 'auto' }}>
                                 {isPdf ? (
-                                    <object data={resolved} type="application/pdf" title={label} style={{ width: '100%', height: 'calc(92vh - 46px)', display: 'block', background: '#fff' }}>
+                                    <object data={displayUrl} type="application/pdf" title={label} style={{ width: '100%', height: 'calc(92vh - 46px)', display: 'block', background: '#fff' }}>
                                         <div style={{ padding: '1rem', color: '#E2E8F0', fontSize: '0.85rem' }}>Pré-visualização de PDF indisponível.</div>
                                     </object>
                                 ) : (
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={resolved} alt={label} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain', background: '#fff' }} />
+                                    <img src={displayUrl} alt={label} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain', background: '#fff' }} />
                                 )}
                             </div>
                         </div>
@@ -313,7 +316,12 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete, onDetails }: { emp: Emp
     const dept = DEPT_CONFIG[emp.department];
     const initials = emp.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
     const [hovered, setHovered] = useState(false);
+    const [photoFailed, setPhotoFailed] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        setPhotoFailed(false);
+    }, [emp.id, emp.photoUrl]);
 
     // 3D tilt
     const handleMouseMove = (e: React.MouseEvent) => {
@@ -373,8 +381,13 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete, onDetails }: { emp: Emp
                             fontSize: '1.35rem', color: role.color,
                             letterSpacing: '-0.02em',
                         }}>
-                            {emp.photoUrl ? (
-                                <img src={emp.photoUrl} alt={emp.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16 }} />
+                            {emp.photoUrl && storageUrlForBrowser(emp.photoUrl) && !photoFailed ? (
+                                <img
+                                    src={storageUrlForBrowser(emp.photoUrl)}
+                                    alt={emp.name}
+                                    onError={() => setPhotoFailed(true)}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16 }}
+                                />
                             ) : initials}
                         </div>
                         {/* Status pulse */}
@@ -700,13 +713,13 @@ function EmployeeReimbursementsCollapsible({ employeeId }: { employeeId: string 
                                     {url && isReimbReceiptImage(url) && (
                                         <div style={{ marginTop: 8, borderRadius: 10, overflow: 'hidden', border: '1px solid #E5E7EB', background: '#F9FAFB' }}>
                                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img src={url} alt="Comprovante" style={{ width: '100%', maxHeight: 260, objectFit: 'contain', display: 'block' }} />
+                                            <img src={storageUrlForBrowser(url)} alt="Comprovante" style={{ width: '100%', maxHeight: 260, objectFit: 'contain', display: 'block' }} />
                                         </div>
                                     )}
                                     {url && isReimbReceiptPdf(url) && (
                                         <div style={{ marginTop: 8, borderRadius: 10, overflow: 'hidden', border: '1px solid #E5E7EB', background: '#F3F4F6' }}>
                                             <object
-                                                data={url}
+                                                data={storageUrlForBrowser(url)}
                                                 type="application/pdf"
                                                 title="Comprovante PDF"
                                                 style={{ width: '100%', height: 220, display: 'block' }}
@@ -969,7 +982,7 @@ function EmployeeDetailModal({ employee, onClose, onEdit }: { employee: Employee
                                     ) : (
                                         <a
                                             key={doc.label}
-                                            href={doc.url}
+                                            href={storageUrlForBrowser(doc.url)}
                                             target="_blank"
                                             rel="noreferrer"
                                             style={{ textDecoration: 'none', border: '1px solid #DBEAFE', borderRadius: 10, background: '#fff', overflow: 'hidden' }}
@@ -989,7 +1002,7 @@ function EmployeeDetailModal({ employee, onClose, onEdit }: { employee: Employee
                                             >
                                                 {isImageDoc(doc.url) ? (
                                                     <img
-                                                        src={doc.url}
+                                                        src={storageUrlForBrowser(doc.url)}
                                                         alt={doc.label}
                                                         style={{
                                                             maxWidth: '100%',
@@ -1749,14 +1762,26 @@ export default function FuncionariosPage() {
     };
 
     const handleApprove = async (id: string, name: string) => {
+        const pending = pendingUsers.find((r: any) => r.id === id);
+        const isAdminPending = pending?.token?.role === 'ADMIN';
         const dailyCostValue = parseCurrency(pendingDailyCost[id] || '');
-        if (!dailyCostValue || dailyCostValue <= 0) {
+        if (!isAdminPending && (!dailyCostValue || dailyCostValue <= 0)) {
             showPendingToast('Informe a diária para aprovar este cadastro.', false);
+            return;
+        }
+        if (isAdminPending && pendingDailyCost[id]?.trim() && (!dailyCostValue || dailyCostValue <= 0)) {
+            showPendingToast('Se informar diária, use um valor válido maior que zero.', false);
             return;
         }
         setPendingAction(id + 'approve');
         try {
-            await api.post(`/employees/registration-requests/${id}/approve`, { dailyCost: dailyCostValue });
+            const payload =
+                isAdminPending && dailyCostValue > 0
+                    ? { dailyCost: dailyCostValue }
+                    : isAdminPending
+                        ? {}
+                        : { dailyCost: dailyCostValue };
+            await api.post(`/employees/registration-requests/${id}/approve`, payload);
             showPendingToast(`✅ ${name} aprovado com sucesso!`, true);
             setPendingDailyCost(prev => ({ ...prev, [id]: '' }));
             fetchPending();
@@ -2007,16 +2032,38 @@ export default function FuncionariosPage() {
                                 if (!req) return null;
                                 return (
                                     <div className="glass-card animate-fade-in" style={{ padding: '1.5rem', border: '1px solid #E5E7EB' }}>
-                                        <div style={{ marginBottom: '1rem', background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: 12, padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', letterSpacing: '0.05em' }}>DEFINIR DIÁRIA PARA APROVAÇÃO</div>
+                                        <div style={{
+                                            marginBottom: '1rem',
+                                            borderRadius: 12,
+                                            padding: '0.85rem 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.75rem',
+                                            flexWrap: 'wrap',
+                                            ...(req.token?.role === 'ADMIN'
+                                                ? { background: '#F5F3FF', border: '1px solid #DDD6FE' }
+                                                : { background: '#ECFDF5', border: '1px solid #BBF7D0' }),
+                                        }}>
+                                            <div style={{
+                                                fontSize: '0.72rem',
+                                                fontWeight: 800,
+                                                letterSpacing: '0.05em',
+                                                color: req.token?.role === 'ADMIN' ? '#5B21B6' : '#065F46',
+                                            }}>
+                                                {req.token?.role === 'ADMIN' ? 'DIÁRIA (OPCIONAL)' : 'DEFINIR DIÁRIA PARA APROVAÇÃO'}
+                                            </div>
                                             <input
                                                 value={pendingDailyCost[req.id] ?? ''}
                                                 onChange={(e) => setPendingDailyCost(prev => ({ ...prev, [req.id]: maskCurrency(e.target.value) }))}
                                                 placeholder="0,00"
                                                 className="form-input"
-                                                style={{ width: 130, fontSize: '0.8rem', fontWeight: 700, color: '#065F46', background: '#fff' }}
+                                                style={{ width: 130, fontSize: '0.8rem', fontWeight: 700, color: req.token?.role === 'ADMIN' ? '#5B21B6' : '#065F46', background: '#fff' }}
                                             />
-                                            <span style={{ fontSize: '0.75rem', color: '#047857' }}>Obrigatório para liberar a aprovação e manter consistência financeira.</span>
+                                            <span style={{ fontSize: '0.75rem', color: req.token?.role === 'ADMIN' ? '#6D28D9' : '#047857' }}>
+                                                {req.token?.role === 'ADMIN'
+                                                    ? 'Convite de administrador: pode aprovar sem diária. Se preencher, use um valor válido; a TI pode ajustar depois em perfil do funcionário.'
+                                                    : 'Obrigatório para liberar a aprovação e manter consistência financeira.'}
+                                            </span>
                                         </div>
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
                                             <div>
@@ -2120,19 +2167,37 @@ export default function FuncionariosPage() {
                                 {/* EXPANDED DETAILS */}
                                 {expandedPendingId === req.id && (
                                     <div className="animate-fade-in" style={{ padding: '1.5rem', borderTop: '1px solid #F3F4F6', background: '#FAFAFA' }}>
-                                        <div style={{ marginBottom: '1rem', background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: 12, padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', letterSpacing: '0.05em' }}>
-                                                DEFINIR DIÁRIA PARA APROVAÇÃO
+                                        <div style={{
+                                            marginBottom: '1rem',
+                                            borderRadius: 12,
+                                            padding: '0.85rem 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.75rem',
+                                            flexWrap: 'wrap',
+                                            ...(req.token?.role === 'ADMIN'
+                                                ? { background: '#F5F3FF', border: '1px solid #DDD6FE' }
+                                                : { background: '#ECFDF5', border: '1px solid #BBF7D0' }),
+                                        }}>
+                                            <div style={{
+                                                fontSize: '0.72rem',
+                                                fontWeight: 800,
+                                                letterSpacing: '0.05em',
+                                                color: req.token?.role === 'ADMIN' ? '#5B21B6' : '#065F46',
+                                            }}>
+                                                {req.token?.role === 'ADMIN' ? 'DIÁRIA (OPCIONAL)' : 'DEFINIR DIÁRIA PARA APROVAÇÃO'}
                                             </div>
                                             <input
                                                 value={pendingDailyCost[req.id] ?? ''}
                                                 onChange={(e) => setPendingDailyCost(prev => ({ ...prev, [req.id]: maskCurrency(e.target.value) }))}
                                                 placeholder="0,00"
                                                 className="form-input"
-                                                style={{ width: 130, fontSize: '0.8rem', fontWeight: 700, color: '#065F46', background: '#fff' }}
+                                                style={{ width: 130, fontSize: '0.8rem', fontWeight: 700, color: req.token?.role === 'ADMIN' ? '#5B21B6' : '#065F46', background: '#fff' }}
                                             />
-                                            <span style={{ fontSize: '0.75rem', color: '#047857' }}>
-                                                Obrigatório para liberar a aprovação e manter consistência financeira.
+                                            <span style={{ fontSize: '0.75rem', color: req.token?.role === 'ADMIN' ? '#6D28D9' : '#047857' }}>
+                                                {req.token?.role === 'ADMIN'
+                                                    ? 'Convite de administrador: pode aprovar sem diária. Se preencher, use um valor válido; a TI pode ajustar depois em perfil do funcionário.'
+                                                    : 'Obrigatório para liberar a aprovação e manter consistência financeira.'}
                                             </span>
                                         </div>
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>

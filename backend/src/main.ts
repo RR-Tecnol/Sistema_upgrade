@@ -117,7 +117,14 @@ async function bootstrap() {
     app.use((req: any, res: any, next: any) => {
         if (settingsService.isMaintenanceMode()) {
             // Permitir: login + rotas admin + health
-            const allowed = ['/api/auth/login', '/api/settings', '/api/health', '/api/ready'];
+            const allowed = [
+                '/api/auth/login',
+                '/api/settings',
+                '/api/health',
+                '/api/ready',
+                '/api/public/upload',
+                '/api/employees/registration',
+            ];
             const maintenanceKey = process.env.MAINTENANCE_KEY;
             const bypassValid =
                 !!maintenanceKey &&

@@ -6,6 +6,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { EmployeeDepartment, EmployeeRole } from '@prisma/client';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { AdminOverrideAttendanceDto } from './dto/admin-override-attendance.dto';
@@ -40,7 +41,11 @@ export class EmployeesController {
     @Roles('IT_ADMIN')
     @ApiOperation({ summary: '[IT_ADMIN only] Gera link seguro para cadastro de novo Administrador' })
     createAdminInvite(@Request() req: any) {
-        return this.service.createRegistrationToken(req.user.id, 'ADMIN' as any, 'ADMINISTRATIVE' as any);
+        return this.service.createRegistrationToken(
+            req.user.id,
+            EmployeeRole.ADMIN,
+            EmployeeDepartment.ADMINISTRATION,
+        );
     }
 
     @Public()

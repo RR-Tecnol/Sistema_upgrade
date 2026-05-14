@@ -67,6 +67,7 @@ export class RegisterController {
                 password: hashedPassword,
                 role: dto.role,
                 active: false,
+                requiresTwoFactorSetup: true,
             },
             select: { id: true, name: true, email: true, role: true },
         });
