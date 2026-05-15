@@ -45,6 +45,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     const handleLogout = () => {
         logout();
         setShowUserMenu(false);
+        window.location.href = '/login';
     };
 
     return (

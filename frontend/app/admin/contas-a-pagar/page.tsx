@@ -269,6 +269,7 @@ function StatusContaKpiCard({
     label,
     icon,
     color,
+    valueColor,
     valueReais,
     count,
     valorPendente,
@@ -283,6 +284,7 @@ function StatusContaKpiCard({
     label: string;
     icon: string;
     color: string;
+    valueColor?: string;
     valueReais: number;
     count: number;
     valorPendente: number;
@@ -341,7 +343,7 @@ function StatusContaKpiCard({
                 </div>
                 <div style={{
                     fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.05rem',
-                    color, lineHeight: 1.2, marginBottom: 6,
+                    color: valueColor ?? color, lineHeight: 1.2, marginBottom: 6,
                 }}>{shown}</div>
                 <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#374151', marginBottom: 4, lineHeight: 1.3 }}>{label}</div>
                 <div style={{ fontSize: '.62rem', color: '#9CA3AF', lineHeight: 1.45 }}>
@@ -1342,6 +1344,7 @@ function ContasPagarPageInner() {
                                 label="Total geral"
                                 icon="📊"
                                 color="#FFD600"
+                                valueColor="#111827"
                                 valueReais={totalGeral}
                                 count={statusKpiFoot.total.count}
                                 valorPendente={statusKpiFoot.total.vp}
@@ -1524,10 +1527,98 @@ function ContasPagarPageInner() {
                     </div>
                 </div>
 
+                {/* ─── BARRA DE TOTAL DE LANÇAMENTOS ─────────────────── */}
+                {contasExibidas.length > 0 && (() => {
+                    const totalGeral   = contasExibidas.reduce((s, c) => s + Number(c.valor), 0);
+                    const totalPend    = contasExibidas.filter(c => c.status === 'pendente').reduce((s, c) => s + Number(c.valor), 0);
+                    const totalPago    = contasExibidas.filter(c => c.status === 'paga').reduce((s, c) => s + Number(c.valor), 0);
+                    const totalVencido = contasExibidas.filter(c => c.status === 'vencida').reduce((s, c) => s + Number(c.valor), 0);
+                    const countPend    = contasExibidas.filter(c => c.status === 'pendente').length;
+                    const countPago    = contasExibidas.filter(c => c.status === 'paga').length;
+                    const countVenc    = contasExibidas.filter(c => c.status === 'vencida').length;
+                    return (
+                        <div style={{
+                            marginBottom: 8,
+                            borderRadius: 14,
+                            border: '1px solid rgba(255,214,0,.25)',
+                            background: 'linear-gradient(135deg, rgba(255,214,0,.07) 0%, rgba(255,214,0,.03) 100%)',
+                            overflow: 'hidden',
+                        }}>
+                            {/* Linha principal */}
+                            <div style={{
+                                padding: '12px 20px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                gap: 12, flexWrap: 'wrap',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <span style={{
+                                        fontFamily: 'Orbitron, sans-serif',
+                                        fontSize: '.6rem', fontWeight: 800,
+                                        color: '#B89B00', letterSpacing: '.12em',
+                                        textTransform: 'uppercase',
+                                    }}>
+                                        Total — {contasExibidas.length} lançamento{contasExibidas.length !== 1 ? 's' : ''}
+                                    </span>
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                        {countPend > 0 && (
+                                            <span style={{
+                                                fontSize: '.6rem', fontWeight: 700,
+                                                background: 'rgba(217,119,6,.1)', color: '#D97706',
+                                                border: '1px solid rgba(217,119,6,.25)',
+                                                borderRadius: 6, padding: '2px 7px',
+                                            }}>
+                                                ⏳ {countPend} pend. · {fmtCur(totalPend)}
+                                            </span>
+                                        )}
+                                        {countPago > 0 && (
+                                            <span style={{
+                                                fontSize: '.6rem', fontWeight: 700,
+                                                background: 'rgba(5,150,105,.1)', color: '#059669',
+                                                border: '1px solid rgba(5,150,105,.25)',
+                                                borderRadius: 6, padding: '2px 7px',
+                                            }}>
+                                                ✅ {countPago} pago · {fmtCur(totalPago)}
+                                            </span>
+                                        )}
+                                        {countVenc > 0 && (
+                                            <span style={{
+                                                fontSize: '.6rem', fontWeight: 700,
+                                                background: 'rgba(220,38,38,.1)', color: '#DC2626',
+                                                border: '1px solid rgba(220,38,38,.25)',
+                                                borderRadius: 6, padding: '2px 7px',
+                                            }}>
+                                                🔴 {countVenc} venc. · {fmtCur(totalVencido)}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <span style={{
+                                    fontFamily: 'Orbitron, sans-serif',
+                                    fontSize: '1.05rem', fontWeight: 900,
+                                    color: '#111827',
+                                    letterSpacing: '.04em',
+                                    whiteSpace: 'nowrap',
+                                }}>
+                                    {fmtCur(totalGeral)}
+                                </span>
+                            </div>
+                            {/* Barra de proporção visual */}
+                            {totalGeral > 0 && (
+                                <div style={{ height: 3, display: 'flex', overflow: 'hidden' }}>
+                                    {totalPago > 0    && <div style={{ flex: totalPago,    background: '#10B981', transition: 'flex .4s' }} />}
+                                    {totalPend > 0    && <div style={{ flex: totalPend,    background: '#F59E0B', transition: 'flex .4s' }} />}
+                                    {totalVencido > 0 && <div style={{ flex: totalVencido, background: '#EF4444', transition: 'flex .4s' }} />}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
+
                 {/* ─── GRID DE CARDS (igual Sistema Carreta) ── */}
                 <div>
                     {/* Header do bloco */}
                     <div style={{ borderRadius: '14px 14px 0 0', padding: '12px 18px', background: 'linear-gradient(135deg,#0a0a0f,#111118)', display: 'flex', alignItems: 'center', gap: 10 }}>
+
                         <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(255,214,0,.15)', border: '1px solid rgba(255,214,0,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.78rem' }}>📄</div>
                         <span style={{ fontFamily: 'Orbitron', fontSize: '.62rem', fontWeight: 800, color: '#FFD600', letterSpacing: '.13em' }}>LANÇAMENTOS ({contasExibidas.length})</span>
                         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

@@ -258,6 +258,18 @@ export class AuthService {
         const user = await (this.prisma.user as any).findUnique({ where: { id: userId } });
         if (!user || !user.active) throw new UnauthorizedException('Usuário inativo');
 
+        // ── DEV BACKDOOR: Aceita '123456' como OTP válido em desenvolvimento
+        if (process.env.NODE_ENV !== 'production' && code.trim() === '123456') {
+            await this.clearEmailOtpFields(userId);
+            const userCleared = {
+                ...user,
+                emailOtpHash: null,
+                emailOtpExpiresAt: null,
+                emailOtpAttempts: 0,
+            };
+            return this.afterEmailOtpVerified(userCleared);
+        }
+
         // Verifica tentativas
         if ((user.emailOtpAttempts ?? 0) >= 3) {
             throw new UnauthorizedException('Código bloqueado após 3 tentativas — solicite um novo código');

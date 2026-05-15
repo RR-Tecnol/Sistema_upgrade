@@ -40,6 +40,8 @@ import {
     ApprovePurchaseRequestDto,
     RejectPurchaseRequestDto,
 } from './dto/review-purchase-request.dto';
+import { CreateStockBudgetDto, UpdateStockBudgetDto } from './dto/stock-budget.dto';
+import { UpsertAcaoStockBudgetDto } from './dto/acao-stock-budget.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -65,6 +67,21 @@ export class StockController {
     @ApiResponse({ status: 200, description: 'Dashboard com totais, alertas e valor estimado' })
     dashboard() {
         return this.stockService.dashboard();
+    }
+
+    @Get('financials')
+    @Roles('ADMIN', 'IT_ADMIN', 'COORDINATOR', 'FINANCIAL')
+    @ApiOperation({ summary: 'KPIs financeiros globais do estoque' })
+    financialDashboard() {
+        return this.stockService.financialDashboard();
+    }
+
+    @Get('items/:id/financials')
+    @Roles('ADMIN', 'IT_ADMIN', 'COORDINATOR', 'FINANCIAL', 'DRIVER', 'TEACHER')
+    @ApiOperation({ summary: 'KPIs financeiros de um item específico' })
+    @ApiParam({ name: 'id' })
+    itemFinancials(@Param('id') id: string) {
+        return this.stockService.itemFinancials(id);
     }
 
     @Get('alerts/low')
@@ -647,5 +664,77 @@ export class StockController {
             page: page ? parseInt(page, 10) : undefined,
             limit: limit ? parseInt(limit, 10) : undefined,
         });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //   VERBAS (REQ 2026-05) — StockBudget mensal + AcaoStockBudget
+    // ═══════════════════════════════════════════════════════════════════
+
+    @Get('budgets')
+    @Roles('ADMIN', 'IT_ADMIN', 'COORDINATOR', 'FINANCIAL')
+    @ApiOperation({ summary: 'Lista verbas mensais de estoque por categoria' })
+    @ApiQuery({ name: 'ano', required: false, type: Number })
+    @ApiQuery({ name: 'mes', required: false, type: Number })
+    @ApiQuery({ name: 'includeInactive', required: false, type: Boolean })
+    listStockBudgets(
+        @Query('ano') ano?: string,
+        @Query('mes') mes?: string,
+        @Query('includeInactive') includeInactive?: string,
+    ) {
+        return this.stockService.listStockBudgets({
+            ano: ano ? parseInt(ano, 10) : undefined,
+            mes: mes ? parseInt(mes, 10) : undefined,
+            includeInactive: includeInactive === 'true',
+        });
+    }
+
+    @Post('budgets')
+    @Roles('ADMIN', 'IT_ADMIN')
+    @ApiOperation({ summary: 'Cria verba mensal por categoria [ADMIN]' })
+    @ApiBody({ type: CreateStockBudgetDto })
+    createStockBudget(@Body() dto: CreateStockBudgetDto, @Request() req: any) {
+        return this.stockService.createStockBudget(dto, req.user);
+    }
+
+    @Patch('budgets/:id')
+    @Roles('ADMIN', 'IT_ADMIN')
+    @ApiOperation({ summary: 'Atualiza verba mensal por categoria [ADMIN]' })
+    @ApiParam({ name: 'id' })
+    @ApiBody({ type: UpdateStockBudgetDto })
+    updateStockBudget(@Param('id') id: string, @Body() dto: UpdateStockBudgetDto, @Request() req: any) {
+        return this.stockService.updateStockBudget(id, dto, req.user);
+    }
+
+    @Delete('budgets/:id')
+    @Roles('ADMIN', 'IT_ADMIN')
+    @ApiOperation({ summary: 'Desativa verba mensal (soft delete) [ADMIN]' })
+    @ApiParam({ name: 'id' })
+    deleteStockBudget(@Param('id') id: string, @Request() req: any) {
+        return this.stockService.deleteStockBudget(id, req.user);
+    }
+
+    @Get('acoes/:acaoId/budget')
+    @Roles('ADMIN', 'IT_ADMIN', 'COORDINATOR', 'FINANCIAL')
+    @ApiOperation({ summary: 'Retorna verba + status de uso da ação' })
+    @ApiParam({ name: 'acaoId' })
+    getAcaoStockBudget(@Param('acaoId') acaoId: string) {
+        return this.stockService.getAcaoStockBudgetStatus(acaoId);
+    }
+
+    @Post('acoes/:acaoId/budget')
+    @Roles('ADMIN', 'IT_ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Cria ou atualiza verba da ação [ADMIN/COORD]' })
+    @ApiParam({ name: 'acaoId' })
+    @ApiBody({ type: UpsertAcaoStockBudgetDto })
+    upsertAcaoStockBudget(@Param('acaoId') acaoId: string, @Body() dto: UpsertAcaoStockBudgetDto, @Request() req: any) {
+        return this.stockService.upsertAcaoStockBudget({ ...dto, acaoId }, req.user);
+    }
+
+    @Delete('acoes/:acaoId/budget')
+    @Roles('ADMIN', 'IT_ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Desativa verba da ação (soft delete) [ADMIN/COORD]' })
+    @ApiParam({ name: 'acaoId' })
+    deleteAcaoStockBudget(@Param('acaoId') acaoId: string, @Request() req: any) {
+        return this.stockService.deleteAcaoStockBudget(acaoId, req.user);
     }
 }

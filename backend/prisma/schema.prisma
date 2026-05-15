@@ -358,6 +358,8 @@ model User {
   stockMovementsRegistered StockMovement[]         @relation("StockMovRegistrar")
   purchaseRequestsCreated  StockPurchaseRequest[]  @relation("StockPurchaseRequester")
   purchaseRequestsReviewed StockPurchaseRequest[]  @relation("StockPurchaseReviewer")
+  stockBudgetsCreated      StockBudget[]           @relation("StockBudgetCreator")
+  acaoStockBudgetsCreated  AcaoStockBudget[]       @relation("AcaoStockBudgetCreator")
 
   @@index([email])
   @@index([role])
@@ -1442,6 +1444,7 @@ model Acao {
   reimbursements  Reimbursement[]  // REQ-10: despesas imprevistas de campo
   stockMovements  StockMovement[]  // ESTOQUE: consumo de insumos por ação
   stockReservations AcaoStockReservation[]  // ESTOQUE: kit de insumos previstos (planejamento)
+  stockBudget      AcaoStockBudget?         // ESTOQUE: verba de insumos por Ação
 
   @@index([cidadeId])
   @@index([grupoId])
@@ -1949,6 +1952,7 @@ model StockCategory {
 
   stockItems    StockItem[]
   creator       User?    @relation("StockCategoryCreator", fields: [createdBy], references: [id])
+  budgets       StockBudget[] @relation("StockCategoryBudgets")
 
   @@index([active])
   @@index([isDefault])
@@ -2091,6 +2095,9 @@ model StockPurchaseRequest {
   contaPagarId      String?                    @unique
   movementId        String?                    @unique  // = StockMovement.id criada na aprovação
 
+  // Verba mensal vinculada (opcional — auto-associado na aprovação se existir)
+  stockBudgetId     String?
+
   active            Boolean                    @default(true)  // soft delete
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
@@ -2101,11 +2108,66 @@ model StockPurchaseRequest {
   reviewer     User?          @relation("StockPurchaseReviewer",  fields: [reviewedBy], references: [id])
   contaPagar   ContaPagar?    @relation(fields: [contaPagarId], references: [id])
   movement     StockMovement?  // back-ref do @unique purchaseRequestId em StockMovement
+  stockBudget  StockBudget?   @relation("StockBudgetPR", fields: [stockBudgetId], references: [id])
 
   @@index([stockItemId])
   @@index([status])
   @@index([requestedBy])
   @@index([createdAt])
+  @@index([stockBudgetId])
   @@map("stock_purchase_requests")
+}
+
+// ============================================
+// SISTEMA DE VERBAS DE ESTOQUE (REQ 2026-05)
+// Controle orçamentário em 3 camadas:
+//   A) valorTeto da própria PR
+//   B) StockBudget — verba mensal por categoria
+//   C) AcaoStockBudget — verba por Ação
+// ============================================
+
+/// Verba mensal por categoria de insumo (REQ 2026-05, opcional).
+/// Quando criada, aprovações de PRs da categoria/mês são validadas contra este teto.
+model StockBudget {
+  id                String                  @id @default(uuid())
+  categoriaEnum     StockItemCategory?
+  categoriaCustomId String?
+  ano               Int
+  mes               Int
+  valorTeto         Decimal                 @db.Decimal(12, 2)
+  observacao        String?
+  active            Boolean                 @default(true)
+  createdBy         String
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  categoriaCustom   StockCategory?          @relation("StockCategoryBudgets", fields: [categoriaCustomId], references: [id])
+  creator           User                    @relation("StockBudgetCreator", fields: [createdBy], references: [id])
+  purchaseRequests  StockPurchaseRequest[]  @relation("StockBudgetPR")
+
+  @@unique([categoriaEnum, categoriaCustomId, ano, mes])
+  @@index([ano, mes])
+  @@index([active])
+  @@map("stock_budgets")
+}
+
+/// Verba de insumos por Ação (REQ 2026-05, opcional).
+/// Quando preenchida, qualquer PR vinculada à `acaoId` desconta deste teto.
+/// Permite gestão "essa carreta indo pra Imperatriz tem R$ 8.000 em insumos".
+model AcaoStockBudget {
+  id         String   @id @default(uuid())
+  acaoId     String   @unique
+  valorTeto  Decimal  @db.Decimal(12, 2)
+  observacao String?
+  active     Boolean  @default(true)
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  acao       Acao     @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  creator    User     @relation("AcaoStockBudgetCreator", fields: [createdBy], references: [id])
+
+  @@index([active])
+  @@map("acao_stock_budgets")
 }
 

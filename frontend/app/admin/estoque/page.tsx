@@ -1,1049 +1,1019 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { normalizeEstoqueHubTab, parseEstoqueHubPrStatus, type EstoqueHubTab } from '@/lib/estoque-hub-tabs';
+import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
+import { KpiRowGsr } from '@/components/estoque/gsr/KpiRowGsr';
+import { ListaInsumosGsr, type ListaInsumosRow } from '@/components/estoque/gsr/ListaInsumosGsr';
+import { SolicitacoesEstoquePanel } from '@/components/estoque/gsr/SolicitacoesEstoquePanel';
+import { MovimentacoesRecentesPanel } from '@/components/estoque/gsr/MovimentacoesRecentesPanel';
+import { MovimentacaoModal } from '@/components/estoque/MovimentacaoModal';
+import { NovoInsumoModal } from '@/components/estoque/NovoInsumoModal';
+import { EditarInsumoModal } from '@/components/estoque/EditarInsumoModal';
+import { StockItemAuditModal } from '@/components/estoque/gsr/StockItemAuditModal';
+import { EstoqueCaminhaoModal } from '@/components/estoque/EstoqueCaminhaoModal';
+import { FinancialDashboardPanel } from '@/components/estoque/gsr/FinancialDashboardPanel';
+import { OrquestradorInsumoModal } from '@/components/estoque/OrquestradorInsumoModal';
+import { SolicitarCompraModal } from '@/components/estoque/SolicitarCompraModal';
 import {
     stockApi,
     StockDashboard,
     StockItem,
-    StockMovement,
-    StockPurchaseRequest,
-    DashboardCategoryRow,
-    DashboardTruckRow,
-    MOV_TYPE_LABEL,
-    MOV_TYPE_COLOR,
-    MOV_TYPE_ICON,
-    CATEGORIA_LABEL,
-    CATEGORIA_COLOR,
-    CATEGORIA_ICON,
+    StockItemCategory,
+    StockCategory,
+    TruckStockItem,
+    getStockStatus,
+    getGlobalStockQuantity,
+    daysUntilExpiry,
+    defaultStockCategories,
 } from '@/lib/api/stock';
-import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
-import { EstoqueSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
-import { EstoqueKpiSidebar, EstoqueKpiKey } from '@/components/estoque/EstoqueKpiSidebar';
-import { MovimentacaoModal } from '@/components/estoque/MovimentacaoModal';
-import {
-    EstoqueSection,
-    EstoqueSectionHeader,
-    EstoqueEmptyState,
-    EstoqueLoadingState,
-    ESTOQUE_SECTION_CSS,
-} from '@/components/estoque/EstoqueSection';
+import { trucksApi, Truck } from '@/lib/api/trucks';
+import { toast } from '@/components/ui/Toast';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { exportEstoqueXlsx, exportEstoquePdfGeral, exportEstoquePdfCaminhao, exportEstoquePdfTodosCaminhoes } from '@/lib/exports/estoqueExport';
 
-// ═══════════════════════════════════════════════════════════════════
-//   CSS local (mesmo padrão de carretas/page.tsx)
-// ═══════════════════════════════════════════════════════════════════
-const ESTOQUE_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
-@keyframes est-fade-up { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-@keyframes est-scan { 0%,100%{top:0;opacity:.6} 50%{top:100%;opacity:.2} }
-@keyframes est-grid { 0%,100%{opacity:.08} 50%{opacity:.18} }
-@keyframes est-ring { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-@keyframes est-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
-@keyframes est-pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
-@keyframes est-slide-in { from{transform:translateX(-8px);opacity:0} to{transform:translateX(0);opacity:1} }
-`;
+const TAB_META: { id: EstoqueHubTab; label: string; icon: string }[] = [
+    { id: 'solicitacoes', label: 'Solicitações', icon: '🛒' },
+    { id: 'central', label: 'Estoque Central', icon: '📦' },
+    { id: 'caminhao', label: 'Estoque por Caminhão', icon: '🚛' },
+    { id: 'movimentacoes', label: 'Movimentações', icon: '↕' },
+    { id: 'financeiro', label: 'Visão Financeira', icon: '💰' },
+    
+];
 
-// ═══════════════════════════════════════════════════════════════════
-//   useCountUp (mesmo padrão de carretas)
-// ═══════════════════════════════════════════════════════════════════
-function useCountUp(target: number, duration = 1000) {
-    const [count, setCount] = useState(0);
-    const raf = useRef(0);
-    useEffect(() => {
-        if (target === 0) { setCount(0); return; }
-        const start = Date.now();
-        const tick = () => {
-            const p = Math.min((Date.now() - start) / duration, 1);
-            setCount(Math.round((1 - Math.pow(1 - p, 3)) * target));
-            if (p < 1) raf.current = requestAnimationFrame(tick);
-        };
-        raf.current = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf.current);
-    }, [target, duration]);
-    return count;
-}
 
-// ═══════════════════════════════════════════════════════════════════
-//   KpiCard — clicável (abre sidebar com explicação + ações rápidas)
-// ═══════════════════════════════════════════════════════════════════
-function KpiCard({
-    label, icon, value, color, delay = 0, onClick, suffix,
-}: {
-    label: string;
-    icon: string;
-    value: number;
-    color: string;
-    delay?: number;
-    onClick?: () => void;
-    suffix?: string;
-}) {
-    const n = useCountUp(value, 900);
-    const [hov, setHov] = useState(false);
 
-    return (
-        <div
-            onClick={onClick}
-            onMouseEnter={() => setHov(true)}
-            onMouseLeave={() => setHov(false)}
-            style={{
-                position: 'relative', overflow: 'hidden', borderRadius: 18, padding: '22px 24px',
-                background: '#fff',
-                borderStyle: 'solid',
-                borderWidth: '1px 1px 1px 4px',
-                borderTopColor: `${hov ? color + '70' : color + '25'}`,
-                borderRightColor: `${hov ? color + '70' : color + '25'}`,
-                borderBottomColor: `${hov ? color + '70' : color + '25'}`,
-                borderLeftColor: color,
-                boxShadow: hov ? `0 0 28px ${color}22, 0 8px 24px rgba(0,0,0,.08)` : `0 2px 8px rgba(0,0,0,.06)`,
-                transition: 'all .3s cubic-bezier(.175,.885,.32,1.275)',
-                transform: hov ? 'perspective(500px) rotateX(-3deg) translateY(-4px) scale(1.02)' : 'none',
-                animation: `est-fade-up .5s ${delay}ms both`,
-                cursor: onClick ? 'pointer' : 'default',
-                textDecoration: 'none',
-                color: 'inherit',
-                display: 'block',
-            }}>
-            {/* Grid bg */}
-            <div style={{
-                position: 'absolute', inset: 0, pointerEvents: 'none',
-                backgroundImage: `linear-gradient(${color}06 1px,transparent 1px),linear-gradient(90deg,${color}06 1px,transparent 1px)`,
-                backgroundSize: '24px 24px',
-                animation: 'est-grid 4s ease-in-out infinite',
-            }} />
-            {/* Scan */}
-            <div style={{
-                position: 'absolute', left: 0, right: 0, height: 1.5,
-                background: `linear-gradient(90deg,transparent,${color}50,transparent)`,
-                animation: 'est-scan 3.5s ease-in-out infinite',
-                top: 0, pointerEvents: 'none',
-            }} />
-            {/* Top accent */}
-            <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-                background: `linear-gradient(90deg,transparent,${color},transparent)`,
-                opacity: hov ? 1 : 0.4, transition: 'opacity .3s',
-            }} />
-            {/* Ring */}
-            <div style={{
-                position: 'absolute', top: -16, right: -16, width: 65, height: 65,
-                border: `1px solid ${color}18`, borderRadius: '50%',
-                animation: 'est-ring 10s linear infinite', pointerEvents: 'none',
-            }} />
+function EstoqueHubInner() {
+    const router = useRouter();
+    const sp = useSearchParams();
 
-            <div style={{ position: 'relative', zIndex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <span style={{
-                        width: 38, height: 38, borderRadius: 11, fontSize: '1.1rem',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: `linear-gradient(135deg,${color}22,${color}08)`,
-                        border: `1px solid ${color}35`,
-                        boxShadow: hov ? `0 0 14px ${color}40` : `0 0 6px ${color}15`,
-                        transition: 'box-shadow .3s',
-                    }}>{icon}</span>
-                    <div style={{
-                        width: 7, height: 7, borderRadius: '50%', background: color,
-                        animation: 'est-pulse-dot 1.8s infinite',
-                    }} />
-                </div>
-                <div style={{
-                    fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '2rem',
-                    color, lineHeight: 1, marginBottom: 4,
-                    filter: hov ? `drop-shadow(0 0 8px ${color}90)` : 'none',
-                    transition: 'filter .3s',
-                    animation: 'est-float 3s ease-in-out infinite',
-                }}>
-                    {n}{suffix && <span style={{ fontSize: '1rem', marginLeft: 4 }}>{suffix}</span>}
-                </div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9CA3AF' }}>
-                    {label}
-                </div>
-                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: color, marginTop: 6, opacity: hov ? 1 : 0.65, transition: 'opacity 0.2s' }}>
-                    Clique para detalhes →
-                </div>
-            </div>
-        </div>
-    );
-}
+    const tab = normalizeEstoqueHubTab(sp.get('tab'));
+    const truckIdParam = sp.get('truckId') || '';
+    const highlight = sp.get('highlight') || '';
+    const audit = sp.get('audit') === '1';
+    const auditAction = sp.get('action') || undefined;
+    const prStatusFromUrl = parseEstoqueHubPrStatus(sp.get('status'));
+    const prCategoriaFromUrl = (sp.get('categoria') || '') as StockItemCategory | '';
 
-// ═══════════════════════════════════════════════════════════════════
-//   MovementRow — linha de movimentação recente
-// ═══════════════════════════════════════════════════════════════════
-function MovementRow({ mov }: { mov: StockMovement }) {
-    const color = MOV_TYPE_COLOR[mov.type];
-    const icon = MOV_TYPE_ICON[mov.type];
-    const label = MOV_TYPE_LABEL[mov.type];
+    const hubCentralFiltersKey = useRef('');
 
-    const target = mov.fromTruck?.identifier
-        ? `de ${mov.fromTruck.identifier}${mov.toTruck?.identifier ? ` → ${mov.toTruck.identifier}` : ''}`
-        : mov.toTruck?.identifier
-            ? `→ ${mov.toTruck.identifier}`
-            : 'Central';
-
-    return (
-        <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '12px 14px', borderRadius: 10,
-            background: '#FAFBFC', border: '1px solid #F3F4F6',
-        }}>
-            <div style={{
-                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.1rem',
-                background: `${color}15`,
-                border: `1px solid ${color}35`,
-            }}>{icon}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {mov.stockItem?.nome ?? '—'}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: '#9CA3AF', marginTop: 2 }}>
-                    {label} · {target}
-                </div>
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 800, fontSize: '0.85rem', color }}>
-                    {Number(mov.quantidade).toFixed(2).replace('.', ',')}
-                </div>
-                <div style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>
-                    {new Date(mov.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//   PendingRequestRow — solicitação pendente
-// ═══════════════════════════════════════════════════════════════════
-function PendingRequestRow({ req }: { req: StockPurchaseRequest }) {
-    return (
-        <Link
-            href={`/admin/estoque/solicitacoes`}
-            style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '12px 14px', borderRadius: 10,
-                background: req.urgente ? 'rgba(239,68,68,0.06)' : '#FAFBFC',
-                border: `1px solid ${req.urgente ? 'rgba(239,68,68,0.25)' : '#F3F4F6'}`,
-                textDecoration: 'none', color: 'inherit',
-                transition: 'all 0.2s',
-            }}>
-            <div style={{
-                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1rem',
-                background: 'rgba(255,214,0,0.15)',
-                border: '1px solid rgba(255,214,0,0.4)',
-            }}>{req.urgente ? '🔥' : '🛒'}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {req.stockItem?.nome ?? 'Item'} {req.urgente && (
-                        <span style={{ fontSize: '0.6rem', color: '#DC2626', marginLeft: 4, fontWeight: 800 }}>URGENTE</span>
-                    )}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: '#9CA3AF', marginTop: 2 }}>
-                    {Number(req.quantidade).toFixed(0)} un · {req.requester?.name ?? 'Solicitante'}
-                </div>
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 800, fontSize: '0.85rem', color: '#B89B00' }}>
-                    R$ {Number(req.valorTotal).toFixed(2).replace('.', ',')}
-                </div>
-            </div>
-        </Link>
-    );
-}
-
-/**
- * Estilo padronizado para o link "Ver todos →" dentro dos headers de seção.
- * Combina com o accent da seção (cor do header, border, etc.).
- */
-function sectionActionStyle(color: string): React.CSSProperties {
-    return {
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '6px 12px', borderRadius: 9,
-        fontFamily: 'Orbitron, sans-serif', fontWeight: 700,
-        fontSize: '0.66rem', letterSpacing: '0.08em', textTransform: 'uppercase',
-        color,
-        background: `${color}10`,
-        border: `1px solid ${color}30`,
-        textDecoration: 'none',
-        cursor: 'pointer',
-        transition: 'all .2s',
-    };
-}
-
-const TRUCK_STATUS_LABEL: Record<string, string> = {
-    AVAILABLE: 'Disponível',
-    IN_USE: 'Em uso',
-    MAINTENANCE: 'Em manutenção',
-    INACTIVE: 'Inativa',
-    COM_ESTOQUE: 'Com estoque',
-};
-
-function truckStatusLabel(status?: string | null) {
-    if (!status) return 'Status não informado';
-    return TRUCK_STATUS_LABEL[status] ?? status.replace(/_/g, ' ').toLowerCase();
-}
-
-function buildTruckRowsFromItems(items: StockItem[]): DashboardTruckRow[] {
-    const buckets = new Map<string, DashboardTruckRow>();
-
-    for (const item of items) {
-        for (const stock of item.truckStocks ?? []) {
-            const qtd = Number(stock.quantidadeAtual ?? 0);
-            const truck = stock.truck;
-            if (!truck?.id || qtd <= 0) continue;
-
-            if (!buckets.has(truck.id)) {
-                buckets.set(truck.id, {
-                    truckId: truck.id,
-                    identifier: truck.identifier,
-                    licensePlate: truck.licensePlate,
-                    status: 'COM_ESTOQUE',
-                    totalItensDistintos: 0,
-                    quantidadeTotal: 0,
-                    valorEstimado: 0,
-                    itens: [],
-                });
-            }
-
-            const bucket = buckets.get(truck.id)!;
-            const preco = item.precoUnitario != null ? Number(item.precoUnitario) : 0;
-            const valor = qtd * preco;
-            bucket.totalItensDistintos += 1;
-            bucket.quantidadeTotal += qtd;
-            bucket.valorEstimado += valor;
-            bucket.itens.push({
-                id: item.id,
-                nome: item.nome,
-                unidade: item.unidade,
-                quantidade: qtd,
-                valor: Number(valor.toFixed(2)),
-                categoria: item.customCategory?.nome ?? CATEGORIA_LABEL[item.categoria],
-                icon: item.customCategory?.icon ?? CATEGORIA_ICON[item.categoria],
+    const setQuery = useCallback(
+        (next: Record<string, string | undefined>) => {
+            const q = new URLSearchParams(sp.toString());
+            Object.entries(next).forEach(([k, v]) => {
+                if (v === undefined || v === '') q.delete(k);
+                else q.set(k, v);
             });
-        }
-    }
+            const s = q.toString();
+            router.replace(s ? `/admin/estoque?${s}` : '/admin/estoque');
+        },
+        [router, sp],
+    );
 
-    return Array.from(buckets.values())
-        .map(row => ({
-            ...row,
-            quantidadeTotal: Number(row.quantidadeTotal.toFixed(3)),
-            valorEstimado: Number(row.valorEstimado.toFixed(2)),
-            itens: row.itens.sort((a, b) => b.quantidade - a.quantidade).slice(0, 12),
-        }))
-        .sort((a, b) => b.totalItensDistintos - a.totalItensDistintos);
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//   Página Principal
-// ═══════════════════════════════════════════════════════════════════
-export default function EstoqueDashboardPage() {
+    const [userRole, setUserRole] = useState('');
     const [dash, setDash] = useState<StockDashboard | null>(null);
-    const [recentMovs, setRecentMovs] = useState<StockMovement[]>([]);
-    const [pending, setPending] = useState<StockPurchaseRequest[]>([]);
-    const [byCategory, setByCategory] = useState<DashboardCategoryRow[]>([]);
-    const [byTruck, setByTruck] = useState<DashboardTruckRow[]>([]);
+    const [financialDash, setFinancialDash] = useState<any | null>(null);
+    const [items, setItems] = useState<StockItem[]>([]);
+    const [trucks, setTrucks] = useState<Truck[]>([]);
+    const [selectedTruckId, setSelectedTruckId] = useState(truckIdParam);
+    const [truckRows, setTruckRows] = useState<ListaInsumosRow[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeKpi, setActiveKpi] = useState<EstoqueKpiKey | null>(null);
-    const [movOpen, setMovOpen] = useState(false);
+    const [loadingTruck, setLoadingTruck] = useState(false);
+    const [solicitacoesRefreshKey, setSolicitacoesRefreshKey] = useState(0);
 
-    const load = useCallback(async () => {
-        try {
-            setLoading(true);
-            const [d, m, p, bc, bt, itemsForTruckFallback] = await Promise.all([
-                stockApi.dashboard(),
-                stockApi.movements.list({ limit: 6 }),
-                stockApi.purchaseRequests.list({ status: 'PENDENTE' }).catch(() => []),
-                stockApi.dashboardByCategory().catch(() => []),
-                stockApi.dashboardByTruck().catch(() => []),
-                stockApi.items.getAll().catch(() => []),
-            ]);
-            setDash(d);
-            setRecentMovs(m);
-            setPending(p.slice(0, 5));
-            setByCategory(bc);
-            setByTruck(bt.length > 0 ? bt : buildTruckRowsFromItems(itemsForTruckFallback));
-        } catch (e) {
-            console.error('[Estoque] erro ao carregar dashboard', e);
-        } finally {
-            setLoading(false);
+    const [search, setSearch] = useState('');
+    const [categoria, setCategoria] = useState<string>('all');
+    const [statusF, setStatusF] = useState<'all' | 'CRITICO' | 'BAIXO' | 'OK' | 'SEM_MINIMO'>('all');
+    const [vencF, setVencF] = useState<'all' | '30' | 'expired'>('all');
+
+    const [allCategories, setAllCategories] = useState<StockCategory[]>(() => defaultStockCategories());
+    useEffect(() => {
+        stockApi.categories.list()
+            .then(setAllCategories)
+            .catch(() => { /* mantém as categorias default já carregadas */ });
+    }, []);
+
+    const CATEGORIAS_OPTIONS = useMemo(() => {
+        const opts: { value: string; label: string }[] = [{ value: 'all', label: 'Todas as categorias' }];
+        allCategories.forEach(c => {
+            opts.push({ value: c.defaultEnum ?? c.id, label: c.nome });
+        });
+        return opts;
+    }, [allCategories]);
+
+    useEffect(() => {
+        if (tab !== 'central') return;
+        const key = `${sp.get('onlyLow')}|${sp.get('onlyExpiring')}`;
+        if (hubCentralFiltersKey.current === key) return;
+        hubCentralFiltersKey.current = key;
+        if (sp.get('onlyLow') === 'true') setStatusF('BAIXO');
+        if (sp.get('onlyExpiring') === 'true') setVencF('30');
+    }, [tab, sp]);
+
+    const [movOpen, setMovOpen] = useState(false);
+    const [movItemId, setMovItemId] = useState<string | undefined>();
+    const [movTruckId, setMovTruckId] = useState<string | undefined>();
+
+    const [auditOpen, setAuditOpen] = useState(false);
+    const [auditItemId, setAuditItemId] = useState<string | null>(null);
+    const [auditNome, setAuditNome] = useState('');
+
+    const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
+
+    const [orquestradorOpen, setOrquestradorOpen] = useState(false);
+    const [novoOpen, setNovoOpen] = useState(false);
+    const [solicitarItem, setSolicitarItem] = useState<StockItem | null>(null);
+    const [editItemId, setEditItemId] = useState<string | null>(null);
+
+    const [truckModalOpen, setTruckModalOpen] = useState(false);
+    const [truckModalId, setTruckModalId] = useState<string | undefined>();
+    const [truckModalName, setTruckModalName] = useState<string | undefined>();
+
+    useEffect(() => {
+        const u = sessionStorage.getItem('user') || localStorage.getItem('user');
+        if (u) {
+            try {
+                setUserRole(JSON.parse(u).role || '');
+            } catch {
+                setUserRole('');
+            }
         }
     }, []);
 
-    useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        setSelectedTruckId(truckIdParam);
+    }, [truckIdParam]);
+
+    const loadDashboard = useCallback(async () => {
+        try {
+            const [d, f] = await Promise.all([
+                stockApi.dashboard(),
+                stockApi.financialDashboard(),
+            ]);
+            setDash(d);
+            setFinancialDash(f);
+        } catch {
+            setDash(null);
+            setFinancialDash(null);
+        }
+    }, []);
+
+    const loadItems = useCallback(async () => {
+        try {
+            const isCustom = categoria !== 'all' && categoria.includes('-'); // IDs customizados usam UUID (tem '-')
+            const data = await stockApi.items.getAll({
+                search: search.trim() || undefined,
+                categoria: categoria === 'all' || isCustom ? undefined : (categoria as StockItemCategory),
+                customCategoryId: isCustom ? categoria : undefined,
+            });
+            setItems(data);
+        } catch (e) {
+            console.error(e);
+            toast.error('Erro ao carregar itens');
+        }
+    }, [search, categoria]);
+
+    const loadTrucks = useCallback(async () => {
+        try {
+            const t = await trucksApi.getAll();
+            setTrucks(t);
+        } catch {
+            setTrucks([]);
+        }
+    }, []);
+
+    const loadTruckStock = useCallback(async (tid: string) => {
+        if (!tid) {
+            setTruckRows([]);
+            return;
+        }
+        setLoadingTruck(true);
+        try {
+            const data = await stockApi.trucks.getStock(tid);
+            const mapped: ListaInsumosRow[] = (data.stocks || [])
+                .map((ts: TruckStockItem) => {
+                    const it = ts.stockItem;
+                    if (!it) return null;
+                    const merged = { ...it, quantidadeAtual: ts.quantidadeAtual as any } as StockItem;
+                    return { item: merged, quantidadeExibida: Number(ts.quantidadeAtual) };
+                })
+                .filter(Boolean) as ListaInsumosRow[];
+            setTruckRows(mapped);
+        } catch (e) {
+            console.error(e);
+            toast.error('Erro ao carregar estoque da carreta');
+        } finally {
+            setLoadingTruck(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        (async () => {
+            setLoading(true);
+            await Promise.all([loadDashboard(), loadItems(), loadTrucks()]);
+            setLoading(false);
+        })();
+    }, [loadDashboard, loadItems, loadTrucks]);
+
+    useEffect(() => {
+        if (tab !== 'caminhao') return;
+        const tid = selectedTruckId || trucks[0]?.id;
+        if (tid) loadTruckStock(tid);
+    }, [tab, selectedTruckId, trucks, loadTruckStock]);
+
+    const centralRows: ListaInsumosRow[] = useMemo(() => {
+        return items
+            .filter((it) => {
+                const st = getStockStatus(it);
+                if (statusF !== 'all' && st !== statusF) return false;
+                if (vencF === 'all') return true;
+                const d = daysUntilExpiry(it);
+                if (vencF === '30') return d !== null && d >= 0 && d <= 30;
+                if (vencF === 'expired') return d !== null && d < 0;
+                return true;
+            })
+            .map((it) => ({
+                item: it,
+                // Quantidade Central = apenas o que está no depósito central (item.quantidadeAtual)
+                // Status e mínimo continuam usando getGlobalStockQuantity (central + carretas) via getStockStatus
+                quantidadeExibida: Number(it.quantidadeAtual),
+            }));
+    }, [items, statusF, vencF]);
+
+    const [exportingXlsx, setExportingXlsx] = useState(false);
+    const [exportingPdfGeral, setExportingPdfGeral] = useState(false);
+    const [exportingPdfCaminhao, setExportingPdfCaminhao] = useState(false);
+
+    const handleExportXlsx = useCallback(async () => {
+        setExportingXlsx(true);
+        try {
+            const movData = await stockApi.movements.list({ limit: 1000 });
+            const movRows = Array.isArray(movData) ? movData : [];
+            const rows = items.map(it => ({
+                ...it,
+                quantidadeAtual: Number(it.quantidadeAtual),
+                quantidadeMinima: Number(it.quantidadeMinima),
+                precoUnitario: it.precoUnitario ? Number(it.precoUnitario) : 0,
+                status: getStockStatus(it),
+            }));
+            await exportEstoqueXlsx(rows, Array.isArray(movRows) ? movRows : []);
+            toast.success('XLSX gerado com sucesso!');
+        } catch (e) {
+            console.error(e);
+            toast.error('Erro ao gerar XLSX');
+        } finally {
+            setExportingXlsx(false);
+        }
+    }, [items]);
+
+    const handleExportPdfGeral = useCallback(() => {
+        setExportingPdfGeral(true);
+        try {
+            const rows = items.map(it => ({
+                ...it,
+                quantidadeAtual: Number(it.quantidadeAtual),
+                quantidadeMinima: Number(it.quantidadeMinima),
+                precoUnitario: it.precoUnitario ? Number(it.precoUnitario) : 0,
+                status: getStockStatus(it),
+            }));
+            exportEstoquePdfGeral(rows, financialDash);
+            toast.success('PDF aberto para impressão!');
+        } catch (e) {
+            console.error(e);
+            toast.error('Erro ao gerar PDF');
+        } finally {
+            setExportingPdfGeral(false);
+        }
+    }, [items, financialDash]);
+
+    const [pdfCaminhaoMenu, setPdfCaminhaoMenu] = useState(false);
+
+    const handleExportPdfUmCaminhao = useCallback(async (truckId: string, truckIdentifier: string) => {
+        setPdfCaminhaoMenu(false);
+        setExportingPdfCaminhao(true);
+        try {
+            const data = await stockApi.trucks.getStock(truckId);
+            const stocks = (data.stocks || []).map((ts: any) => ({
+                stockItem: ts.stockItem ? {
+                    nome: ts.stockItem.nome,
+                    unidade: ts.stockItem.unidade,
+                    categoria: ts.stockItem.categoria,
+                    precoUnitario: ts.stockItem.precoUnitario ? Number(ts.stockItem.precoUnitario) : 0,
+                } : null,
+                quantidadeAtual: Number(ts.quantidadeAtual),
+            }));
+            exportEstoquePdfCaminhao(truckIdentifier, stocks);
+            toast.success(`PDF da carreta ${truckIdentifier} aberto!`);
+        } catch (e) {
+            console.error(e);
+            toast.error('Erro ao gerar PDF da carreta');
+        } finally {
+            setExportingPdfCaminhao(false);
+        }
+    }, []);
+
+    const handleExportPdfTodosCaminhoes = useCallback(async () => {
+        setPdfCaminhaoMenu(false);
+        setExportingPdfCaminhao(true);
+        try {
+            if (trucks.length === 0) { toast.error('Nenhuma carreta encontrada'); setExportingPdfCaminhao(false); return; }
+            // Buscar estoque de cada carreta em paralelo
+            const allTruckStocks = await Promise.all(
+                trucks.map(async (t) => {
+                    try {
+                        const data = await stockApi.trucks.getStock(t.id);
+                        const stocks = (data.stocks || []).map((ts: any) => ({
+                            stockItem: ts.stockItem ? {
+                                nome: ts.stockItem.nome,
+                                unidade: ts.stockItem.unidade,
+                                categoria: ts.stockItem.categoria,
+                                precoUnitario: ts.stockItem.precoUnitario ? Number(ts.stockItem.precoUnitario) : 0,
+                            } : null,
+                            quantidadeAtual: Number(ts.quantidadeAtual),
+                        }));
+                        return { identifier: t.identifier, stocks };
+                    } catch {
+                        return { identifier: t.identifier, stocks: [] };
+                    }
+                })
+            );
+            exportEstoquePdfTodosCaminhoes(allTruckStocks);
+            toast.success('PDF consolidado de todas as carretas aberto!');
+        } catch (e) {
+            console.error(e);
+            toast.error('Erro ao gerar PDF de todas as carretas');
+        } finally {
+            setExportingPdfCaminhao(false);
+        }
+    }, [trucks]);
+
+
+
+    const changeTab = (t: EstoqueHubTab) => {
+        const tid = t === 'caminhao' ? selectedTruckId || trucks[0]?.id || '' : '';
+        if (t === 'caminhao' && tid && !selectedTruckId) setSelectedTruckId(tid);
+        const q = new URLSearchParams(sp.toString());
+        if (t === 'central') q.delete('tab');
+        else q.set('tab', t);
+        if (t === 'caminhao' && tid) q.set('truckId', tid);
+        else q.delete('truckId');
+        if (t !== 'movimentacoes') {
+            q.delete('audit');
+            q.delete('action');
+        }
+        const s = q.toString();
+        router.replace(s ? `/admin/estoque?${s}` : '/admin/estoque');
+    };
+
+    /* ── Upgrade select style ── */
+    const selectStyle: React.CSSProperties = {
+        width: '100%',
+        marginTop: 4,
+        padding: '9px 12px',
+        borderRadius: 10,
+        border: '1.5px solid #E2E8F0',
+        background: '#FFFFFF',
+        fontSize: '0.82rem',
+        color: '#0F172A',
+        fontWeight: 600,
+        outline: 'none',
+        transition: 'border-color 0.2s, box-shadow 0.2s',
+        appearance: 'auto' as const,
+    };
+
+    const labelStyle: React.CSSProperties = {
+        fontSize: '0.62rem',
+        fontWeight: 800,
+        color: '#B89B00',
+        textTransform: 'uppercase',
+        letterSpacing: '0.1em',
+    };
 
     return (
-        <>
-            <style>{ESTOQUE_CSS}</style>
-            <style>{ESTOQUE_SECTION_CSS}</style>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }} className="animate-fade-in">
 
-                <AdminHeaderHero
-                    title="ESTOQUE"
-                    subtitle="Monitoramento centralizado de insumos, saldos e movimentações"
-                    badge="Gestão de Insumos"
-                    rightSlot={(
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            <button
-                                type="button"
-                                onClick={() => setMovOpen(true)}
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                                    padding: '10px 18px', borderRadius: 12, cursor: 'pointer',
-                                    background: 'rgba(255,255,255,0.06)',
-                                    color: '#fff',
-                                    border: '1px solid rgba(99,102,241,0.5)',
-                                    fontWeight: 700, fontSize: '0.78rem',
-                                    fontFamily: 'Orbitron, sans-serif', letterSpacing: '.04em',
-                                }}>
-                                ↔ Nova movimentação
-                            </button>
-                            <Link
-                                href="/admin/estoque/movimentacoes"
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                                    padding: '10px 18px', borderRadius: 12, textDecoration: 'none',
-                                    background: 'rgba(255,255,255,0.06)',
-                                    color: '#fff',
-                                    border: '1px solid rgba(99,102,241,0.4)',
-                                    fontWeight: 700, fontSize: '0.78rem',
-                                    fontFamily: 'Orbitron, sans-serif', letterSpacing: '.04em',
-                                }}>
-                                ↔ Movimentações
-                            </Link>
-                            <Link
-                                href="/admin/estoque/solicitacoes"
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                                    padding: '10px 18px', borderRadius: 12, textDecoration: 'none',
-                                    background: 'rgba(255,255,255,0.06)',
-                                    color: '#fff',
-                                    border: '1px solid rgba(245,158,11,0.5)',
-                                    fontWeight: 700, fontSize: '0.78rem',
-                                    fontFamily: 'Orbitron, sans-serif', letterSpacing: '.04em',
-                                }}>
-                                🛒 Solicitações
-                            </Link>
-                            <Link
-                                href="/admin/estoque/itens"
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                                    padding: '10px 18px', borderRadius: 12, textDecoration: 'none',
-                                    background: 'rgba(255,255,255,0.06)',
-                                    color: '#fff',
-                                    border: '1px solid rgba(8,145,178,0.5)',
-                                    fontWeight: 700, fontSize: '0.78rem',
-                                    fontFamily: 'Orbitron, sans-serif', letterSpacing: '.04em',
-                                }}>
-                                📦 Estoque completo
-                            </Link>
-                            <Link
-                                href="/admin/estoque/baixa-acao"
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                                    padding: '10px 18px', borderRadius: 12, textDecoration: 'none',
-                                    background: 'rgba(255,255,255,0.06)',
-                                    color: '#fff',
-                                    border: '1px solid rgba(14,165,233,0.5)',
-                                    fontWeight: 700, fontSize: '0.78rem',
-                                    fontFamily: 'Orbitron, sans-serif', letterSpacing: '.04em',
-                                }}>
-                                ↧ Baixa por ação
-                            </Link>
-                            <Link
-                                href="/admin/estoque/historico"
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                                    padding: '10px 18px', borderRadius: 12, textDecoration: 'none',
-                                    background: 'rgba(255,255,255,0.06)',
-                                    color: '#fff',
-                                    border: '1px solid rgba(168,85,247,0.4)',
-                                    fontWeight: 700, fontSize: '0.78rem',
-                                    fontFamily: 'Orbitron, sans-serif', letterSpacing: '.04em',
-                                }}>
-                                🕐 Auditoria
-                            </Link>
-                            <Link
-                                href="/admin/estoque/itens/novo"
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                                    padding: '10px 22px', borderRadius: 12, textDecoration: 'none',
-                                    background: 'linear-gradient(135deg,#FFD600,#E6A800)',
-                                    color: '#000',
-                                    fontWeight: 800, fontSize: '0.82rem',
-                                    fontFamily: 'Orbitron, sans-serif', letterSpacing: '.04em',
-                                    boxShadow: '0 0 18px rgba(255,214,0,.4), 0 4px 12px rgba(0,0,0,.12)',
-                                }}>
-                                ⚡ Novo Item
-                            </Link>
-                        </div>
-                    )}
-                />
-
-                <EstoqueSidebarTutorial />
-
-                {/* ── KPI GRID — 7 cartões (cada um abre sidebar de detalhes) ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: '1rem' }}>
-                    <KpiCard
-                        label="Itens cadastrados"
-                        icon="📦"
-                        value={dash?.totalAtivos ?? 0}
-                        color="#0891B2"
-                        onClick={() => setActiveKpi('totalAtivos')}
-                        delay={0}
-                    />
-                    <KpiCard
-                        label="Saldo em carretas"
-                        icon="🚛"
-                        value={Math.floor(dash?.saldoCarretas ?? 0)}
-                        color="#7C3AED"
-                        onClick={() => setActiveKpi('saldoCarretas')}
-                        delay={60}
-                    />
-                    <KpiCard
-                        label="Estoque crítico"
-                        icon="🚨"
-                        value={dash?.alertasEstoqueCritico ?? 0}
-                        color="#DC2626"
-                        onClick={() => setActiveKpi('estoqueCritico')}
-                        delay={120}
-                    />
-                    <KpiCard
-                        label="Estoque baixo"
-                        icon="⚠️"
-                        value={(dash?.alertasEstoqueBaixoNaoCritico ?? Math.max(0, (dash?.alertasEstoqueBaixo ?? 0) - (dash?.alertasEstoqueCritico ?? 0)))}
-                        color="#F59E0B"
-                        onClick={() => setActiveKpi('estoqueBaixo')}
-                        delay={180}
-                    />
-                    <KpiCard
-                        label="Vencendo (30d)"
-                        icon="⏰"
-                        value={dash?.alertasVencendo ?? 0}
-                        color="#EA580C"
-                        onClick={() => setActiveKpi('vencendo')}
-                        delay={240}
-                    />
-                    <KpiCard
-                        label="Solicitações pendentes"
-                        icon="🛒"
-                        value={dash?.solicitacoesPendentes ?? 0}
-                        color="#FFD600"
-                        onClick={() => setActiveKpi('solicitacoesPendentes')}
-                        delay={300}
-                    />
-                    <KpiCard
-                        label="Em trânsito"
-                        icon="📦"
-                        value={dash?.itensEmTransito ?? 0}
-                        color="#3B82F6"
-                        onClick={() => setActiveKpi('emTransito')}
-                        delay={360}
-                    />
-                    <KpiCard
-                        label="Movimentações no mês"
-                        icon="🔄"
-                        value={dash?.movimentacoesMes ?? 0}
-                        color="#059669"
-                        onClick={() => setActiveKpi('movimentacoesMes')}
-                        delay={420}
-                    />
-                </div>
-
-                {/* Sidebar lateral à esquerda com detalhes do KPI selecionado */}
-                <EstoqueKpiSidebar
-                    kpi={activeKpi}
-                    dash={dash}
-                    onClose={() => setActiveKpi(null)}
-                />
-
-                {/* Modal único de movimentação (Entrada / Saída / Transferência / Devolução / Ajuste / Perda) */}
-                <MovimentacaoModal
-                    open={movOpen}
-                    onClose={() => setMovOpen(false)}
-                    onSuccess={() => { load(); }}
-                />
-
-
-                {/* ── Valor total estimado ── */}
-                {dash && dash.valorTotalEstimado > 0 && (
-                    <div style={{
-                        padding: '1.25rem 1.5rem', borderRadius: 16,
-                        background: 'linear-gradient(135deg, #FFFDE7, #FFF9C4)',
-                        border: '1.5px solid #FEF08A',
-                        display: 'flex', alignItems: 'center', gap: 16,
-                        animation: 'est-fade-up 0.5s 360ms both',
-                    }}>
-                        <div style={{
-                            width: 52, height: 52, borderRadius: 14, flexShrink: 0,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '1.4rem',
-                            background: 'linear-gradient(135deg, #FFD600, #E6A800)',
-                            boxShadow: '0 4px 14px rgba(255,214,0,0.35)',
-                        }}>💰</div>
-                        <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: '#B89B00' }}>
-                                Valor total estimado do estoque
-                            </div>
-                            <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.75rem', color: '#7C5A00', lineHeight: 1.1, marginTop: 4 }}>
-                                R$ {dash.valorTotalEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 4 }}>
-                                Soma de (quantidade no central × preço unitário) para itens com preço cadastrado
-                            </div>
-                        </div>
+            {/* ── HERO HEADER ── */}
+            <AdminHeaderHero
+                title="CONTROLE DE ESTOQUE"
+                subtitle="Gestão completa de insumos e movimentações"
+                rightSlot={
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <button
+                            type="button"
+                            onClick={() => setOrquestradorOpen(true)}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '10px 20px',
+                                borderRadius: 10,
+                                background: 'linear-gradient(135deg, #FFD600 0%, #E5B800 100%)',
+                                color: '#0F172A',
+                                fontWeight: 800,
+                                fontSize: '0.82rem',
+                                border: 'none',
+                                cursor: 'pointer',
+                                boxShadow: '0 4px 14px rgba(255,214,0,0.35)',
+                                transition: 'transform 0.15s, box-shadow 0.15s',
+                                fontFamily: 'Orbitron, sans-serif',
+                                letterSpacing: '0.04em',
+                            }}
+                        >
+                            + NOVO INSUMO
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMovItemId(undefined);
+                                setMovTruckId(undefined);
+                                setMovOpen(true);
+                            }}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '10px 20px',
+                                borderRadius: 10,
+                                border: '2px solid rgba(255,214,0,0.5)',
+                                background: 'rgba(255,214,0,0.12)',
+                                color: '#FFD600',
+                                fontWeight: 800,
+                                fontSize: '0.82rem',
+                                cursor: 'pointer',
+                                fontFamily: 'Orbitron, sans-serif',
+                                letterSpacing: '0.04em',
+                                transition: 'background 0.15s',
+                            }}
+                        >
+                            ↕ MOVIMENTAÇÃO
+                        </button>
                     </div>
-                )}
-
-                {/* ── 2 colunas: solicitações pendentes + movimentações recentes ── */}
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-                    gap: '1.25rem',
-                }}>
-                    {/* SOLICITAÇÕES PENDENTES */}
-                    <EstoqueSection delay={420} accent="#F59E0B">
-                        <EstoqueSectionHeader
-                            icon="🛒"
-                            title="Solicitações pendentes"
-                            subtitle="Compras aguardando aprovação para gerar uma conta a pagar"
-                            accent="#F59E0B"
-                            action={
-                                <Link href="/admin/estoque/solicitacoes" style={sectionActionStyle('#B45309')}>
-                                    Ver todas →
-                                </Link>
-                            }
-                        />
-                        {loading ? (
-                            <EstoqueLoadingState />
-                        ) : pending.length === 0 ? (
-                            <EstoqueEmptyState icon="✅" label="Nenhuma solicitação pendente" />
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {pending.map(req => <PendingRequestRow key={req.id} req={req} />)}
-                            </div>
-                        )}
-                    </EstoqueSection>
-
-                    {/* MOVIMENTAÇÕES RECENTES */}
-                    <EstoqueSection delay={480} accent="#059669">
-                        <EstoqueSectionHeader
-                            icon="🔄"
-                            title="Movimentações recentes"
-                            subtitle="Últimas variações de saldo (Entrada, Saída, Transferência…)"
-                            accent="#059669"
-                            action={
-                                <Link href="/admin/estoque/movimentacoes" style={sectionActionStyle('#047857')}>
-                                    Ver histórico →
-                                </Link>
-                            }
-                        />
-                        {loading ? (
-                            <EstoqueLoadingState />
-                        ) : recentMovs.length === 0 ? (
-                            <EstoqueEmptyState icon="🔄" label="Nenhuma movimentação registrada ainda" />
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {recentMovs.map(m => <MovementRow key={m.id} mov={m} />)}
-                            </div>
-                        )}
-                    </EstoqueSection>
-                </div>
-
-                {/* ── VISÃO POR CATEGORIA ── */}
-                <SectionByCategory rows={byCategory} loading={loading} />
-
-                {/* ── VISÃO POR CARRETA ── */}
-                <SectionByTruck rows={byTruck} loading={loading} />
-
-                {/* ── AÇÕES RÁPIDAS — todas as áreas do módulo (atalho direto do dashboard) ── */}
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                    gap: '1rem',
-                }}>
-                    <QuickActionCard
-                        href="/admin/estoque/itens"
-                        icon="📦"
-                        title="EXPLORAR TODOS OS ITENS"
-                        subtitle="Visualizar, filtrar por categoria, editar e gerenciar saldo individual"
-                        gradient="linear-gradient(135deg, #FFFDE7 0%, #fff 100%)"
-                        borderColor="#FEF08A"
-                        iconBg="linear-gradient(135deg, #FFD600, #E6A800)"
-                        iconColor="#7C5A00"
-                        arrowColor="#B89B00"
-                        delay={540}
-                    />
-                    <QuickActionCard
-                        href="/admin/estoque/movimentacoes"
-                        icon="🔄"
-                        title="MOVIMENTAÇÕES RECENTES"
-                        subtitle="Toda entrada, saída, transferência, ajuste, perda, devolução e reposição"
-                        gradient="linear-gradient(135deg, #ECFDF5 0%, #fff 100%)"
-                        borderColor="#A7F3D0"
-                        iconBg="linear-gradient(135deg, #10B981, #059669)"
-                        iconColor="#065F46"
-                        arrowColor="#059669"
-                        delay={600}
-                    />
-                    <QuickActionCard
-                        href="/admin/estoque/solicitacoes"
-                        icon="🛒"
-                        title="SOLICITAÇÕES PENDENTES"
-                        subtitle="Aprovar/rejeitar compras de reposição — gera movimentação e conta a pagar"
-                        gradient="linear-gradient(135deg, #FFF7ED 0%, #fff 100%)"
-                        borderColor="#FED7AA"
-                        iconBg="linear-gradient(135deg, #F59E0B, #D97706)"
-                        iconColor="#7C2D12"
-                        arrowColor="#EA580C"
-                        delay={660}
-                    />
-                    <QuickActionCard
-                        href="/admin/estoque/baixa-acao"
-                        icon="↧"
-                        title="BAIXA DE ESTOQUE POR AÇÃO"
-                        subtitle="Fechamento do ciclo — consumir o kit de insumos por ação/curso"
-                        gradient="linear-gradient(135deg, #F0F9FF 0%, #fff 100%)"
-                        borderColor="#BAE6FD"
-                        iconBg="linear-gradient(135deg, #38BDF8, #0EA5E9)"
-                        iconColor="#075985"
-                        arrowColor="#0EA5E9"
-                        delay={720}
-                    />
-                    <QuickActionCard
-                        href="/admin/carretas"
-                        icon="🚛"
-                        title="CARRETAS"
-                        subtitle="Unidades móveis — estoque por carreta, manutenção e abastecimento"
-                        gradient="linear-gradient(135deg, #F5F3FF 0%, #fff 100%)"
-                        borderColor="#DDD6FE"
-                        iconBg="linear-gradient(135deg, #8B5CF6, #7C3AED)"
-                        iconColor="#5B21B6"
-                        arrowColor="#7C3AED"
-                        delay={780}
-                    />
-                    <QuickActionCard
-                        href="/admin/estoque/historico"
-                        icon="📜"
-                        title="HISTÓRICO DE AUDITORIA"
-                        subtitle="Quem, quando, o quê, por quê — rastreamento completo da área de estoque"
-                        gradient="linear-gradient(135deg, #EEF2FF 0%, #fff 100%)"
-                        borderColor="#C7D2FE"
-                        iconBg="linear-gradient(135deg, #6366F1, #4F46E5)"
-                        iconColor="#312E81"
-                        arrowColor="#4F46E5"
-                        delay={840}
-                    />
-                </div>
-            </div>
-        </>
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//   SectionByCategory — grade com 1 card por categoria (default + custom)
-// ═══════════════════════════════════════════════════════════════════
-function SectionByCategory({ rows, loading }: { rows: DashboardCategoryRow[]; loading: boolean }) {
-    return (
-        <EstoqueSection delay={780} accent="#0891B2">
-            <EstoqueSectionHeader
-                icon="🏷️"
-                title="Visão por Categoria"
-                subtitle="Quantidade de itens, saldo e valor por categoria. Clique para filtrar."
-                accent="#0891B2"
-            />
-
-            {loading ? (
-                <EstoqueLoadingState />
-            ) : rows.length === 0 ? (
-                <EstoqueEmptyState icon="🏷️" label="Nenhuma categoria com itens" />
-            ) : (
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                    gap: '1rem',
-                }}>
-                    {rows.map(r => {
-                        const href = r.tipo === 'custom'
-                            ? `/admin/estoque/itens?customCategoryId=${r.customCategoryId}`
-                            : `/admin/estoque/itens?categoria=${r.categoriaEnum}`;
-                        const hasCritical = r.qtdCritica > 0;
-                        return (
-                            <Link key={r.key} href={href} style={{
-                                textDecoration: 'none', display: 'block',
-                                padding: '1rem 1.05rem', borderRadius: 14,
-                                background: `linear-gradient(135deg, ${r.color}10 0%, #FFFFFF 72%)`,
-                                borderStyle: 'solid',
-                                borderWidth: '1px 1px 1px 4px',
-                                borderTopColor: `${r.color}25`,
-                                borderRightColor: `${r.color}25`,
-                                borderBottomColor: `${r.color}25`,
-                                borderLeftColor: r.color,
-                                boxShadow: '0 2px 10px rgba(0,0,0,.05)',
-                                transition: 'all .2s',
-                                position: 'relative',
-                                overflow: 'hidden',
-                            }}>
-                                <div style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-                                    background: `linear-gradient(90deg, transparent, ${r.color}, transparent)`,
-                                    opacity: 0.55, pointerEvents: 'none',
-                                }} />
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                    <div style={{
-                                        width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-                                        background: `linear-gradient(135deg, ${r.color}25, ${r.color}08)`,
-                                        border: `1.5px solid ${r.color}55`,
-                                        boxShadow: `0 0 10px ${r.color}25`,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '1.15rem',
-                                    }}>{r.icon}</div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 800, fontSize: '0.78rem', letterSpacing: '0.04em', color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {r.nome}
-                                            {r.tipo === 'custom' && (
-                                                <span title="Customizada" style={{
-                                                    marginLeft: 5, fontSize: '0.5rem', fontWeight: 800,
-                                                    background: r.color, color: '#fff', padding: '1px 5px', borderRadius: 5,
-                                                }}>★</span>
-                                            )}
-                                        </div>
-                                        <div style={{ fontSize: '0.62rem', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                                            {r.totalItens} {r.totalItens === 1 ? 'item' : 'itens'}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: 5 }}>
-                                    <span style={{ color: '#6B7280', fontWeight: 600 }}>Saldo</span>
-                                    <span style={{ color: r.color, fontWeight: 800, fontFamily: 'Orbitron, sans-serif' }}>
-                                        {Math.floor(r.saldoCentral).toLocaleString('pt-BR')}
-                                    </span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                                    <span style={{ color: '#6B7280', fontWeight: 600 }}>Valor</span>
-                                    <span style={{ color: '#111827', fontWeight: 800, fontFamily: 'Orbitron, sans-serif', fontSize: '0.7rem' }}>
-                                        R$ {r.valorEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </span>
-                                </div>
-
-                                {(hasCritical || r.qtdBaixa > 0) && (
-                                    <div style={{
-                                        marginTop: 8, paddingTop: 8, borderTop: '1px dashed #E5E7EB',
-                                        display: 'flex', flexWrap: 'wrap', gap: 4, fontSize: '0.62rem',
-                                    }}>
-                                        {hasCritical && (
-                                            <span style={{
-                                                padding: '2px 6px', borderRadius: 5, fontWeight: 800,
-                                                background: '#FEF2F2', color: '#DC2626',
-                                                border: '1px solid #FECACA',
-                                            }}>⚠ {r.qtdCritica} crít.</span>
-                                        )}
-                                        {r.qtdBaixa > 0 && (
-                                            <span style={{
-                                                padding: '2px 6px', borderRadius: 5, fontWeight: 800,
-                                                background: '#FFFBEB', color: '#92400E',
-                                                border: '1px solid #FDE68A',
-                                            }}>⏳ {r.qtdBaixa} baixo</span>
-                                        )}
-                                    </div>
-                                )}
-                                {r.saldoEmTransito > 0 && (
-                                    <div style={{ marginTop: 4, fontSize: '0.62rem', color: '#0891B2', fontWeight: 700 }}>
-                                        📦 {Math.floor(r.saldoEmTransito)} em trânsito
-                                    </div>
-                                )}
-                            </Link>
-                        );
-                    })}
-                </div>
-            )}
-        </EstoqueSection>
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//   SectionByTruck — grade com 1 card por carreta
-// ═══════════════════════════════════════════════════════════════════
-function SectionByTruck({ rows, loading }: { rows: DashboardTruckRow[]; loading: boolean }) {
-    return (
-        <EstoqueSection delay={840} accent="#7C3AED">
-            <EstoqueSectionHeader
-                icon="🚛"
-                title="Visão por Carreta"
-                subtitle="Itens distintos, quantidade total e valor por unidade móvel. Clique para abrir."
-                accent="#7C3AED"
-                action={
-                    <Link href="/admin/carretas" style={sectionActionStyle('#7C3AED')}>
-                        Ver todas →
-                    </Link>
                 }
             />
 
-            {loading ? (
-                <EstoqueLoadingState />
-            ) : rows.length === 0 ? (
-                <EstoqueEmptyState icon="🚛" label="Nenhuma carreta com estoque registrada" />
-            ) : (
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-                    gap: '1rem',
+            {/* ── KPI CARDS ── */}
+            <KpiRowGsr dash={dash} />
+
+            {/* ── TABS ── */}
+            <div style={{ display: 'flex', gap: 4, borderBottom: '2px solid #E2E8F0', flexWrap: 'wrap' }}>
+                {TAB_META.map((t) => (
+                    <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => changeTab(t.id)}
+                        style={{
+                            padding: '12px 20px',
+                            border: 'none',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                            fontSize: '0.82rem',
+                            color: tab === t.id ? '#B89B00' : '#64748B',
+                            borderBottom: tab === t.id ? '3px solid #B89B00' : '3px solid transparent',
+                            marginBottom: -2,
+                            fontFamily: tab === t.id ? 'Orbitron, sans-serif' : 'inherit',
+                            letterSpacing: tab === t.id ? '0.04em' : 'normal',
+                            transition: 'color 0.2s, border-color 0.2s',
+                        }}
+                    >
+                        <span style={{ marginRight: 6 }}>{t.icon}</span>
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* ── TAB CONTENT: SOLICITAÇÕES ── */}
+            {tab === 'solicitacoes' && (
+                <SolicitacoesEstoquePanel
+                    highlightPrId={highlight || undefined}
+                    initialStatusTab={prStatusFromUrl}
+                    initialCategoria={prCategoriaFromUrl || undefined}
+                    onStockUpdated={() => { loadItems(); loadDashboard(); }}
+                    refreshKey={solicitacoesRefreshKey}
+                />
+            )}
+
+            {/* ── TAB CONTENT: CENTRAL ── */}
+            {tab === 'central' && (
+                <>
+                    {/* ── FILTROS PREMIUM ── */}
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 12,
+                            alignItems: 'flex-end',
+                            padding: '16px 18px',
+                            background: 'linear-gradient(135deg, #FFFFFF 0%, #FFFDF5 50%, #F8FAFC 100%)',
+                            borderRadius: 14,
+                            border: '1.5px solid #E5D88A55',
+                            boxShadow: '0 2px 12px rgba(184,155,0,0.06)',
+                        }}
+                    >
+                        <div style={{ flex: '1 1 200px' }}>
+                            <label style={labelStyle}>🔍 Buscar insumo</label>
+                            <input
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                onBlur={() => loadItems()}
+                                onKeyDown={(e) => e.key === 'Enter' && loadItems()}
+                                placeholder="Nome ou código..."
+                                style={{
+                                    ...selectStyle,
+                                    background: '#FFFFFF',
+                                }}
+                            />
+                        </div>
+                        <div style={{ minWidth: 155 }}>
+                            <label style={labelStyle}>📂 Categoria</label>
+                            <select
+                                value={categoria}
+                                onChange={(e) => {
+                                    setCategoria(e.target.value);
+                                    setTimeout(loadItems, 0);
+                                }}
+                                style={selectStyle}
+                            >
+                                {CATEGORIAS_OPTIONS.map((c) => (
+                                    <option key={c.value} value={c.value}>
+                                        {c.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div style={{ minWidth: 135 }}>
+                            <label style={labelStyle}>📊 Status</label>
+                            <select
+                                value={statusF}
+                                onChange={(e) => setStatusF(e.target.value as any)}
+                                style={selectStyle}
+                            >
+                                <option value="all">Todos</option>
+                                <option value="CRITICO">🚨 Crítico</option>
+                                <option value="BAIXO">⚠️ Baixo</option>
+                                <option value="OK">✅ OK</option>
+                                <option value="SEM_MINIMO">Sem mínimo</option>
+                            </select>
+                        </div>
+                        <div style={{ minWidth: 145 }}>
+                            <label style={labelStyle}>📅 Vencimento</label>
+                            <select
+                                value={vencF}
+                                onChange={(e) => setVencF(e.target.value as any)}
+                                style={selectStyle}
+                            >
+                                <option value="all">Todos</option>
+                                <option value="30">⏰ Próximos 30 dias</option>
+                                <option value="expired">❌ Vencidos</option>
+                            </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                            <button
+                                type="button"
+                                onClick={handleExportXlsx}
+                                disabled={exportingXlsx || items.length === 0}
+                                title="Exportar estoque e movimentações para XLSX"
+                                style={{
+                                    padding: '8px 14px',
+                                    borderRadius: 10,
+                                    border: '1.5px solid #BBF7D0',
+                                    background: exportingXlsx ? '#F0FDF4' : '#ECFDF5',
+                                    color: items.length === 0 ? '#94A3B8' : '#059669',
+                                    fontWeight: 800,
+                                    fontSize: '0.7rem',
+                                    cursor: items.length === 0 ? 'not-allowed' : 'pointer',
+                                    letterSpacing: '0.05em',
+                                    transition: 'all 0.2s',
+                                }}
+                            >
+                                {exportingXlsx ? '⏳ Gerando...' : '📊 XLSX'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleExportPdfGeral}
+                                disabled={exportingPdfGeral || items.length === 0}
+                                title="Gerar PDF geral do estoque central"
+                                style={{
+                                    padding: '8px 14px',
+                                    borderRadius: 10,
+                                    border: '1.5px solid #BFDBFE',
+                                    background: exportingPdfGeral ? '#EFF6FF' : '#EFF6FF',
+                                    color: items.length === 0 ? '#94A3B8' : '#2563EB',
+                                    fontWeight: 800,
+                                    fontSize: '0.7rem',
+                                    cursor: items.length === 0 ? 'not-allowed' : 'pointer',
+                                    letterSpacing: '0.05em',
+                                    transition: 'all 0.2s',
+                                }}
+                            >
+                                {exportingPdfGeral ? '⏳ Gerando...' : '📄 PDF Geral'}
+                            </button>
+                            <div style={{ position: 'relative' }}>
+                            <button
+                                type="button"
+                                onClick={() => setPdfCaminhaoMenu(v => !v)}
+                                disabled={exportingPdfCaminhao || trucks.length === 0}
+                                title="Gerar PDF de carreta(s)"
+                                style={{
+                                    padding: '8px 14px',
+                                    borderRadius: 10,
+                                    border: '1.5px solid #FDE68A',
+                                    background: '#FFFBEB',
+                                    color: trucks.length === 0 ? '#94A3B8' : '#D97706',
+                                    fontWeight: 800,
+                                    fontSize: '0.7rem',
+                                    cursor: trucks.length === 0 ? 'not-allowed' : 'pointer',
+                                    letterSpacing: '0.05em',
+                                    transition: 'all 0.2s',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                }}
+                            >
+                                {exportingPdfCaminhao ? '⏳ Gerando...' : '🚛 PDF Caminhão'}
+                                <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>▼</span>
+                            </button>
+                            {pdfCaminhaoMenu && (
+                                <>
+                                    <div
+                                        style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+                                        onClick={() => setPdfCaminhaoMenu(false)}
+                                    />
+                                    <div style={{
+                                        position: 'absolute',
+                                        right: 0,
+                                        top: 'calc(100% + 6px)',
+                                        zIndex: 50,
+                                        background: '#fff',
+                                        border: '1.5px solid #E2E8F0',
+                                        borderRadius: 12,
+                                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                        minWidth: 240,
+                                        overflow: 'hidden',
+                                    }}>
+                                        <div style={{ padding: '8px 14px', fontSize: '0.65rem', fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.1em', borderBottom: '1px solid #F1F5F9' }}>
+                                            Escolher Carreta
+                                        </div>
+                                        {/* Lista de carretas individuais */}
+                                        <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                                        {trucks.map((t) => {
+                                            const isSelected = (tab as string) === 'caminhao' && (t.id === selectedTruckId || (!selectedTruckId && trucks[0]?.id === t.id));
+                                            return (
+                                                <button
+                                                    key={t.id}
+                                                    type="button"
+                                                    onClick={() => handleExportPdfUmCaminhao(t.id, t.identifier)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 10,
+                                                        width: '100%', padding: '10px 16px',
+                                                        background: isSelected ? '#FFFBEB' : 'none',
+                                                        border: 'none', cursor: 'pointer',
+                                                        textAlign: 'left', transition: 'background 0.15s',
+                                                        borderLeft: isSelected ? '3px solid #F59E0B' : '3px solid transparent',
+                                                    }}
+                                                    onMouseEnter={e => (e.currentTarget.style.background = '#FFF9C4')}
+                                                    onMouseLeave={e => (e.currentTarget.style.background = isSelected ? '#FFFBEB' : 'none')}
+                                                >
+                                                    <span style={{ fontSize: '1rem' }}>🚛</span>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ fontWeight: 800, fontSize: '0.78rem', color: '#0F172A' }}>{t.identifier}</div>
+                                                        {isSelected && <div style={{ fontSize: '0.62rem', color: '#D97706', fontWeight: 700 }}>aba ativa</div>}
+                                                    </div>
+                                                    <span style={{ fontSize: '0.6rem', color: '#94A3B8' }}>PDF →</span>
+                                                </button>
+                                            );
+                                        })}
+                                        </div>
+                                        <div style={{ height: 1, background: '#E2E8F0', margin: '4px 0' }} />
+                                        {/* Opção: Todas */}
+                                        <button
+                                            type="button"
+                                            onClick={handleExportPdfTodosCaminhoes}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                width: '100%', padding: '12px 16px',
+                                                background: 'none', border: 'none', cursor: 'pointer',
+                                                textAlign: 'left', transition: 'background 0.15s',
+                                            }}
+                                            onMouseEnter={e => (e.currentTarget.style.background = '#EFF6FF')}
+                                            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                        >
+                                            <span style={{ fontSize: '1rem' }}>📋</span>
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.78rem', color: '#2563EB' }}>Todas as Carretas</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Relatório consolidado – {trucks.length} carreta{trucks.length !== 1 ? 's' : ''}</div>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        </div>
+                    </div>
+
+                    {/* ── TABLE HEADER ── */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: -4,
+                        marginTop: 16,
+                    }}>
+                        <div style={{
+                            fontFamily: 'Orbitron, sans-serif',
+                            fontWeight: 800,
+                            fontSize: '0.72rem',
+                            letterSpacing: '0.12em',
+                            color: '#B89B00',
+                            textTransform: 'uppercase',
+                        }}>
+                            Lista de Insumos
+                        </div>
+                        <span style={{
+                            padding: '3px 10px',
+                            borderRadius: 20,
+                            background: '#FFFDE7',
+                            border: '1px solid #FEF08A',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            color: '#B89B00',
+                        }}>
+                            {centralRows.length} itens
+                        </span>
+                    </div>
+
+                    <ListaInsumosGsr
+                        variant="central"
+                        rows={centralRows}
+                        loading={loading}
+                        userRole={userRole}
+                        onMovement={({ item }) => {
+                            setMovItemId(item.id);
+                            setMovTruckId(undefined);
+                            setMovOpen(true);
+                        }}
+                        onHistory={({ item }) => {
+                            setAuditItemId(item.id);
+                            setAuditNome(item.nome);
+                            setAuditOpen(true);
+                        }}
+                        onDelete={({ item }) => setDeleteItem(item)}
+                        onEdit={({ item }) => setEditItemId(item.id)}
+                    />
+                </>
+            )}
+
+            {/* ── TAB CONTENT: CAMINHÃO ── */}
+            {tab === 'caminhao' && (
+                <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', 
+                    gap: 24, 
+                    marginTop: 16,
+                    paddingBottom: 24
                 }}>
-                    {rows.map(t => {
-                        const vazia = t.totalItensDistintos === 0;
-                        return (
-                            <Link key={t.truckId} href={`/admin/carretas/${t.truckId}`} style={{
-                                textDecoration: 'none', display: 'block',
-                                padding: '1rem 1.1rem', borderRadius: 14,
-                                background: vazia ? '#F9FAFB' : 'linear-gradient(135deg, #F5F3FF 0%, #FFFFFF 72%)',
-                                borderStyle: 'solid',
-                                borderWidth: '1px 1px 1px 4px',
-                                borderTopColor: vazia ? '#E5E7EB' : '#DDD6FE',
-                                borderRightColor: vazia ? '#E5E7EB' : '#DDD6FE',
-                                borderBottomColor: vazia ? '#E5E7EB' : '#DDD6FE',
-                                borderLeftColor: vazia ? '#CBD5E1' : '#7C3AED',
-                                boxShadow: '0 2px 10px rgba(0,0,0,.05)',
-                                transition: 'all .2s',
-                                position: 'relative',
-                                overflow: 'hidden',
-                            }}>
-                                <div style={{
-                                    position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-                                    background: vazia
-                                        ? 'linear-gradient(90deg, transparent, #CBD5E1, transparent)'
-                                        : 'linear-gradient(90deg, transparent, #7C3AED, transparent)',
-                                    opacity: 0.6, pointerEvents: 'none',
+                    {trucks.length === 0 ? (
+                        <div style={{ 
+                            gridColumn: '1 / -1', 
+                            textAlign: 'center', 
+                            padding: '60px 20px', 
+                            background: '#F8FAFC', 
+                            borderRadius: 16,
+                            border: '1px dashed #CBD5E1'
+                        }}>
+                            <div style={{ fontSize: '3rem', opacity: 0.5, marginBottom: 16 }}>🚛</div>
+                            <p style={{ color: '#64748B', fontWeight: 600, margin: 0 }}>Nenhum caminhão cadastrado</p>
+                        </div>
+                    ) : (
+                        trucks.map(truck => (
+                            <div 
+                                key={truck.id} 
+                                style={{
+                                    background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+                                    border: '1.5px solid #E2E8F0',
+                                    borderRadius: 16,
+                                    padding: 24,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                                    transition: 'all 0.3s ease',
+                                    position: 'relative',
+                                    overflow: 'hidden'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-4px)';
+                                    e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(184, 155, 0, 0.15)';
+                                    e.currentTarget.style.borderColor = '#FEF08A';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'none';
+                                    e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05)';
+                                    e.currentTarget.style.borderColor = '#E2E8F0';
+                                }}
+                            >
+                                <div style={{ 
+                                    position: 'absolute', 
+                                    top: 0, 
+                                    right: 0, 
+                                    width: 100, 
+                                    height: 100, 
+                                    background: 'linear-gradient(135deg, #FFD600 0%, #B89B00 100%)', 
+                                    opacity: 0.05, 
+                                    borderRadius: '0 0 0 100%' 
                                 }} />
-                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                                        <div style={{
-                                            width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-                                            background: vazia ? '#F3F4F6' : 'linear-gradient(135deg, #EDE9FE, #F8FAFC)',
-                                            border: `1.5px solid ${vazia ? '#E5E7EB' : '#C4B5FD'}`,
-                                            boxShadow: vazia ? 'none' : '0 0 10px rgba(124,58,237,.18)',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '1.15rem',
-                                        }}>🚛</div>
-                                        <div style={{ minWidth: 0 }}>
-                                            <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 800, fontSize: '0.9rem', color: '#111827' }}>
-                                                {t.identifier}
-                                            </div>
-                                            <div style={{ fontSize: '0.65rem', color: '#9CA3AF', fontFamily: 'JetBrains Mono, monospace' }}>
-                                                {t.licensePlate || 'Sem placa'} · {truckStatusLabel(t.status)}
-                                            </div>
-                                        </div>
-                                    </div>
+                                
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, position: 'relative' }}>
                                     <div style={{
-                                        padding: '3px 9px', borderRadius: 999, fontSize: '0.62rem', fontWeight: 800,
-                                        background: vazia ? '#F3F4F6' : '#EDE9FE',
-                                        color: vazia ? '#9CA3AF' : '#5B21B6',
+                                        width: 56,
+                                        height: 56,
+                                        borderRadius: 12,
+                                        background: 'linear-gradient(135deg, #FFD600 0%, #B89B00 100%)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '1.75rem',
+                                        boxShadow: '0 4px 10px rgba(184, 155, 0, 0.3)'
                                     }}>
-                                        {t.totalItensDistintos} itens
+                                        🚛
                                     </div>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.75rem' }}>
                                     <div>
-                                        <div style={{ fontSize: '0.6rem', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.06em' }}>Quantidade</div>
-                                        <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 800, color: '#7C3AED' }}>
-                                            {Math.floor(t.quantidadeTotal).toLocaleString('pt-BR')} itens
-                                        </div>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.6rem', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.06em' }}>Valor</div>
-                                        <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 800, color: '#111827' }}>
-                                            R$ {t.valorEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Mini-preview dos itens (até 5) */}
-                                {!vazia && t.itens.length > 0 && (
-                                    <div style={{
-                                        marginTop: 8, paddingTop: 8, borderTop: '1px dashed #DDD6FE',
-                                        display: 'flex', flexDirection: 'column', gap: 3,
-                                    }}>
-                                        {t.itens.slice(0, 4).map(it => (
-                                            <div key={it.id} style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                fontSize: '0.7rem',
-                                            }}>
-                                                <span style={{ color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '70%' }}>
-                                                    {it.icon} {it.nome}
-                                                </span>
-                                                <span style={{ color: '#7C3AED', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>
-                                                    {it.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {it.unidade}
-                                                </span>
-                                            </div>
-                                        ))}
-                                        {t.itens.length > 4 && (
-                                            <div style={{ fontSize: '0.65rem', color: '#9CA3AF', textAlign: 'right' }}>
-                                                + {t.itens.length - 4} outros →
-                                            </div>
+                                        <h3 style={{ 
+                                            margin: 0, 
+                                            color: '#0F172A', 
+                                            fontWeight: 800, 
+                                            fontSize: '1.125rem',
+                                            fontFamily: 'Orbitron, sans-serif'
+                                        }}>
+                                            {truck.identifier || truck.licensePlate}
+                                        </h3>
+                                        {truck.licensePlate && truck.identifier && (
+                                            <p style={{ margin: '4px 0 0', color: '#64748B', fontWeight: 600, fontSize: '0.875rem' }}>
+                                                {truck.licensePlate}
+                                            </p>
                                         )}
                                     </div>
-                                )}
-                            </Link>
-                        );
-                    })}
+                                </div>
+                                
+                                <p style={{ margin: '0 0 20px', color: '#64748B', fontSize: '0.875rem' }}>
+                                    Clique para ver estoque completo
+                                </p>
+                                
+                                <button
+                                    onClick={() => {
+                                        setTruckModalId(truck.id);
+                                        setTruckModalName(truck.identifier || truck.licensePlate);
+                                        setTruckModalOpen(true);
+                                    }}
+                                    style={{
+                                        marginTop: 'auto',
+                                        width: '100%',
+                                        padding: '12px',
+                                        background: 'transparent',
+                                        border: '1.5px solid #B89B00',
+                                        color: '#B89B00',
+                                        borderRadius: 10,
+                                        fontWeight: 800,
+                                        fontSize: '0.875rem',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                        position: 'relative'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = '#FFFDE7';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = 'transparent';
+                                    }}
+                                >
+                                    Ver Estoque
+                                </button>
+                            </div>
+                        ))
+                    )}
                 </div>
             )}
-        </EstoqueSection>
+
+            {/* ── TAB CONTENT: MOVIMENTAÇÕES ── */}
+            {tab === 'movimentacoes' && <MovimentacoesRecentesPanel showAudit={audit} auditAction={auditAction} />}
+
+            {tab === 'financeiro' && <FinancialDashboardPanel data={financialDash} />}
+
+            {/* ── MODALS ── */}
+            <MovimentacaoModal
+                open={movOpen}
+                onClose={() => {
+                    setMovOpen(false);
+                    setMovItemId(undefined);
+                    setMovTruckId(undefined);
+                }}
+                defaultItemId={movItemId}
+                defaultFromTruckId={movTruckId}
+                defaultType={movTruckId ? 'SAIDA' : 'ENTRADA'}
+                onSuccess={() => {
+                    loadDashboard();
+                    loadItems();
+                    if (tab === 'caminhao' && selectedTruckId) loadTruckStock(selectedTruckId);
+                }}
+            />
+
+            <StockItemAuditModal open={auditOpen} stockItemId={auditItemId} itemNome={auditNome} onClose={() => setAuditOpen(false)} />
+
+            <ConfirmModal
+                isOpen={!!deleteItem}
+                title="Desativar item?"
+                message={deleteItem ? `O item "${deleteItem.nome}" será desativado (soft delete).` : ''}
+                confirmLabel="Desativar"
+                danger
+                onCancel={() => setDeleteItem(null)}
+                onConfirm={() => {
+                    void (async () => {
+                        if (!deleteItem) return;
+                        try {
+                            await stockApi.items.delete(deleteItem.id);
+                            toast.success('Item desativado');
+                            setDeleteItem(null);
+                            await loadItems();
+                            await loadDashboard();
+                            if (tab === 'caminhao' && selectedTruckId) await loadTruckStock(selectedTruckId);
+                        } catch (e: any) {
+                            toast.error(e?.response?.data?.message || 'Erro ao desativar');
+                        }
+                    })();
+                }}
+            />
+
+            <NovoInsumoModal
+                open={novoOpen}
+                onClose={() => setNovoOpen(false)}
+                onSuccess={(hasPr) => {
+                    loadDashboard();
+                    loadItems();
+                    if (tab === 'caminhao' && selectedTruckId) loadTruckStock(selectedTruckId);
+                    if (hasPr) {
+                        changeTab('solicitacoes');
+                    }
+                }}
+            />
+
+            <EditarInsumoModal
+                open={!!editItemId}
+                itemId={editItemId}
+                onClose={() => setEditItemId(null)}
+                onSuccess={() => {
+                    loadDashboard();
+                    loadItems();
+                    if (tab === 'caminhao' && selectedTruckId) loadTruckStock(selectedTruckId);
+                }}
+            />
+
+            <OrquestradorInsumoModal
+                open={orquestradorOpen}
+                onClose={() => setOrquestradorOpen(false)}
+                onNovoInsumo={() => setNovoOpen(true)}
+                onItemSelecionado={(item) => setSolicitarItem(item)}
+            />
+
+            <SolicitarCompraModal
+                item={solicitarItem}
+                onClose={() => setSolicitarItem(null)}
+                onSuccess={() => {
+                    setSolicitarItem(null);
+                    setSolicitacoesRefreshKey(k => k + 1);
+                    loadDashboard();
+                    loadItems();
+                }}
+            />
+
+            <EstoqueCaminhaoModal
+                open={truckModalOpen}
+                onClose={() => {
+                    setTruckModalOpen(false);
+                    setTruckModalId(undefined);
+                    setTruckModalName(undefined);
+                }}
+                truckId={truckModalId}
+                truckName={truckModalName}
+                userRole={userRole}
+            />
+        </div>
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//   QuickActionCard — atalho contextual
-// ═══════════════════════════════════════════════════════════════════
-function QuickActionCard({
-    href, icon, title, subtitle, gradient, borderColor, iconBg, iconColor, arrowColor, delay,
-}: {
-    href: string;
-    icon: string;
-    title: string;
-    subtitle: string;
-    gradient: string;
-    borderColor: string;
-    iconBg: string;
-    iconColor: string;
-    arrowColor: string;
-    delay: number;
-}) {
-    const [hov, setHov] = useState(false);
+export default function EstoqueHubPage() {
     return (
-        <Link href={href}
-            onMouseEnter={() => setHov(true)}
-            onMouseLeave={() => setHov(false)}
-            style={{
-                display: 'block', textDecoration: 'none',
-                padding: '1.25rem 1.4rem', borderRadius: 16,
-                background: gradient,
-                border: `1.5px solid ${borderColor}`,
-                transition: 'all 0.25s',
-                transform: hov ? 'translateY(-2px)' : 'none',
-                boxShadow: hov ? '0 8px 20px rgba(0,0,0,0.07)' : '0 1px 4px rgba(0,0,0,0.04)',
-                animation: `est-fade-up 0.5s ${delay}ms both`,
-            }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{
-                    width: 50, height: 50, borderRadius: 14, flexShrink: 0,
-                    background: iconBg,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.5rem',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-                }}>{icon}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.92rem', color: iconColor, letterSpacing: '0.04em' }}>
-                        {title}
-                    </div>
-                    <div style={{ fontSize: '0.74rem', color: '#6B7280', marginTop: 4, lineHeight: 1.45 }}>
-                        {subtitle}
+        <Suspense
+            fallback={
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div className="spinner" style={{ width: 40, height: 40, margin: '0 auto 1rem' }} />
+                        <p style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.65rem', letterSpacing: '0.15em', color: '#94A3B8', textTransform: 'uppercase' }}>Carregando estoque...</p>
                     </div>
                 </div>
-                <div style={{ fontSize: '1.3rem', color: arrowColor, fontWeight: 800 }}>→</div>
-            </div>
-        </Link>
+            }
+        >
+            <EstoqueHubInner />
+        </Suspense>
     );
 }

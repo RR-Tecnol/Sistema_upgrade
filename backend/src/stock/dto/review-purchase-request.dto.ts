@@ -11,6 +11,14 @@ export class ApprovePurchaseRequestDto {
     @IsOptional()
     @Length(0, 500)
     reviewNote?: string;
+
+    @ApiPropertyOptional({ example: 10, description: 'Quantidade aprovada pelo Admin (sobrescreve a solicitada se fornecida)' })
+    @IsOptional()
+    quantidadeAprovada?: number;
+
+    @ApiPropertyOptional({ example: 15.5, description: 'Preço unitário definido pelo Admin no ato da aprovação' })
+    @IsOptional()
+    precoUnitarioAprovado?: number;
 }
 
 /**

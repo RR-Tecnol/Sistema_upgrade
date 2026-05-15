@@ -104,7 +104,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('student');
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     const initials = user?.name

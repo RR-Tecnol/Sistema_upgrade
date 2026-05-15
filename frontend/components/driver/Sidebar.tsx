@@ -58,7 +58,7 @@ export default function DriverSidebar({ open = true, onClose }: Props) {
             sessionStorage.removeItem(k);
             localStorage.removeItem(k);
         });
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     return (

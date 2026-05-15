@@ -4,6 +4,7 @@ import { StockController } from './stock.controller';
 import { StockService } from './stock.service';
 import { StockMinioService } from './stock-minio.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { MailModule } from '../mail/mail.module';
 
 /**
  * MÓDULO DE ESTOQUE — Sistema Upgrade
@@ -21,6 +22,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 @Module({
     imports: [
         PrismaModule,
+        MailModule,
         MulterModule.register({ storage: undefined }),
     ],
     controllers: [StockController],

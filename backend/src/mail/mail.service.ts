@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { BrevoClient } from '@getbrevo/brevo';
 import { getPrimaryFrontendUrl } from '../common/cors-origins';
 
@@ -47,23 +47,27 @@ export class MailService {
             return;
         }
 
-        // ── MODO TESTE: redireciona todos os emails para um endereço real ──────
-        // Ative com MAIL_DEV_REDIRECT_TO=seu@email.com no .env
-        // ⚠️  REMOVER antes de subir para VPS em produção oficial
-        const redirectTo = process.env.MAIL_DEV_REDIRECT_TO?.trim();
-        const actualTo      = redirectTo ?? to;
-        const actualSubject = redirectTo
+        // ── MODO TESTE: redireciona todos os emails para endereços reais ──────
+        // Ative com MAIL_DEV_REDIRECT_TO=email1@ex.com,email2@ex.com no .env
+        // ⚠️  REMOVER ou deixar vazio antes de produção oficial
+        const redirectRaw = process.env.MAIL_DEV_REDIRECT_TO?.trim();
+        const redirectList = redirectRaw
+            ? redirectRaw.split(',').map(e => e.trim()).filter(Boolean)
+            : [];
+
+        const actualTo = redirectList.length > 0 ? redirectList : [to];
+        const actualSubject = redirectList.length > 0
             ? `[TESTE → ${to}] ${subject}`
             : subject;
 
-        if (redirectTo) {
-            this.logger.warn(`[DEV REDIRECT] Email para <${to}> redirecionado → <${redirectTo}>`);
+        if (redirectList.length > 0) {
+            this.logger.warn(`[DEV REDIRECT] Email para <${to}> redirecionado → [${redirectList.join(', ')}]`);
         }
 
         try {
             await this.brevo.transactionalEmails.sendTransacEmail({
                 sender: { email: this.senderEmail, name: this.senderName },
-                to: [{ email: actualTo }],
+                to: actualTo.map(email => ({ email })),
                 subject: actualSubject,
                 htmlContent: html,
             });
@@ -71,6 +75,7 @@ export class MailService {
             // Log do erro mas nunca lança exceção — email nunca bloqueia o fluxo principal
             this.logger.error(`Falha ao enviar email para ${to}: ${err}`);
         }
+
     }
 
 
@@ -188,6 +193,35 @@ export class MailService {
         }
         const html = this.templatePasswordReset(name, resetLink);
         await this.send(to, 'Redefinição de senha — Sistema Upgrade', html);
+    }
+
+    // ── Alertas de Estoque ────────────────────────────────────────────────────
+
+    async sendLowStockAlert(to: string, name: string, itemName: string, currentQty: number, minQty: number): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Low stock alert → ${name} <${to}> | ${itemName}: ${currentQty}/${minQty}`);
+            return;
+        }
+        const html = this.templateLowStockAlert(name, itemName, currentQty, minQty);
+        await this.send(to, `⚠️ Estoque Crítico — ${itemName}`, html);
+    }
+
+    async sendPurchaseRequestCreated(to: string, name: string, requesterName: string, itemName: string, qty: number): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Purchase Request Created → ${name} <${to}> | ${requesterName} requested ${qty}x ${itemName}`);
+            return;
+        }
+        const html = this.templatePurchaseRequestCreated(name, requesterName, itemName, qty);
+        await this.send(to, `Nova Solicitação de Compra — ${itemName}`, html);
+    }
+
+    async sendPurchaseRequestReviewed(to: string, name: string, itemName: string, status: string, reviewNote?: string): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Purchase Request Reviewed → ${name} <${to}> | ${itemName} is ${status}`);
+            return;
+        }
+        const html = this.templatePurchaseRequestReviewed(name, itemName, status, reviewNote);
+        await this.send(to, `Atualização da Solicitação — ${itemName} foi ${status}`, html);
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -557,6 +591,37 @@ export class MailService {
       </div>
       <p style="color:#6B7280;font-size:13px;margin:0 0 8px">O PIX sera enviado para a chave cadastrada em ate 5 dias uteis.</p>
       <p style="color:#9CA3AF;font-size:12px;margin:0">Agradecemos sua participacao no Sistema Upgrade!</p>`);
+    }
+
+    private templateLowStockAlert(name: string, itemName: string, currentQty: number, minQty: number): string {
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">Olá, <strong>${this.esc(name)}</strong>.</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 16px">O insumo <strong>${this.esc(itemName)}</strong> atingiu nível crítico de estoque.</p>
+      <div style="background:#FEF2F2;border-left:4px solid #FECACA;padding:12px 16px;border-radius:4px;margin:0 0 16px">
+        <p style="margin:0;font-size:13px;color:#DC2626"><strong>Saldo atual:</strong> ${currentQty} (Mínimo exigido: ${minQty})</p>
+      </div>
+      <p style="color:#6B7280;font-size:13px;margin:0">Acesse o painel de estoque para solicitar reposição.</p>`);
+    }
+
+    private templatePurchaseRequestCreated(name: string, requesterName: string, itemName: string, qty: number): string {
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">Olá, <strong>${this.esc(name)}</strong>.</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 16px">Uma nova solicitação de compra foi criada.</p>
+      <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin:0 0 20px">
+        <p style="margin:0 0 6px;font-size:13px;color:#374151"><strong>Solicitante:</strong> ${this.esc(requesterName)}</p>
+        <p style="margin:0;font-size:13px;color:#374151"><strong>Pedido:</strong> ${qty}x ${this.esc(itemName)}</p>
+      </div>
+      <p style="color:#6B7280;font-size:13px;margin:0">Acesse o módulo de Estoque para avaliar e aprovar a solicitação.</p>`);
+    }
+
+    private templatePurchaseRequestReviewed(name: string, itemName: string, status: string, reviewNote?: string): string {
+        const isApproved = status === 'APROVADA';
+        const color = isApproved ? '#16a34a' : '#DC2626';
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">Olá, <strong>${this.esc(name)}</strong>.</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 16px">Sua solicitação para <strong>${this.esc(itemName)}</strong> foi <strong style="color:${color}">${status.toLowerCase()}</strong>.</p>
+      ${reviewNote ? `<div style="background:#F3F4F6;border-left:4px solid #D1D5DB;padding:12px 16px;border-radius:4px;margin:0 0 16px"><p style="margin:0;font-size:13px;color:#4B5563"><strong>Observação:</strong> ${this.esc(reviewNote)}</p></div>` : ''}
+      <p style="color:#6B7280;font-size:13px;margin:0">Acesse o painel para mais detalhes.</p>`);
     }
 
 }

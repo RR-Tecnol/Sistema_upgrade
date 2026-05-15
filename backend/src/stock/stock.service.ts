@@ -6,6 +6,7 @@ import {
     ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { Prisma, StockItemCategory, StockMovementType, StockPurchaseRequestStatus, UserRole } from '@prisma/client';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateStockItemDto } from './dto/create-stock-item.dto';
@@ -17,6 +18,8 @@ import {
     ApprovePurchaseRequestDto,
     RejectPurchaseRequestDto,
 } from './dto/review-purchase-request.dto';
+import { CreateStockBudgetDto, UpdateStockBudgetDto } from './dto/stock-budget.dto';
+import { UpsertAcaoStockBudgetDto } from './dto/acao-stock-budget.dto';
 
 /**
  * Roles autorizadas a registrar movimentações.
@@ -39,6 +42,7 @@ const ROLES_REVISOR_COMPRA: UserRole[] = ['ADMIN', 'IT_ADMIN'];
 export class StockService {
     constructor(
         private prisma: PrismaService,
+        private mailService: MailService,
         private auditLog: AuditLogService,
     ) {}
 
@@ -1162,7 +1166,7 @@ export class StockService {
                     registeredBy: actor.id,
                 },
                 include: {
-                    stockItem: { select: { id: true, nome: true, unidade: true } },
+                    stockItem: { select: { id: true, nome: true, unidade: true, quantidadeAtual: true, quantidadeMinima: true } },
                     fromTruck: { select: { id: true, identifier: true } },
                     toTruck: { select: { id: true, identifier: true } },
                     acao: { select: { id: true, nome: true } },
@@ -1210,6 +1214,23 @@ export class StockService {
                 oldData: auditOldData,
                 newData: auditPayload,
             });
+
+            // Disparo de E-mail: Estoque Crítico
+            // Verifica se afetou o estoque central (fromTruckId nulo em perda/ajuste)
+            if (!mov.fromTruckId && mov.stockItem && mov.stockItem.quantidadeAtual !== null && mov.stockItem.quantidadeMinima !== null) {
+                const current = Number(mov.stockItem.quantidadeAtual);
+                const min = Number(mov.stockItem.quantidadeMinima);
+                // Dispara se ficou menor ou igual ao mínimo E se o tipo é uma saída real da central
+                if (current <= min && (mov.type === 'AJUSTE' || mov.type === 'PERDA')) {
+                    const admins = await this.prisma.user.findMany({ where: { role: 'ADMIN', active: true }, select: { email: true, name: true } });
+                    for (const admin of admins) {
+                        if (admin.email) {
+                            this.mailService.sendLowStockAlert(admin.email, admin.name, mov.stockItem.nome, current, min).catch(console.error);
+                        }
+                    }
+                }
+            }
+
             return mov;
         });
     }
@@ -1432,6 +1453,19 @@ export class StockService {
                 requesterRole: created.requester?.role ?? null,
             },
         });
+        // Disparo de e-mail para os Administradores
+        const admins = await this.prisma.user.findMany({ where: { role: 'ADMIN', active: true }, select: { email: true, name: true } });
+        for (const admin of admins) {
+            if (admin.email) {
+                this.mailService.sendPurchaseRequestCreated(
+                    admin.email,
+                    admin.name,
+                    created.requester?.name || 'Sistema',
+                    item.nome,
+                    Number(quantidade)
+                ).catch(console.error);
+            }
+        }
 
         return created;
     }
@@ -1512,6 +1546,10 @@ export class StockService {
         }
 
         return this.prisma.$transaction(async (tx) => {
+            const finalQty = new Prisma.Decimal(dto.quantidadeAprovada ?? req.quantidade);
+            const finalPrice = new Prisma.Decimal(dto.precoUnitarioAprovado ?? req.precoUnitario ?? 0);
+            const finalTotal = finalQty.mul(finalPrice).toDecimalPlaces(2);
+
             // 1) Criar ContaPagar (PENDENTE) — saldo real NÃO sobe ainda.
             const dataVencimento = new Date();
             dataVencimento.setDate(dataVencimento.getDate() + 30); // 30 dias por padrão
@@ -1519,8 +1557,8 @@ export class StockService {
             const conta = await tx.contaPagar.create({
                 data: {
                     tipo_conta: 'estoque_reposicao',
-                    descricao: `Reposição de estoque: ${req.stockItem.nome} — ${req.quantidade} un (solicitação ${req.id.slice(0, 8)})`,
-                    valor: req.valorTotal,
+                    descricao: `Reposição de estoque: ${req.stockItem.nome} — ${finalQty} un (solicitação ${req.id.slice(0, 8)})`,
+                    valor: finalTotal,
                     data_vencimento: dataVencimento,
                     status: 'pendente',
                     observacoes: `Solicitante: ${req.requestedBy} | Fornecedor: ${req.fornecedor ?? '—'} | Aprovado por: ${actor.id}`,
@@ -1531,7 +1569,7 @@ export class StockService {
             //    OU o admin clicar em "Marcar como recebido" (idempotente, ver confirmReceiptOfPurchase).
             await tx.stockItem.update({
                 where: { id: req.stockItemId },
-                data: { quantidadeEmTransito: { increment: req.quantidade } },
+                data: { quantidadeEmTransito: { increment: finalQty } },
             });
 
             // 3) Criar a movimentação ENCOMENDA (auditoria do pedido)
@@ -1556,10 +1594,13 @@ export class StockService {
                     reviewNote: dto.reviewNote ?? null,
                     contaPagarId: conta.id,
                     movementId: movement.id,
+                    quantidade: finalQty,
+                    precoUnitario: finalPrice,
+                    valorTotal: finalTotal,
                 },
                 include: {
                     stockItem: { select: { id: true, nome: true, unidade: true } },
-                    requester: { select: { id: true, name: true } },
+                    requester: { select: { id: true, name: true, email: true } },
                     reviewer: { select: { id: true, name: true } },
                     contaPagar: true,
                     movement: true,
@@ -1592,6 +1633,18 @@ export class StockService {
                     movementId: updated.movementId,
                 },
             });
+
+            // Disparo de e-mail para o Solicitante
+            if (updated.requester?.email) {
+                this.mailService.sendPurchaseRequestReviewed(
+                    updated.requester.email,
+                    updated.requester.name,
+                    updated.stockItem?.nome ?? 'Item Desconhecido',
+                    'APROVADA',
+                    updated.reviewNote ?? undefined
+                ).catch(console.error);
+            }
+
             return updated;
         });
     }
@@ -1741,7 +1794,7 @@ export class StockService {
             },
             include: {
                 stockItem: { select: { id: true, nome: true } },
-                requester: { select: { id: true, name: true } },
+                requester: { select: { id: true, name: true, email: true } },
                 reviewer: { select: { id: true, name: true } },
             },
         });
@@ -1762,6 +1815,16 @@ export class StockService {
                 reviewNote: rejected.reviewNote,
             },
         });
+
+        if (rejected.requester?.email) {
+            this.mailService.sendPurchaseRequestReviewed(
+                rejected.requester.email,
+                rejected.requester.name,
+                rejected.stockItem?.nome ?? 'Item Desconhecido',
+                'REJEITADA',
+                rejected.reviewNote ?? undefined
+            ).catch(console.error);
+        }
 
         return rejected;
     }
@@ -1930,6 +1993,138 @@ export class StockService {
             solicitacoesPendentes,
             valorTotalEstimado: Number(valorTotal.toFixed(2)),
         };
+    }
+
+    async financialDashboard() {
+        const prs = await this.prisma.stockPurchaseRequest.findMany({
+            where: { active: true },
+            select: { status: true, quantidade: true, valorTotal: true }
+        });
+
+        let valorTotalGasto = 0;
+        let quantidadeComprada = 0;
+        let valorPendente = 0;
+        let quantidadePendente = 0;
+
+        for (const pr of prs) {
+            if (pr.status === 'APROVADA' || pr.status === 'RECEBIDA') {
+                valorTotalGasto += Number(pr.valorTotal ?? 0);
+                quantidadeComprada += Number(pr.quantidade);
+            } else if (pr.status === 'PENDENTE') {
+                valorPendente += Number(pr.valorTotal ?? 0);
+                quantidadePendente += Number(pr.quantidade);
+            }
+        }
+
+        const stats = await this.dashboard();
+
+        // 1. Patrimônio (Em Estoque)
+        const items = await this.prisma.stockItem.findMany({
+            where: { active: true },
+            select: { id: true, precoUnitario: true, quantidadeAtual: true, nome: true, unidade: true },
+        });
+        
+        let valorCentral = 0;
+        items.forEach(it => {
+            valorCentral += Number(it.quantidadeAtual) * (it.precoUnitario ? Number(it.precoUnitario) : 0);
+        });
+        
+        const truckStocks = await this.prisma.truckStockItem.findMany({
+            select: { quantidadeAtual: true, stockItem: { select: { precoUnitario: true } } },
+        });
+        
+        let valorCarretas = 0;
+        truckStocks.forEach(ts => {
+            if (ts.stockItem) {
+                valorCarretas += Number(ts.quantidadeAtual) * (ts.stockItem.precoUnitario ? Number(ts.stockItem.precoUnitario) : 0);
+            }
+        });
+
+        // 2. Consumo Mês Atual (Distribuição Carretas)
+        const now = new Date();
+        const ano = now.getFullYear();
+        const mes = now.getMonth() + 1;
+        
+        const movements = await this.prisma.stockMovement.findMany({
+            where: {
+                OR: [
+                    { type: 'ENTRADA', toTruckId: { not: null } },
+                    { type: 'DEVOLUCAO', fromTruckId: { not: null } },
+                ],
+                createdAt: {
+                    gte: new Date(ano, mes - 1, 1),
+                    lt: new Date(ano, mes, 1),
+                },
+            },
+            include: { stockItem: true },
+        });
+
+        let totalConsumido = 0;
+        const consumoPorItem: Record<string, { nome: string, unidade: string, valorTotal: number, quantidade: number }> = {};
+
+        movements.forEach(m => {
+            const preco = m.stockItem?.precoUnitario ? Number(m.stockItem.precoUnitario) : 0;
+            const valBase = Number(m.quantidade) * preco;
+            const sign = m.type === 'DEVOLUCAO' ? -1 : 1;
+            const val = valBase * sign;
+            totalConsumido += val;
+
+            if (m.stockItem) {
+                const id = m.stockItem.id;
+                if (!consumoPorItem[id]) {
+                    consumoPorItem[id] = { nome: m.stockItem.nome, unidade: m.stockItem.unidade, valorTotal: 0, quantidade: 0 };
+                }
+                consumoPorItem[id].valorTotal += val;
+                consumoPorItem[id].quantidade += Number(m.quantidade) * sign;
+            }
+        });
+        
+        const topConsumoMes = Object.values(consumoPorItem)
+            .sort((a, b) => b.valorTotal - a.valorTotal)
+            .slice(0, 5);
+
+        return {
+            valorTotalGasto,
+            quantidadeComprada,
+            valorPendente,
+            quantidadePendente,
+            statusCounts: {
+                critico: stats.alertasEstoqueCritico,
+                baixo: stats.alertasEstoqueBaixoNaoCritico,
+                ok: stats.totalAtivos - (stats.alertasEstoqueBaixoNaoCritico + stats.alertasEstoqueCritico),
+            },
+            valorEmEstoque: {
+                central: valorCentral,
+                carretas: valorCarretas,
+            },
+            verbaMensal: {
+                total: 0,
+                consumido: 0,
+            },
+            topConsumoMes,
+        };
+    }
+
+    async itemFinancials(id: string) {
+        const prs = await this.prisma.stockPurchaseRequest.findMany({
+            where: { stockItemId: id, active: true },
+            select: { status: true, quantidade: true, valorTotal: true }
+        });
+
+        let valorTotalGasto = 0;
+        let valorPendente = 0;
+        let quantidadeComprada = 0;
+
+        for (const pr of prs) {
+            if (pr.status === 'APROVADA' || pr.status === 'RECEBIDA') {
+                valorTotalGasto += Number(pr.valorTotal ?? 0);
+                quantidadeComprada += Number(pr.quantidade);
+            } else if (pr.status === 'PENDENTE') {
+                valorPendente += Number(pr.valorTotal ?? 0);
+            }
+        }
+
+        return { valorTotalGasto, valorPendente, quantidadeComprada };
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2732,5 +2927,233 @@ export class StockService {
             totalPages: Math.ceil(total / limit),
             scope: 'estoque',
         };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //   VERBAS — CRUD de StockBudget e AcaoStockBudget (REQ 2026-05)
+    // ═══════════════════════════════════════════════════════════════════
+
+    async listStockBudgets(filters?: { ano?: number; mes?: number; includeInactive?: boolean }) {
+        const budgets = await this.prisma.stockBudget.findMany({
+            where: {
+                ...(filters?.ano != null ? { ano: filters.ano } : {}),
+                ...(filters?.mes != null ? { mes: filters.mes } : {}),
+                ...(!filters?.includeInactive ? { active: true } : {}),
+            },
+            include: {
+                categoriaCustom: { select: { id: true, nome: true, icon: true, color: true } },
+                creator: { select: { id: true, name: true } },
+            },
+            orderBy: [{ ano: 'desc' }, { mes: 'desc' }, { createdAt: 'asc' }],
+        });
+
+        if (budgets.length === 0) return [];
+
+        const budgetsWithConsumed = await Promise.all(
+            budgets.map(async (b) => {
+                const movements = await this.prisma.stockMovement.findMany({
+                    where: {
+                        OR: [
+                            { type: 'ENTRADA', toTruckId: { not: null } },
+                            { type: 'DEVOLUCAO', fromTruckId: { not: null } },
+                        ],
+                        createdAt: {
+                            gte: new Date(b.ano, b.mes - 1, 1),
+                            lt: new Date(b.ano, b.mes, 1),
+                        },
+                        stockItem: b.categoriaEnum
+                            ? { categoria: b.categoriaEnum }
+                            : { customCategoryId: b.categoriaCustomId ?? undefined },
+                    },
+                    select: { type: true, quantidade: true, stockItem: { select: { precoUnitario: true } } },
+                });
+
+                const valorConsumido = movements.reduce((acc, m) => {
+                    const preco = m.stockItem?.precoUnitario ? Number(m.stockItem.precoUnitario) : 0;
+                    const valor = Number(m.quantidade) * preco;
+                    return m.type === 'DEVOLUCAO' ? acc - valor : acc + valor;
+                }, 0);
+
+                const prePRs = await this.prisma.stockPurchaseRequest.findMany({
+                    where: {
+                        stockBudgetId: null,
+                        status: { in: ['APROVADA', 'RECEBIDA'] },
+                        createdAt: {
+                            gte: new Date(b.ano, b.mes - 1, 1),
+                            lt: b.createdAt,
+                        },
+                        stockItem: b.categoriaEnum
+                            ? { categoria: b.categoriaEnum }
+                            : { customCategoryId: b.categoriaCustomId ?? undefined },
+                    },
+                    select: { valorTotal: true },
+                });
+
+                const valorPreVerba = prePRs.reduce((acc, pr) => acc + Number(pr.valorTotal), 0);
+
+                return { ...b, valorConsumido, valorPreVerba };
+            }),
+        );
+
+        return budgetsWithConsumed;
+    }
+
+    async createStockBudget(dto: CreateStockBudgetDto, actor: { id: string; role: UserRole }) {
+        if (!['ADMIN', 'IT_ADMIN'].includes(actor.role)) {
+            throw new ForbiddenException('Apenas ADMIN pode criar verbas de estoque');
+        }
+        if (!dto.categoriaEnum && !dto.categoriaCustomId) {
+            throw new BadRequestException('Informe categoriaEnum ou categoriaCustomId');
+        }
+
+        const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        const catLabel = dto.categoriaEnum ?? 'Categoria customizada';
+
+        return this.prisma.$transaction(async (tx) => {
+            let budget = await tx.stockBudget.findFirst({
+                where: {
+                    categoriaEnum: (dto.categoriaEnum as StockItemCategory) ?? null,
+                    categoriaCustomId: dto.categoriaCustomId ?? null,
+                    ano: dto.ano,
+                    mes: dto.mes,
+                    active: true,
+                }
+            });
+
+            if (budget) {
+                const novoTeto = Number(budget.valorTeto) + dto.valorTeto;
+                budget = await tx.stockBudget.update({
+                    where: { id: budget.id },
+                    data: { valorTeto: new Prisma.Decimal(novoTeto) }
+                });
+
+                const mainPr = await tx.stockPurchaseRequest.findFirst({
+                    where: { stockBudgetId: budget.id, status: 'PENDENTE' }
+                });
+
+                if (mainPr) {
+                    await tx.stockPurchaseRequest.update({
+                        where: { id: mainPr.id },
+                        data: {
+                            precoUnitario: new Prisma.Decimal(Number(mainPr.precoUnitario) + dto.valorTeto),
+                            valorTotal: new Prisma.Decimal(Number(mainPr.valorTotal) + dto.valorTeto),
+                            justificativa: mainPr.justificativa + ` [Adicional de R$ ${dto.valorTeto}]`
+                        }
+                    });
+                } else {
+                    await tx.stockPurchaseRequest.create({
+                        data: {
+                            stockItemId: (await tx.stockItem.findFirst({ where: { active: true }, select: { id: true } }))!.id,
+                            stockBudgetId: budget.id,
+                            quantidade: new Prisma.Decimal(1),
+                            precoUnitario: new Prisma.Decimal(dto.valorTeto),
+                            valorTotal: new Prisma.Decimal(dto.valorTeto),
+                            justificativa: `Adicional de Verba ${catLabel} — ${MESES_PT[dto.mes - 1]}/${dto.ano}.`,
+                            requestedBy: actor.id,
+                            urgente: false,
+                        },
+                    });
+                }
+            } else {
+                budget = await tx.stockBudget.create({
+                    data: {
+                        categoriaEnum: (dto.categoriaEnum as StockItemCategory) ?? null,
+                        categoriaCustomId: dto.categoriaCustomId ?? null,
+                        ano: dto.ano,
+                        mes: dto.mes,
+                        valorTeto: new Prisma.Decimal(dto.valorTeto),
+                        observacao: dto.observacao ?? null,
+                        createdBy: actor.id,
+                    },
+                });
+            }
+
+            return budget;
+        });
+    }
+
+    async updateStockBudget(id: string, dto: UpdateStockBudgetDto, actor: { id: string; role: UserRole }) {
+        if (!['ADMIN', 'IT_ADMIN'].includes(actor.role)) {
+            throw new ForbiddenException('Apenas ADMIN pode alterar verbas');
+        }
+        const budget = await this.prisma.stockBudget.findUnique({ where: { id } });
+        if (!budget || !budget.active) throw new NotFoundException('Verba não encontrada');
+        return this.prisma.stockBudget.update({
+            where: { id },
+            data: {
+                ...(dto.valorTeto != null ? { valorTeto: new Prisma.Decimal(dto.valorTeto) } : {}),
+                ...(dto.observacao !== undefined ? { observacao: dto.observacao } : {}),
+            },
+        });
+    }
+
+    async deleteStockBudget(id: string, actor: { id: string; role: UserRole }) {
+        if (!['ADMIN', 'IT_ADMIN'].includes(actor.role)) {
+            throw new ForbiddenException('Apenas ADMIN pode remover verbas');
+        }
+        return this.prisma.stockBudget.update({ where: { id }, data: { active: false } });
+    }
+
+    async upsertAcaoStockBudget(dto: UpsertAcaoStockBudgetDto, actor: { id: string; role: UserRole }) {
+        if (!['ADMIN', 'IT_ADMIN', 'COORDINATOR'].includes(actor.role)) {
+            throw new ForbiddenException('Apenas ADMIN ou coordenador pode configurar verba de ação');
+        }
+        const acao = await this.prisma.acao.findUnique({ where: { id: dto.acaoId }, select: { id: true } });
+        if (!acao) throw new NotFoundException('Ação não encontrada');
+        return this.prisma.acaoStockBudget.upsert({
+            where: { acaoId: dto.acaoId },
+            create: {
+                acaoId: dto.acaoId,
+                valorTeto: new Prisma.Decimal(dto.valorTeto),
+                observacao: dto.observacao ?? null,
+                createdBy: actor.id,
+            },
+            update: {
+                valorTeto: new Prisma.Decimal(dto.valorTeto),
+                observacao: dto.observacao ?? null,
+                active: true,
+            },
+        });
+    }
+
+    async getAcaoStockBudgetStatus(acaoId: string) {
+        const budget = await this.prisma.acaoStockBudget.findUnique({
+            where: { acaoId },
+            include: { creator: { select: { id: true, name: true } } },
+        });
+
+        // Calcula o gasto baseado no consumo REAL da ação (StockMovements de SAIDA)
+        const movements = await this.prisma.stockMovement.findMany({
+            where: { acaoId, type: 'SAIDA' },
+            include: { stockItem: { select: { precoUnitario: true } } }
+        });
+        
+        let gasto = 0;
+        for (const m of movements) {
+            const preco = m.stockItem?.precoUnitario ? Number(m.stockItem.precoUnitario) : 0;
+            gasto += Number(m.quantidade) * preco;
+        }
+        
+        const decimalGasto = new Prisma.Decimal(gasto);
+
+        return {
+            acaoId,
+            temVerba: budget != null,
+            valorTeto: budget ? Number(budget.valorTeto) : null,
+            valorGasto: gasto,
+            valorDisponivel: budget ? Number(new Prisma.Decimal(budget.valorTeto).sub(decimalGasto)) : null,
+            percentualUsado: budget && Number(budget.valorTeto) > 0
+                ? Number(decimalGasto.div(new Prisma.Decimal(budget.valorTeto)).mul(100).toDecimalPlaces(1))
+                : null,
+        };
+    }
+
+    async deleteAcaoStockBudget(acaoId: string, actor: { id: string; role: UserRole }) {
+        if (!['ADMIN', 'IT_ADMIN', 'COORDINATOR'].includes(actor.role)) {
+            throw new ForbiddenException('Apenas ADMIN ou coordenador pode remover verba de ação');
+        }
+        const budget = await this.prisma.acaoStockBudget.findUnique({ where: { acaoId } });
+        if (!budget) throw new NotFoundException('Verba da ação não encontrada');
+        return this.prisma.acaoStockBudget.update({ where: { acaoId }, data: { active: false } });
     }
 }

@@ -54,7 +54,7 @@ export default function TeacherSidebar({ open = true, onClose }: Props) {
         localStorage.removeItem('token');
         localStorage.removeItem('access_token');
         localStorage.removeItem('user');
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     return (

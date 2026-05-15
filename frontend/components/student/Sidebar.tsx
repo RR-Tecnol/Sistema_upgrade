@@ -57,7 +57,7 @@ export default function StudentSidebar({ open, onClose }: SidebarProps) {
     const handleLogout = () => {
         logout();
         sessionStorage.clear();
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     const rankColor = rankInfo?.color ?? '#FFD600';

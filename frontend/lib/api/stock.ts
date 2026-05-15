@@ -223,7 +223,7 @@ const DEFAULT_CATEGORY_ENUMS: StockItemCategory[] = [
     'OUTRO',
 ];
 
-function defaultStockCategories(): StockCategory[] {
+export function defaultStockCategories(): StockCategory[] {
     return DEFAULT_CATEGORY_ENUMS.map((key) => ({
         id: `default-${key}`,
         nome: CATEGORIA_LABEL[key],
@@ -365,6 +365,7 @@ export interface TruckStockItem {
     truckId: string;
     stockItemId: string;
     quantidadeAtual: number | string;
+    quantidadeMinima?: number | string;
     updatedAt: string;
     createdAt: string;
     truck?: {
@@ -398,7 +399,7 @@ export interface StockMovement {
     purchaseRequestId?: string | null;
     observacao?: string | null;
     createdAt: string;
-    stockItem?: { id: string; nome: string; unidade: string };
+    stockItem?: { id: string; nome: string; unidade: string; precoUnitario?: number | string };
     fromTruck?: { id: string; identifier: string } | null;
     toTruck?: { id: string; identifier: string } | null;
     acao?: { id: string; nome: string } | null;
@@ -426,11 +427,14 @@ export interface StockPurchaseRequest {
     createdAt: string;
     updatedAt: string;
     stockItem?: StockItem;
+    stockBudget?: any;
     requester?: { id: string; name: string; role: string; email?: string };
     reviewer?: { id: string; name: string } | null;
     contaPagar?: { id: string; status: string } | null;
     movement?: StockMovement | null;
 }
+
+export type StockBudget = any;
 
 export interface StockDashboard {
     totalItens: number;
@@ -509,6 +513,8 @@ export interface CreateStockItemDto {
     localizacao?: string;
     fotoUrl?: string;
     observacoes?: string;
+    conteudoQuantidade?: number | string;
+    conteudoUnidade?: string;
 }
 
 export interface CreateStockCategoryDto {
@@ -571,6 +577,8 @@ export interface CreateItemWithPurchaseRequestResponse {
 
 export interface ReviewPurchaseRequestDto {
     reviewNote?: string;
+    quantidadeAprovada?: number;
+    precoUnitarioAprovado?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -581,6 +589,11 @@ export const stockApi = {
     // ── Dashboard + Alerts ──────────────────────────────────────────
     dashboard: async (): Promise<StockDashboard> => {
         const r = await api.get<StockDashboard>('/stock/dashboard');
+        return r.data;
+    },
+
+    financialDashboard: async (): Promise<any> => {
+        const r = await api.get<any>('/stock/financials');
         return r.data;
     },
 
@@ -615,6 +628,11 @@ export const stockApi = {
             if (filters?.diasAteVencer != null) params.append('diasAteVencer', String(filters.diasAteVencer));
             if (filters?.includeInactive) params.append('includeInactive', 'true');
             const r = await api.get<StockItem[]>(`/stock/items?${params.toString()}`);
+            return r.data;
+        },
+
+        financials: async (id: string): Promise<any> => {
+            const r = await api.get<any>(`/stock/items/${id}/financials`);
             return r.data;
         },
 
@@ -684,6 +702,10 @@ export const stockApi = {
             stocks: TruckStockItem[];
         }> => {
             const r = await api.get(`/stock/trucks/${truckId}`);
+            return r.data;
+        },
+        updateMinimo: async (truckId: string, stockItemId: string, min: number): Promise<{ quantidadeMinima: number }> => {
+            const r = await api.patch<{ quantidadeMinima: number }>(`/stock/trucks/${truckId}/items/${stockItemId}/minimo`, { quantidadeMinima: min });
             return r.data;
         },
     },
@@ -1080,4 +1102,10 @@ export function daysUntilExpiry(item: StockItem): number | null {
     const v = new Date(item.validade);
     const now = new Date();
     return Math.floor((v.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export function getGlobalStockQuantity(item: any): number {
+    const central = Number(item.quantidadeAtual || 0);
+    const carretas = (item.truckStocks || []).reduce((acc: any, ts: any) => acc + Number(ts.quantidadeAtual || 0), 0);
+    return central + carretas;
 }

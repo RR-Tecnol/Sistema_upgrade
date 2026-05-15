@@ -414,44 +414,132 @@ export default function Home() {
                     borderBottom: navBg ? '1px solid rgba(251,191,36,0.1)' : 'none',
                 }}
             >
-                <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-                    {/* Logo */}
-                    <div className="flex items-center gap-3">
-                        <div
-                            className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-black text-sm animate-pulse-glow"
-                            style={{ background: 'linear-gradient(135deg, #FBBF24, #F59E0B)' }}
-                        >
-                            U
+                <style suppressHydrationWarning>{`
+                    .nav-links-desktop { display: none; }
+                    .nav-btn-cursos { display: none; }
+                    .nav-hamburger { display: flex !important; }
+                    @media (min-width: 768px) {
+                        .nav-links-desktop { display: flex; align-items: center; gap: 32px; }
+                        .nav-btn-cursos { display: inline-flex !important; }
+                        .nav-hamburger { display: none !important; }
+                        .nav-mobile-panel { display: none !important; }
+                    }
+                `}</style>
+                <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }}>
+
+                        {/* ── Logo: ícone U + UPGRADE ── */}
+                        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', flexShrink: 0 }}>
+                            <div
+                                className="animate-pulse-glow"
+                                style={{
+                                    width: 36, height: 36, borderRadius: 10,
+                                    background: 'linear-gradient(135deg, #FBBF24, #F59E0B)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontWeight: 900, color: '#000', fontSize: '1rem', flexShrink: 0,
+                                }}
+                            >
+                                U
+                            </div>
+                            <span style={{ color: '#fff', fontWeight: 900, fontSize: '1.15rem', letterSpacing: '-0.02em' }}>
+                                UPGRADE
+                            </span>
+                        </Link>
+
+                        {/* ── Nav Links (desktop only via CSS) ── */}
+                        <div className="nav-links-desktop">
+                            <Link href="/cursos" style={{ color: '#9CA3AF', fontSize: '0.875rem', fontWeight: 500, textDecoration: 'none', letterSpacing: '0.04em' }}
+                                onMouseEnter={e => (e.currentTarget.style.color = '#FBBF24')}
+                                onMouseLeave={e => (e.currentTarget.style.color = '#9CA3AF')}>
+                                Cursos
+                            </Link>
+                            <a href="#sobre" style={{ color: '#9CA3AF', fontSize: '0.875rem', fontWeight: 500, textDecoration: 'none', letterSpacing: '0.04em' }}
+                                onMouseEnter={e => (e.currentTarget.style.color = '#FBBF24')}
+                                onMouseLeave={e => (e.currentTarget.style.color = '#9CA3AF')}>
+                                Sobre
+                            </a>
+                            <Link href="/cursos" style={{ color: '#9CA3AF', fontSize: '0.875rem', fontWeight: 500, textDecoration: 'none', letterSpacing: '0.04em' }}
+                                onMouseEnter={e => (e.currentTarget.style.color = '#FBBF24')}
+                                onMouseLeave={e => (e.currentTarget.style.color = '#9CA3AF')}>
+                                Inscrição
+                            </Link>
                         </div>
-                        <span className="text-white font-black text-xl tracking-tight">
-                            UPGRADE
-                        </span>
+
+                        {/* ── Botões CTA + Hambúrguer ── */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            <Link
+                                href="/login"
+                                className="ghost-btn"
+                                style={{ padding: '7px 16px', borderRadius: 10, fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                            >
+                                Entrar
+                            </Link>
+                            <Link
+                                href="/cursos"
+                                className="yellow-btn nav-btn-cursos"
+                                style={{ padding: '7px 16px', borderRadius: 10, fontSize: '0.85rem', whiteSpace: 'nowrap', textDecoration: 'none' }}
+                            >
+                                Ver Cursos →
+                            </Link>
+
+                            {/* Hambúrguer — só mobile */}
+                            <button
+                                aria-label="Abrir menu"
+                                className="nav-hamburger"
+                                onClick={() => {
+                                    const m = document.getElementById('nav-mobile-menu');
+                                    if (m) m.style.display = m.style.display === 'none' ? 'flex' : 'none';
+                                }}
+                                style={{
+                                    background: 'rgba(251,191,36,0.1)',
+                                    border: '1px solid rgba(251,191,36,0.3)',
+                                    borderRadius: 8, padding: '7px 9px',
+                                    cursor: 'pointer',
+                                    flexDirection: 'column', gap: 4,
+                                    alignItems: 'center', justifyContent: 'center',
+                                }}
+                            >
+                                <span style={{ width: 16, height: 2, background: '#FBBF24', borderRadius: 2, display: 'block' }} />
+                                <span style={{ width: 16, height: 2, background: '#FBBF24', borderRadius: 2, display: 'block' }} />
+                                <span style={{ width: 16, height: 2, background: '#FBBF24', borderRadius: 2, display: 'block' }} />
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Nav Links */}
-                    <div className="hidden md:flex items-center gap-8">
-                        <Link href="/cursos" className="text-gray-400 text-sm font-medium hover:text-yellow-400 transition-colors duration-300 tracking-wide">Cursos</Link>
-                        <a href="#sobre" className="text-gray-400 text-sm font-medium hover:text-yellow-400 transition-colors duration-300 tracking-wide">Sobre</a>
-                        <Link href="/cursos" className="text-gray-400 text-sm font-medium hover:text-yellow-400 transition-colors duration-300 tracking-wide">Inscrição</Link>
-                    </div>
-
-                    {/* CTA Buttons */}
-                    <div className="flex items-center gap-3">
-                        <Link
-                            href="/login"
-                            className="ghost-btn px-5 py-2.5 rounded-xl text-sm font-semibold"
-                        >
-                            Entrar
+                    {/* ── Painel Mobile ── */}
+                    <div
+                        id="nav-mobile-menu"
+                        className="nav-mobile-panel"
+                        style={{
+                            display: 'none',
+                            flexDirection: 'column',
+                            gap: 2,
+                            paddingBottom: 12,
+                            borderTop: '1px solid rgba(251,191,36,0.15)',
+                        }}
+                    >
+                        <Link href="/cursos" style={{ padding: '11px 6px', color: '#D1D5DB', fontSize: '0.92rem', fontWeight: 600, textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            📚 Cursos
+                        </Link>
+                        <a href="#sobre"
+                            onClick={() => { const m = document.getElementById('nav-mobile-menu'); if (m) m.style.display = 'none'; }}
+                            style={{ padding: '11px 6px', color: '#D1D5DB', fontSize: '0.92rem', fontWeight: 600, textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            ℹ️ Sobre
+                        </a>
+                        <Link href="/cursos" style={{ padding: '11px 6px', color: '#D1D5DB', fontSize: '0.92rem', fontWeight: 600, textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            📝 Inscrição
                         </Link>
                         <Link
                             href="/cursos"
-                            className="yellow-btn px-5 py-2.5 rounded-xl text-sm"
+                            className="yellow-btn"
+                            style={{ marginTop: 10, padding: '12px 0', borderRadius: 12, fontSize: '0.92rem', textDecoration: 'none', textAlign: 'center', display: 'block' }}
                         >
-                            Ver Cursos →
+                            🚀 Ver Cursos →
                         </Link>
                     </div>
                 </div>
             </nav>
+
 
             {/* ══════════════════ HERO ══════════════════ */}
             <section
@@ -744,14 +832,12 @@ export default function Home() {
                 style={{ borderTop: '1px solid rgba(255,255,255,0.05)', background: '#050505' }}
             >
                 <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-black text-sm"
-                            style={{ background: 'linear-gradient(135deg, #FBBF24, #F59E0B)' }}
-                        >
-                            U
-                        </div>
-                        <span className="text-white font-bold">UPGRADE</span>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <img
+                            src="/logo-upgrade.png"
+                            alt="Upgrade Tecnologia Educacional"
+                            style={{ height: 40, width: 'auto', objectFit: 'contain', opacity: 0.85 }}
+                        />
                     </div>
                     <p className="text-gray-600 text-sm">
                         © 2026 Upgrade — Qualificação Profissional. Todos os direitos reservados.

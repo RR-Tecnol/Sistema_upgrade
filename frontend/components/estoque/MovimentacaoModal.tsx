@@ -312,7 +312,7 @@ export function MovimentacaoModal({
                         </Field>
 
                         <Field label="Tipo de Movimentação" required>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
                                 {(['ENTRADA','SAIDA','TRANSFERENCIA','DEVOLUCAO','AJUSTE','PERDA'] as StockMovementType[]).map((t) => {
                                     const selected = type === t;
                                     const c = MOV_TYPE_COLOR[t];
@@ -322,15 +322,22 @@ export function MovimentacaoModal({
                                             type="button"
                                             onClick={() => setType(t)}
                                             style={{
-                                                padding: '0.55rem 0.7rem', borderRadius: 9,
+                                                padding: '0.55rem 0.6rem', borderRadius: 9,
                                                 background: selected ? `${c}12` : '#F9FAFB',
                                                 border: `1.5px solid ${selected ? c : '#E5E7EB'}`,
                                                 cursor: 'pointer', textAlign: 'left',
-                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                display: 'flex', alignItems: 'center', gap: 5,
                                                 transition: 'all 0.15s',
                                             }}>
-                                            <span style={{ fontSize: '1rem' }}>{MOV_TYPE_ICON[t]}</span>
-                                            <span style={{ fontSize: '0.72rem', fontWeight: selected ? 800 : 600, color: selected ? c : '#475569' }}>
+                                            <span style={{ fontSize: '0.95rem', flexShrink: 0 }}>{MOV_TYPE_ICON[t]}</span>
+                                            <span style={{
+                                                fontSize: '0.68rem',
+                                                fontWeight: selected ? 800 : 600,
+                                                color: selected ? c : '#475569',
+                                                lineHeight: 1.3,
+                                                wordBreak: 'break-word',
+                                                hyphens: 'auto',
+                                            }}>
                                                 {MOV_TYPE_LABEL[t]}
                                             </span>
                                         </button>
