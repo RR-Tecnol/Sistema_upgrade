@@ -4,7 +4,7 @@
 generator client {
   provider      = "prisma-client-js"
   /// Linux/macOS/Windows no mesmo repo — após alterar: `npx prisma generate`
-  binaryTargets = ["native", "windows"]
+  binaryTargets = ["native", "windows", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
