@@ -8,7 +8,7 @@ RUN npm ci --legacy-peer-deps
 
 # Gera o Prisma Client e compila
 COPY . .
-RUN npx prisma generate
+RUN npx prisma@5.22.0 generate
 RUN npm run build
 
 # ── Imagem de produção (só o necessário) ─────────────────────
@@ -30,4 +30,4 @@ COPY prisma ./prisma
 ENV NODE_ENV=production
 EXPOSE 3001
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+CMD ["sh", "-c", "npx prisma@5.22.0 migrate deploy && node dist/main"]
