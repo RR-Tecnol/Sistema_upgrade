@@ -1,0 +1,1963 @@
+/// Linux/macOS/Windows no mesmo repo — após alterar: `npx prisma generate`
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                                  String                        @id @default(uuid())
+  email                               String                        @unique
+  cpf                                 String?                       @unique
+  password                            String
+  name                                String
+  phone                               String?
+  role                                UserRole
+  active                              Boolean                       @default(true)
+  twoFactorEnabled                    Boolean                       @default(false)
+  twoFactorSecret                     String?
+  /// Se false, o login não envia código por e-mail (avança para TOTP/setup ou JWT). Perfil: Configurações.
+  emailOtpEnabled                     Boolean                       @default(true)
+  emailOtpHash                        String?
+  emailOtpExpiresAt                   DateTime?
+  emailOtpAttempts                    Int                           @default(0)
+  requiresTwoFactorSetup              Boolean                       @default(false)
+  requiresPasswordChange              Boolean                       @default(false)
+  createdAt                           DateTime                      @default(now())
+  updatedAt                           DateTime                      @updatedAt
+  absences                            Absence[]
+  acaoCustos                          AcaoCusto[]                   @relation("UserAcaoCustos")
+  acaoEquipe                          AcaoEquipe[]                  @relation("UserAcaoEquipe")
+  apiKeysCreated                      ApiKey[]
+  justificationsReviewed              AttendanceJustification[]     @relation("JustificationReviewer")
+  attendancesRegistered               Attendance[]                  @relation("AttendanceRegistrar")
+  auditLogs                           AuditLog[]
+  certificateTemplateVersionsApproved CertificateTemplateVersion[]  @relation("CertificateTemplateVersionApprover")
+  certificateTemplateVersionsCreated  CertificateTemplateVersion[]  @relation("CertificateTemplateVersionCreator")
+  certificatesCancelled               Certificate[]                 @relation("CertificateCanceller")
+  certificatesIssued                  Certificate[]                 @relation("CertificateIssuer")
+  classHolidaysRegistered             ClassHoliday[]                @relation("HolidayRegistrar")
+  deletionRequestsProcessed           DataDeletionRequest[]         @relation("DeletionProcessor")
+  driverCheckins                      DriverCheckin[]
+  driverLocations                     DriverLocation[]
+  employeeAttendancesRegistered       EmployeeAttendance[]          @relation("EmployeeAttendanceRegistrar")
+  employeeRegistrationsReviewed       EmployeeRegistrationRequest[] @relation("EmployeeRegistrationReviewer")
+  employeeRegistrationTokensCreated   EmployeeRegistrationToken[]   @relation("EmployeeTokenCreator")
+  employee                            Employee?
+  enrollmentsReviewed                 Enrollment[]                  @relation("EnrollmentReviewer")
+  expensesApproved                    Expense[]                     @relation("ExpenseApprover")
+  expensesCreated                     Expense[]                     @relation("ExpenseCreator")
+  materialComments                    MaterialComment[]
+  materialsUploaded                   Material[]                    @relation("MaterialUploader")
+  notifications                       Notification[]
+  refreshTokens                       RefreshToken[]
+  stockCategoriesCreated              StockCategory[]               @relation("StockCategoryCreator")
+  stockMovementsRegistered            StockMovement[]               @relation("StockMovRegistrar")
+  stockBudgetsCreated                 StockBudget[]                 @relation("StockBudgetCreator")
+  acaoStockBudgetsCreated             AcaoStockBudget[]             @relation("AcaoStockBudgetCreator")
+  purchaseRequestsCreated             StockPurchaseRequest[]        @relation("StockPurchaseRequester")
+  purchaseRequestsReviewed            StockPurchaseRequest[]        @relation("StockPurchaseReviewer")
+  student                             Student?
+  systemConfigsUpdated                SystemConfig[]
+  teacherCheckins                     TeacherCheckin[]
+  teacher                             Teacher?
+  tripsAuditValidated                 Trip[]                        @relation("TripAuditValidator")
+  tripsAsDriver                       Trip[]                        @relation("TripDriver")
+  preferences                         UserPreferences?
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model CertificateTemplate {
+  id               String                       @id @default(uuid())
+  key              String                       @unique
+  scope            CertificateTemplateScope
+  courseId         String?
+  state            String?
+  isActive         Boolean                      @default(true)
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+  currentVersionId String?                      @unique
+  versions         CertificateTemplateVersion[]
+  course           Course?                      @relation(fields: [courseId], references: [id])
+  currentVersion   CertificateTemplateVersion?  @relation("CertificateTemplateCurrentVersion", fields: [currentVersionId], references: [id])
+
+  @@index([scope])
+  @@index([courseId])
+  @@index([state])
+  @@map("certificate_templates")
+}
+
+model CertificateTemplateVersion {
+  id                  String                    @id @default(uuid())
+  templateId          String
+  version             Int
+  title               String
+  templateType        CertificateTemplateType
+  htmlContent         String?
+  cssContent          String?
+  pdfPath             String?
+  placeholders        Json?
+  notes               String?
+  /// Textos opcionais sobrepostos no PDF (JSON: line1Prefix, line1Suffix, line2, line3)
+  pdfTextOverrides    Json?
+  /// Posições em pt (1/72") para sobreposição no PDF_BASE; substitui variáveis de ambiente globais.
+  coordinateOverrides Json?
+  status              CertificateTemplateStatus @default(DRAFT)
+  createdById         String
+  approvedById        String?
+  approvedAt          DateTime?
+  publishedAt         DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  approvedBy          User?                     @relation("CertificateTemplateVersionApprover", fields: [approvedById], references: [id])
+  createdBy           User                      @relation("CertificateTemplateVersionCreator", fields: [createdById], references: [id])
+  template            CertificateTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  currentForTemplate  CertificateTemplate?      @relation("CertificateTemplateCurrentVersion")
+  issuedCertificates  Certificate[]
+
+  @@unique([templateId, version])
+  @@index([templateId])
+  @@index([status])
+  @@map("certificate_template_versions")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model Student {
+  id              String                @id @default(uuid())
+  userId          String                @unique
+  cpf             String                @unique
+  documents       Json?
+  birthDate       DateTime
+  gender          Gender
+  raceColor       RaceColor
+  maritalStatus   MaritalStatus
+  motherName      String
+  fatherName      String?
+  nationality     String
+  birthCity       String
+  birthState      String
+  socialName      String?
+  photoUrl        String?
+  active          Boolean               @default(true)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  attendances     Attendance[]
+  certificates    Certificate[]
+  courseFeedbacks CourseFeedback[]
+  enrollments     Enrollment[]
+  address         StudentAddress?
+  contact         StudentContact?
+  legalConsents   StudentLegalConsent[]
+  professional    StudentProfessional?
+  socioeconomic   StudentSocioeconomic?
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cpf])
+  @@index([userId])
+  @@map("students")
+}
+
+model StudentContact {
+  id                   String  @id @default(uuid())
+  studentId            String  @unique
+  email                String
+  phone                String
+  hasWhatsapp          Boolean @default(false)
+  phoneAlt             String?
+  allowWhatsappContact Boolean @default(true)
+  allowEmailContact    Boolean @default(true)
+  student              Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("student_contacts")
+}
+
+model StudentAddress {
+  id           String  @id @default(uuid())
+  studentId    String  @unique
+  cep          String
+  street       String
+  number       String
+  complement   String?
+  neighborhood String
+  city         String
+  state        String
+  zone         Zone
+  student      Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("student_addresses")
+}
+
+model StudentSocioeconomic {
+  id                   String           @id @default(uuid())
+  studentId            String           @unique
+  educationLevel       EducationLevel
+  employmentStatus     EmploymentStatus
+  familyIncome         FamilyIncome
+  familyMembersCount   Int
+  socialProgram        SocialProgram?
+  hasDisability        Boolean          @default(false)
+  disabilityType       DisabilityType?
+  disabilityAdaptation Boolean?
+  publicSchoolOnly     Boolean          @default(false)
+  student              Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("student_socioeconomic")
+}
+
+model StudentProfessional {
+  id                    String     @id @default(uuid())
+  studentId             String     @unique
+  previousQualification String?
+  professionalInterest  String?
+  careerGoal            CareerGoal
+  howHeardAbout         String?
+  motivation            String?
+  student               Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("student_professional")
+}
+
+model Teacher {
+  id              String          @id @default(uuid())
+  userId          String          @unique
+  cpf             String          @unique
+  documents       Json?
+  birthDate       DateTime
+  photoUrl        String?
+  education       String
+  specialties     String
+  experience      String?
+  certifications  String?
+  resumeUrl       String?
+  availability    Json?
+  preferredRegion String?
+  contractType    ContractType
+  hireDate        DateTime
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  classes         ClassTeacher[]
+  materials       Material[]
+  courses         TeacherCourse[]
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cpf])
+  @@index([userId])
+  @@map("teachers")
+}
+
+/// White-label: marca, logo, site, assinatura PAdES (caminho do .pfx no servidor)
+model Institution {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  name         String
+  shortName    String?
+  logoUrl      String?
+  siteUrl      String?
+  primaryColor String?
+  /// Caminho absoluto/relativo ao processo; senha: CERT_SIGN_PASSWORD (ou CERT_SIGN_PASSWORD_{SLUG} em MAIÚSCULAS)
+  signPfxPath  String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  courses      Course[]
+
+  @@map("institutions")
+}
+
+model Course {
+  id                   String                @id @default(uuid())
+  name                 String
+  description          String
+  durationDaysMA       Int
+  durationDaysPI       Int
+  workloadHours        Int
+  prerequisites        String?
+  syllabus             String
+  availableInMA        Boolean               @default(true)
+  availableInPI        Boolean               @default(true)
+  isMulticourse        Boolean               @default(false)
+  active               Boolean               @default(true)
+  institutionId        String
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  certificateTemplates CertificateTemplate[]
+  classes              Class[]
+  modules              CourseModule[]
+  institution          Institution           @relation(fields: [institutionId], references: [id])
+  materials            Material[]
+  teachers             TeacherCourse[]
+
+  @@index([name])
+  @@index([active])
+  @@index([institutionId])
+  @@map("courses")
+}
+
+model CourseModule {
+  id         String   @id @default(uuid())
+  courseId   String
+  moduleName String
+  room       Int
+  startTime  String
+  endTime    String
+  order      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@map("course_modules")
+}
+
+model TeacherCourse {
+  id        String   @id @default(uuid())
+  teacherId String
+  courseId  String
+  createdAt DateTime @default(now())
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, courseId])
+  @@index([teacherId])
+  @@index([courseId])
+  @@map("teacher_courses")
+}
+
+model Group {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  state     String
+  createdAt DateTime @default(now())
+  acoes     Acao[]
+  classes   Class[]
+  trucks    Truck[]
+
+  @@map("groups")
+}
+
+model Truck {
+  id                  String                 @id @default(uuid())
+  identifier          String                 @unique
+  licensePlate        String                 @unique
+  type                TruckType
+  groupId             String
+  state               String
+  capacity            Int
+  roomsCount          Int                    @default(1)
+  status              TruckStatus            @default(AVAILABLE)
+  modelYear           String?
+  lastMaintenanceDate DateTime?
+  nextMaintenanceDate DateTime?
+  photoUrl            String?
+  equipmentList       String?
+  notes               String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  acaoReservations    AcaoStockReservation[] @relation("TruckAcaoReservations")
+  acoes               Acao[]                 @relation("TruckAcoes")
+  classes             Class[]
+  expenses            Expense[]
+  movementsFrom       StockMovement[]        @relation("StockMovFromTruck")
+  movementsTo         StockMovement[]        @relation("StockMovToTruck")
+  trips               Trip[]
+  maintenances        TruckMaintenance[]
+  stockItems          TruckStockItem[]
+  group               Group                  @relation(fields: [groupId], references: [id])
+
+  @@index([identifier])
+  @@index([groupId])
+  @@index([status])
+  @@map("trucks")
+}
+
+model TruckMaintenance {
+  id              String    @id @default(uuid())
+  truckId         String
+  tipo            String
+  titulo          String
+  descricao       String?
+  status          String    @default("agendada")
+  prioridade      String    @default("media")
+  kmAtual         Int?
+  kmProximo       Int?
+  dataAgendada    DateTime?
+  dataConclusao   DateTime?
+  custoEstimado   Decimal?  @db.Decimal(10, 2)
+  custoReal       Decimal?  @db.Decimal(10, 2)
+  statusPagamento String?   @default("pendente")
+  fornecedor      String?
+  responsavel     String?
+  observacoes     String?
+  contaPagarId    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  truck           Truck     @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@index([truckId])
+  @@index([status])
+  @@index([tipo])
+  @@map("truck_maintenances")
+}
+
+model City {
+  id               String   @id @default(uuid())
+  name             String
+  state            String
+  ibgeCode         String?
+  latitude         Float?
+  longitude        Float?
+  createdAt        DateTime @default(now())
+  acoes            Acao[]
+  acoesAsOrigin    Acao[]   @relation("AcaoOriginCity")
+  classes          Class[]
+  classesAsOrigin  Class[]  @relation("ClassOriginCity")
+  tripsDestination Trip[]   @relation("TripDestination")
+  tripsOrigin      Trip[]   @relation("TripOrigin")
+
+  @@unique([name, state])
+  @@index([state])
+  @@map("cities")
+}
+
+model Class {
+  id                      String             @id @default(uuid())
+  courseId                String
+  groupId                 String
+  cityId                  String
+  classIdentifier         String
+  startDate               DateTime
+  endDate                 DateTime
+  period                  Period
+  startTime               String
+  endTime                 String
+  vacancies               Int
+  reserveSlots            Int                @default(4)
+  truckId                 String?
+  status                  ClassStatus        @default(PLANNED)
+  enrollmentOpenDate      DateTime?
+  enrollmentCloseDate     DateTime?
+  routeType               String             @default("INTERCIDADE")
+  originCityId            String?
+  originNeighborhood      String?
+  destinationNeighborhood String?
+  locationName            String?
+  locationAddress         String?
+  locationReference       String?
+  locationLatitude        Float?
+  locationLongitude       Float?
+  weekendPolicy           ClassWeekendPolicy @default(FOLLOW_SCHEDULE)
+  weekendExtraDates       Json?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  acaoTurmas              AcaoTurma[]        @relation("ClassAcaoTurmas")
+  attendances             Attendance[]
+  certificates            Certificate[]
+  holidays                ClassHoliday[]
+  schedules               ClassSchedule[]
+  teachers                ClassTeacher[]
+  city                    City               @relation(fields: [cityId], references: [id])
+  course                  Course             @relation(fields: [courseId], references: [id])
+  group                   Group              @relation(fields: [groupId], references: [id])
+  originCity              City?              @relation("ClassOriginCity", fields: [originCityId], references: [id])
+  truck                   Truck?             @relation(fields: [truckId], references: [id])
+  courseFeedbacks         CourseFeedback[]
+  enrollments             Enrollment[]
+  materials               Material[]
+
+  @@index([courseId])
+  @@index([groupId])
+  @@index([cityId])
+  @@index([truckId])
+  @@index([status])
+  @@index([startDate])
+  @@map("classes")
+}
+
+model ClassTeacher {
+  id           String   @id @default(uuid())
+  classId      String
+  teacherId    String
+  isSubstitute Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  class        Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, teacherId])
+  @@index([classId])
+  @@index([teacherId])
+  @@map("class_teachers")
+}
+
+model ClassSchedule {
+  id        String   @id @default(uuid())
+  classId   String
+  weekday   Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId])
+  @@map("class_schedules")
+}
+
+model Enrollment {
+  id                   String                @id @default(uuid())
+  studentId            String
+  classId              String
+  protocol             String                @unique
+  status               EnrollmentStatus      @default(PENDING)
+  enrolledAt           DateTime              @default(now())
+  reviewedAt           DateTime?
+  reviewedBy           String?
+  rejectionReason      String?
+  notes                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  consents             EnrollmentConsent?
+  documents            EnrollmentDocument[]
+  class                Class                 @relation(fields: [classId], references: [id], onDelete: Cascade)
+  reviewer             User?                 @relation("EnrollmentReviewer", fields: [reviewedBy], references: [id])
+  student              Student               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentLegalConsents StudentLegalConsent[]
+
+  @@index([studentId])
+  @@index([classId])
+  @@index([protocol])
+  @@index([status])
+  @@map("enrollments")
+}
+
+model EnrollmentDocument {
+  id           String       @id @default(uuid())
+  enrollmentId String
+  documentType DocumentType
+  fileUrl      String
+  uploadedAt   DateTime     @default(now())
+  enrollment   Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([enrollmentId])
+  @@map("enrollment_documents")
+}
+
+model EnrollmentConsent {
+  id                    String     @id @default(uuid())
+  enrollmentId          String     @unique
+  dataProcessing        Boolean    @default(false)
+  imageUse              Boolean    @default(false)
+  termsAccepted         Boolean    @default(false)
+  privacyPolicyAccepted Boolean    @default(false)
+  /// Compromisso de frequência mínima (ex.: 75%) declarado na inscrição
+  attendanceCommitment  Boolean    @default(false)
+  consentDate           DateTime   @default(now())
+  ipAddress             String?
+  userAgent             String?
+  enrollment            Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@map("enrollment_consents")
+}
+
+/// Consentimentos LGPD vinculados ao perfil do aluno (histórico; cada registo pode referir-se a uma inscrição)
+model StudentLegalConsent {
+  id                    String      @id @default(uuid())
+  studentId             String
+  enrollmentId          String?
+  termsAccepted         Boolean
+  dataProcessingConsent Boolean
+  imageUseAuthorization Boolean
+  attendanceCommitment  Boolean
+  privacyPolicyAccepted Boolean
+  recordedAt            DateTime    @default(now())
+  ipAddress             String?
+  userAgent             String?
+  enrollment            Enrollment? @relation(fields: [enrollmentId], references: [id])
+  student               Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, recordedAt])
+  @@map("student_legal_consents")
+}
+
+model Attendance {
+  id             String                    @id @default(uuid())
+  classId        String
+  studentId      String
+  date           DateTime
+  present        Boolean
+  justified      Boolean                   @default(false)
+  justification  String?
+  registeredBy   String
+  registeredAt   DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  classNotes     String?
+  classPhotoUrl  String?
+  justifications AttendanceJustification[]
+  class          Class                     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  registrar      User                      @relation("AttendanceRegistrar", fields: [registeredBy], references: [id])
+  student        Student                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId, date])
+  @@index([classId])
+  @@index([studentId])
+  @@index([date])
+  @@map("attendances")
+}
+
+model AttendanceJustification {
+  id           String           @id @default(uuid())
+  attendanceId String
+  reason       String
+  details      String?
+  proofUrl     String?
+  submittedAt  DateTime         @default(now())
+  status       EnrollmentStatus @default(PENDING)
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  reviewNotes  String?
+  attendance   Attendance       @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  reviewer     User?            @relation("JustificationReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([attendanceId])
+  @@index([status])
+  @@map("attendance_justifications")
+}
+
+model Material {
+  id            String             @id @default(uuid())
+  courseId      String?
+  classId       String?
+  teacherId     String?
+  title         String
+  description   String?
+  fileUrl       String
+  fileType      String
+  fileSize      Int
+  tags          String?
+  visibility    MaterialVisibility @default(PUBLIC)
+  visibleFrom   DateTime?
+  uploadedBy    String
+  uploadedAt    DateTime           @default(now())
+  downloadCount Int                @default(0)
+  viewCount     Int                @default(0)
+  comments      MaterialComment[]
+  class         Class?             @relation(fields: [classId], references: [id])
+  course        Course?            @relation(fields: [courseId], references: [id])
+  teacher       Teacher?           @relation(fields: [teacherId], references: [id])
+  uploader      User               @relation("MaterialUploader", fields: [uploadedBy], references: [id])
+
+  @@index([courseId])
+  @@index([classId])
+  @@index([teacherId])
+  @@index([uploadedBy])
+  @@map("materials")
+}
+
+model MaterialComment {
+  id         String   @id @default(uuid())
+  materialId String
+  userId     String
+  comment    String
+  createdAt  DateTime @default(now())
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([materialId])
+  @@index([userId])
+  @@map("material_comments")
+}
+
+model Certificate {
+  id                 String                      @id @default(uuid())
+  studentId          String
+  classId            String
+  /// Versão do modelo congelada na emissão (imutabilidade: alterações no template não mudam PDF já emitido)
+  templateVersionId  String?
+  /// Código opaco único em toda a base; o QR do PDF codifica a URL de verificação com este valor (um certificado = um código).
+  verificationCode   String                      @unique
+  qrCodeUrl          String?
+  fileUrl            String
+  issuedAt           DateTime                    @default(now())
+  issuedBy           String
+  status             CertificateStatus           @default(ACTIVE)
+  cancellationReason String?
+  cancelledAt        DateTime?
+  cancelledBy        String?
+  canceller          User?                       @relation("CertificateCanceller", fields: [cancelledBy], references: [id])
+  class              Class                       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  issuer             User                        @relation("CertificateIssuer", fields: [issuedBy], references: [id])
+  student            Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  templateVersion    CertificateTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  courseFeedback     CourseFeedback?
+
+  @@unique([studentId, classId])
+  @@index([studentId])
+  @@index([classId])
+  @@index([verificationCode])
+  @@index([status])
+  @@index([templateVersionId])
+  @@map("certificates")
+}
+
+model Trip {
+  id                     String           @id @default(uuid())
+  truckId                String
+  originCityId           String
+  destinationCityId      String
+  departureDate          DateTime
+  expectedArrivalDate    DateTime
+  actualArrivalDate      DateTime?
+  driverName             String
+  driverPhone            String?
+  driverUserId           String?
+  originCep              String?
+  destinationCep         String?
+  originLatitude         Float?
+  originLongitude        Float?
+  destinationLatitude    Float?
+  destinationLongitude   Float?
+  kmStart                Int?
+  kmEnd                  Int?
+  gpsDistanceKm          Float?
+  startOdometerPhotoUrl  String?
+  endOdometerPhotoUrl    String?
+  driverDecision         String           @default("PENDING")
+  driverDecisionAt       DateTime?
+  driverDecisionReason   String?
+  rejectionPenalty       Decimal?         @db.Decimal(10, 2)
+  rejectionPenaltyBy     String?
+  rejectionPenaltyAt     DateTime?
+  status                 TripStatus       @default(PLANNED)
+  notes                  String?
+  auditValidatedAt       DateTime?
+  auditValidatedByUserId String?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+  locations              DriverLocation[]
+  expenses               Expense[]
+  auditValidatedBy       User?            @relation("TripAuditValidator", fields: [auditValidatedByUserId], references: [id])
+  destinationCity        City             @relation("TripDestination", fields: [destinationCityId], references: [id])
+  driverUser             User?            @relation("TripDriver", fields: [driverUserId], references: [id])
+  originCity             City             @relation("TripOrigin", fields: [originCityId], references: [id])
+  truck                  Truck            @relation(fields: [truckId], references: [id])
+
+  @@index([truckId])
+  @@index([status])
+  @@index([driverUserId])
+  @@map("trips")
+}
+
+model DriverLocation {
+  id           String   @id @default(uuid())
+  driverUserId String
+  tripId       String?
+  latitude     Float
+  longitude    Float
+  accuracy     Float?
+  speed        Float?
+  heading      Float?
+  source       String   @default("polling")
+  capturedAt   DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [driverUserId], references: [id], onDelete: Cascade)
+  trip         Trip?    @relation(fields: [tripId], references: [id])
+
+  @@index([driverUserId, capturedAt])
+  @@index([tripId])
+  @@index([capturedAt])
+  @@map("driver_locations")
+}
+
+model Expense {
+  id                String          @id @default(uuid())
+  tripId            String?
+  truckId           String
+  category          ExpenseCategory
+  subcategory       String?
+  amount            Decimal         @db.Decimal(10, 2)
+  description       String
+  receiptUrl        String?
+  expenseDate       DateTime
+  responsibleUserId String
+  status            ExpenseStatus   @default(PENDING)
+  approvedBy        String?
+  approvedAt        DateTime?
+  rejectionReason   String?
+  createdAt         DateTime        @default(now())
+  approver          User?           @relation("ExpenseApprover", fields: [approvedBy], references: [id])
+  responsible       User            @relation("ExpenseCreator", fields: [responsibleUserId], references: [id])
+  trip              Trip?           @relation(fields: [tripId], references: [id])
+  truck             Truck           @relation(fields: [truckId], references: [id])
+
+  @@index([tripId])
+  @@index([truckId])
+  @@index([status])
+  @@index([expenseDate])
+  @@map("expenses")
+}
+
+model Notification {
+  id             String              @id @default(uuid())
+  userId         String
+  type           NotificationType
+  title          String
+  message        String
+  channel        NotificationChannel
+  data           Json?
+  sentAt         DateTime?
+  readAt         DateTime?
+  clickedAt      DateTime?
+  deliveryStatus DeliveryStatus      @default(PENDING)
+  errorMessage   String?
+  createdAt      DateTime            @default(now())
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([deliveryStatus])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  tableName String
+  recordId  String?
+  oldData   Json?
+  newData   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([tableName])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  configKey   String   @unique
+  configValue String
+  dataType    String
+  description String?
+  updatedBy   String
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [updatedBy], references: [id])
+
+  @@index([configKey])
+  @@map("system_configs")
+}
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  name        String
+  key         String    @unique
+  permissions Json?
+  active      Boolean   @default(true)
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  creator     User      @relation(fields: [createdBy], references: [id])
+
+  @@index([key])
+  @@index([active])
+  @@map("api_keys")
+}
+
+model DataDeletionRequest {
+  id          String    @id @default(uuid())
+  userId      String
+  requestedAt DateTime  @default(now())
+  processedAt DateTime?
+  processedBy String?
+  status      String    @default("PENDING")
+  processor   User?     @relation("DeletionProcessor", fields: [processedBy], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("data_deletion_requests")
+}
+
+model Employee {
+  id               String               @id @default(uuid())
+  name             String
+  role             EmployeeRole
+  department       EmployeeDepartment
+  cpf              String?              @unique
+  documents        Json?
+  phone            String?
+  email            String?              @unique
+  specialty        String?
+  contractType     ContractType?
+  dailyCost        Decimal?             @db.Decimal(10, 2)
+  monthlySalaryCLT Decimal?             @db.Decimal(12, 2)
+  travelRuleKm     Int?                 @default(200)
+  hireDate         DateTime?
+  notes            String?
+  photoUrl         String?
+  active           Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  userId           String?              @unique
+  acaoFuncionarios AcaoFuncionario[]
+  attendances      EmployeeAttendance[]
+  user             User?                @relation(fields: [userId], references: [id])
+  reimbursements   Reimbursement[]
+
+  @@index([role])
+  @@index([department])
+  @@index([active])
+  @@map("employees")
+}
+
+model EmployeeAttendance {
+  id            String   @id @default(uuid())
+  employeeId    String
+  date          DateTime
+  present       Boolean
+  justified     Boolean  @default(false)
+  justification String?
+  registeredBy  String
+  registeredAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  registrar     User     @relation("EmployeeAttendanceRegistrar", fields: [registeredBy], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([employeeId])
+  @@index([date])
+  @@map("employee_attendances")
+}
+
+model EmployeeRegistrationToken {
+  id         String                       @id @default(uuid())
+  token      String                       @unique
+  role       EmployeeRole
+  department EmployeeDepartment
+  createdBy  String
+  expiresAt  DateTime
+  used       Boolean                      @default(false)
+  revoked    Boolean                      @default(false)
+  createdAt  DateTime                     @default(now())
+  request    EmployeeRegistrationRequest?
+  creator    User                         @relation("EmployeeTokenCreator", fields: [createdBy], references: [id])
+
+  @@index([token])
+  @@map("employee_registration_tokens")
+}
+
+model EmployeeRegistrationRequest {
+  id              String                    @id @default(uuid())
+  tokenId         String                    @unique
+  status          RegistrationStatus        @default(PENDING)
+  name            String
+  cpf             String                    @unique
+  email           String                    @unique
+  phone           String
+  birthDate       DateTime?
+  submittedData   Json
+  rejectionReason String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  reviewer        User?                     @relation("EmployeeRegistrationReviewer", fields: [reviewedBy], references: [id])
+  token           EmployeeRegistrationToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+
+  @@map("employee_registration_requests")
+}
+
+model Acao {
+  id                      String                 @id @default(uuid())
+  nome                    String
+  cidadeNome              String
+  cidadeId                String?
+  grupoId                 String
+  carretaId               String?
+  status                  AcaoStatus             @default(PLANEJADA)
+  dataInicio              DateTime
+  dataFim                 DateTime
+  localExecucao           String?
+  localEndereco           String?
+  localReferencia         String?
+  localLatitude           Float?
+  localLongitude          Float?
+  distanciaKm             Decimal?               @db.Decimal(10, 2)
+  precoCombustivelL       Decimal?               @db.Decimal(10, 2)
+  autonomiaKmL            Decimal?               @db.Decimal(10, 2)
+  routeType               String                 @default("INTERCIDADE")
+  originCidadeId          String?
+  originNeighborhood      String?
+  destinationNeighborhood String?
+  observacoes             String?
+  permitirInscricoes      Boolean                @default(true)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  custos                  AcaoCusto[]
+  equipe                  AcaoEquipe[]
+  funcionarios            AcaoFuncionario[]
+  stockReservations       AcaoStockReservation[]
+  stockBudget             AcaoStockBudget?
+  stockPurchaseRequests   StockPurchaseRequest[] @relation("AcaoPurchaseRequests")
+  turmas                  AcaoTurma[]
+  carreta                 Truck?                 @relation("TruckAcoes", fields: [carretaId], references: [id])
+  cidade                  City?                  @relation(fields: [cidadeId], references: [id])
+  grupo                   Group                  @relation(fields: [grupoId], references: [id])
+  originCidade            City?                  @relation("AcaoOriginCity", fields: [originCidadeId], references: [id])
+  contasPagar             ContaPagar[]
+  reimbursements          Reimbursement[]
+  stockMovements          StockMovement[]
+
+  @@index([cidadeId])
+  @@index([grupoId])
+  @@index([carretaId])
+  @@index([status])
+  @@index([dataInicio])
+  @@map("acoes")
+}
+
+/// Reserva PLANEJADA de insumo para uma Ação.
+/// Diferente do StockMovement (que registra consumo REALIZADO), esta tabela
+/// representa o "kit de insumos previstos" que a ação espera consumir.
+/// Permite alertar admin antes da ação iniciar se não há saldo suficiente, e
+/// dashboarda "este item está alocado para 3 ações futuras: 45 un".
+///
+/// Fluxo:
+/// 1. Admin/coordenador cria kit (insumos previstos) no formulário da Ação.
+/// 2. Ao registrar SAIDA (consumo real), o sistema incrementa quantidadeConsumida.
+/// 3. Ao finalizar a ação, status fica COMPLETED e o "saldo previsto não consumido"
+/// pode ser revertido (devolvido à carreta/central) por uma rota manual.
+model AcaoStockReservation {
+  id                  String    @id @default(uuid())
+  acaoId              String
+  stockItemId         String
+  truckId             String?
+  quantidadePrevista  Decimal   @db.Decimal(12, 3)
+  quantidadeConsumida Decimal   @default(0) @db.Decimal(12, 3)
+  prioridade          String    @default("NORMAL")
+  observacao          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  createdBy           String?
+  acao                Acao      @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  stockItem           StockItem @relation(fields: [stockItemId], references: [id])
+  truck               Truck?    @relation("TruckAcaoReservations", fields: [truckId], references: [id])
+
+  @@unique([acaoId, stockItemId])
+  @@index([acaoId])
+  @@index([stockItemId])
+  @@index([truckId])
+  @@map("acao_stock_reservations")
+}
+
+model AcaoTurma {
+  id        String   @id @default(uuid())
+  acaoId    String
+  turmaId   String
+  createdAt DateTime @default(now())
+  acao      Acao     @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  turma     Class    @relation("ClassAcaoTurmas", fields: [turmaId], references: [id], onDelete: Cascade)
+
+  @@unique([acaoId, turmaId])
+  @@index([acaoId])
+  @@index([turmaId])
+  @@map("acao_turmas")
+}
+
+model AcaoCusto {
+  id            String        @id @default(uuid())
+  acaoId        String
+  tipo          AcaoCustoTipo
+  descricao     String
+  valor         Decimal       @db.Decimal(10, 2)
+  data          DateTime
+  litros        Decimal?      @db.Decimal(10, 2)
+  funcionarioId String?
+  observacoes   String?
+  createdAt     DateTime      @default(now())
+  acao          Acao          @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  funcionario   User?         @relation("UserAcaoCustos", fields: [funcionarioId], references: [id])
+
+  @@index([acaoId])
+  @@index([tipo])
+  @@map("acao_custos")
+}
+
+model AcaoEquipe {
+  id              String   @id @default(uuid())
+  acaoId          String
+  userId          String
+  funcao          String
+  diaria          Decimal  @db.Decimal(10, 2)
+  diasTrabalhados Int      @default(0)
+  createdAt       DateTime @default(now())
+  acao            Acao     @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  user            User     @relation("UserAcaoEquipe", fields: [userId], references: [id])
+
+  @@unique([acaoId, userId])
+  @@index([acaoId])
+  @@index([userId])
+  @@map("acao_equipe")
+}
+
+model ContaPagar {
+  id                   String                @id @default(uuid())
+  tipo_conta           String
+  tipo_espontaneo      String?
+  descricao            String
+  valor                Decimal               @db.Decimal(10, 2)
+  data_vencimento      DateTime
+  data_pagamento       DateTime?
+  status               ContaPagarStatus      @default(pendente)
+  recorrente           Boolean               @default(false)
+  observacoes          String?
+  comprovante_url      String?
+  cidade               String?
+  acaoId               String?
+  active               Boolean               @default(true)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  acao                 Acao?                 @relation(fields: [acaoId], references: [id])
+  courseFeedback       CourseFeedback?
+  stockPurchaseRequest StockPurchaseRequest?
+
+  @@index([status])
+  @@index([tipo_conta])
+  @@index([acaoId])
+  @@index([data_vencimento])
+  @@map("contas_pagar")
+}
+
+model AcaoFuncionario {
+  id              String   @id @default(uuid())
+  acaoId          String
+  employeeId      String
+  valorDiaria     Decimal  @db.Decimal(10, 2)
+  diasTrabalhados Int      @default(1)
+  createdAt       DateTime @default(now())
+  acao            Acao     @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([acaoId, employeeId])
+  @@index([acaoId])
+  @@index([employeeId])
+  @@map("acao_funcionarios")
+}
+
+model ClassHoliday {
+  id                String    @id @default(uuid())
+  classId           String
+  date              DateTime
+  reason            String
+  registeredBy      String
+  /// UX-15: `Class.endDate` imediatamente antes de aplicar este feriado (restauração exacta ao remover)
+  endDateBeforePush DateTime?
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  class             Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  registrar         User      @relation("HolidayRegistrar", fields: [registeredBy], references: [id])
+
+  @@index([classId])
+  @@index([date])
+  @@map("class_holidays")
+}
+
+model Reimbursement {
+  id              String            @id @default(uuid())
+  requestedBy     String
+  employeeId      String?
+  acaoId          String?
+  type            ReimbursementType @default(OTHER)
+  amount          Decimal           @db.Decimal(10, 2)
+  description     String
+  receiptUrl      String?
+  status          ExpenseStatus     @default(PENDING)
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  active          Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  acao            Acao?             @relation(fields: [acaoId], references: [id])
+  employee        Employee?         @relation(fields: [employeeId], references: [id])
+
+  @@index([requestedBy])
+  @@index([status])
+  @@index([acaoId])
+  @@index([createdAt])
+  @@map("reimbursements")
+}
+
+model Absence {
+  id          String        @id @default(uuid())
+  userId      String
+  type        AbsenceType   @default(OTHER)
+  date        DateTime
+  description String
+  documentUrl String?
+  status      AbsenceStatus @default(PENDING)
+  adminNote   String?
+  penalty     Decimal?      @db.Decimal(10, 2)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([date])
+  @@map("absences")
+}
+
+model UserPreferences {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  notifEmail       Boolean  @default(true)
+  notifCertificado Boolean  @default(true)
+  notifInscricao   Boolean  @default(true)
+  notifFrequencia  Boolean  @default(true)
+  animacoes        Boolean  @default(true)
+  fonteGrande      Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model TeacherCheckin {
+  id        String   @id @default(uuid())
+  userId    String
+  checkedAt DateTime @default(now())
+  date      String
+  note      String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("teacher_checkins")
+}
+
+model DriverCheckin {
+  id        String   @id @default(uuid())
+  userId    String
+  checkedAt DateTime @default(now())
+  date      String
+  note      String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("driver_checkins")
+}
+
+model CourseFeedback {
+  id                     String                 @id @default(uuid())
+  studentId              String
+  classId                String
+  certificateId          String                 @unique
+  status                 FeedbackStatus         @default(PENDING_STUDENT_RESPONSE)
+  ratingCourse           Int?
+  ratingSystem           Int?
+  ratingManagement       Int?
+  ratingTeachers         Int?
+  ratingGeneral          Int?
+  commentPositive        String?
+  commentImprovement     String?
+  commentGeneral         String?
+  currentStatus          FeedbackCurrentStatus?
+  currentStatusDetails   String?
+  currentPhotoUrl        String?
+  currentVideoUrl        String?
+  pixKeyType             PixKeyType?
+  pixKey                 String?
+  pixAmount              Decimal?               @db.Decimal(10, 2)
+  invitedChannels        String[]
+  invitedAt              DateTime               @default(now())
+  lastReminderAt         DateTime?
+  reminderCount          Int                    @default(0)
+  expiresAt              DateTime?
+  submittedAt            DateTime?
+  /// O aluno confirmou divulgação social (clique em LinkedIn/WhatsApp) — requisito do prêmio PIX
+  sharedOnSocial         Boolean                @default(false)
+  /// Plataforma onde o aluno declarou ter postado: 'LINKEDIN' | 'WHATSAPP'
+  socialPostPlatform     String?
+  /// URL do post real (obrigatório p/ LinkedIn; opcional p/ WhatsApp Status)
+  socialPostUrl          String?
+  /// MinIO key do screenshot/print do post (obrigatório para o admin verificar)
+  socialPostProofUrl     String?
+  /// Quando o aluno declarou ter postado
+  socialPostedAt         DateTime?
+  /// Recompensa (PIX em lote): pendente / pago / cancelado
+  rewardStatus           FeedbackRewardStatus   @default(PENDING)
+  rewardPaidAt           DateTime?
+  rewardPaymentReference String?
+  reviewedBy             String?
+  reviewedAt             DateTime?
+  contentApprovedAt      DateTime?
+  contentApprovedBy      String?
+  /// Incrementa em cada envio válido pelo aluno (primeiro ou reenvio após rejeição)
+  studentSubmitSequence  Int                    @default(0)
+  /// True só no ciclo em que o aluno enviou de novo depois de REJECTED
+  resubmittedAfterReject Boolean                @default(false)
+  rejectionHistoryJson   Json?
+  rejectionReason        String?
+  revertedBy             String?
+  revertedAt             DateTime?
+  revertReason           String?
+  contaPagarId           String?                @unique
+  active                 Boolean                @default(true)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  certificate            Certificate            @relation(fields: [certificateId], references: [id])
+  class                  Class                  @relation(fields: [classId], references: [id])
+  contaPagar             ContaPagar?            @relation(fields: [contaPagarId], references: [id])
+  student                Student                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([classId])
+  @@index([status])
+  @@index([invitedAt])
+  @@index([rewardStatus])
+  @@map("course_feedbacks")
+}
+
+/// Categoria CUSTOMIZADA de StockItem — admin pode criar novas além das 8 default do enum.
+/// Coexiste com o enum (que continua válido para compat. e seed dos 8 padrões).
+/// Quando um StockItem tem customCategoryId preenchido, a UI usa este label/icon/color
+/// em vez do label genérico do enum. categoria (enum) também é preenchida como "fallback"
+/// para preservar filtros e relatórios existentes (geralmente categoria = OUTRO neste caso).
+model StockCategory {
+  id          String             @id @default(uuid())
+  nome        String             @unique
+  slug        String             @unique
+  icon        String
+  color       String
+  description String?
+  isDefault   Boolean            @default(false)
+  defaultEnum StockItemCategory?
+  active      Boolean            @default(true)
+  createdBy   String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  creator     User?              @relation("StockCategoryCreator", fields: [createdBy], references: [id])
+  stockItems  StockItem[]
+  budgets     StockBudget[]      @relation("StockCategoryBudgets")
+
+  @@index([active])
+  @@index([isDefault])
+  @@map("stock_categories")
+}
+
+/// Item do estoque central. Saldo "da casa" — é daqui que parte o abastecimento.
+///
+/// MODELO QTY × CONTEÚDO (REQ 2026-05):
+///   • `unidade` é a EMBALAGEM contável (un, cx, frasco, fardo, par, rolo…).
+///   • `conteudoQuantidade` + `conteudoUnidade` (opcionais) descrevem o
+///     CONTEÚDO de cada embalagem (ex: 250 mL, 5 kg, 1 L). Servem para
+///     rótulo/relatório — o saldo SEMPRE é contado em `unidade`.
+///   • Itens "puros" (caneta, resma de papel) deixam conteudo* em null.
+///   • Exemplo: Álcool 70% — unidade="frasco", conteudoQuantidade=250,
+///     conteudoUnidade="mL" → "10 frascos × 250 mL = 2.500 mL".
+model StockItem {
+  id                   String                 @id @default(uuid())
+  nome                 String
+  codigoInterno        String?                @unique
+  categoria            StockItemCategory
+  customCategoryId     String?
+  unidade              String
+  conteudoQuantidade   Decimal?               @db.Decimal(12, 3)
+  conteudoUnidade      String?
+  quantidadeAtual      Decimal                @default(0) @db.Decimal(12, 3)
+  quantidadeEmTransito Decimal                @default(0) @db.Decimal(12, 3)
+  quantidadeMinima     Decimal                @default(0) @db.Decimal(12, 3)
+  validade             DateTime?
+  fornecedor           String?
+  precoUnitario        Decimal?               @db.Decimal(10, 2)
+  localizacao          String?
+  fotoUrl              String?
+  observacoes          String?
+  active               Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  reservations         AcaoStockReservation[]
+  customCategory       StockCategory?         @relation(fields: [customCategoryId], references: [id])
+  movimentacoes        StockMovement[]
+  purchaseRequests     StockPurchaseRequest[]
+  truckStocks          TruckStockItem[]
+
+  @@index([categoria])
+  @@index([customCategoryId])
+  @@index([active])
+  @@index([validade])
+  @@map("stock_items")
+}
+
+/// Saldo do mesmo StockItem dentro de uma Carreta específica.
+/// Cria-se sob demanda na primeira ENTRADA; unívoco por (truck, item).
+///
+/// `quantidadeMinima` (REQ 2026-05) é o mínimo POR CARRETA — quando o saldo
+/// cai abaixo, dispara alerta no dashboard. Permite que cada carreta tenha
+/// nível mínimo próprio (carreta MA precisa de 10 frascos, carreta PI de 5).
+model TruckStockItem {
+  id               String    @id @default(uuid())
+  truckId          String
+  stockItemId      String
+  quantidadeAtual  Decimal   @default(0) @db.Decimal(12, 3)
+  quantidadeMinima Decimal   @default(0) @db.Decimal(12, 3)
+  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime  @default(now())
+  stockItem        StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  truck            Truck     @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@unique([truckId, stockItemId])
+  @@index([truckId])
+  @@index([stockItemId])
+  @@map("truck_stock_items")
+}
+
+/// Auditoria imutável de TODA variação de saldo. Nunca é editado/apagado.
+/// Campos opcionais (fromTruck, toTruck, acao) dependem do `type`:
+/// • ENTRADA       → toTruckId obrigatório  (central debita, carreta credita)
+/// • SAIDA         → fromTruckId obrigatório + acaoId recomendado
+/// • TRANSFERENCIA → fromTruckId E toTruckId obrigatórios
+/// • DEVOLUCAO     → fromTruckId obrigatório (carreta debita, central credita)
+/// • AJUSTE/PERDA  → fromTruckId opcional (se null = ajusta central); observação obrigatória
+/// • REPOSICAO     → apenas central; sempre vinculada a StockPurchaseRequest aprovada
+model StockMovement {
+  id                String                @id @default(uuid())
+  type              StockMovementType
+  stockItemId       String
+  quantidade        Decimal               @db.Decimal(12, 3)
+  fromTruckId       String?
+  toTruckId         String?
+  acaoId            String?
+  purchaseRequestId String?               @unique
+  registeredBy      String
+  observacao        String?
+  createdAt         DateTime              @default(now())
+  acao              Acao?                 @relation(fields: [acaoId], references: [id])
+  fromTruck         Truck?                @relation("StockMovFromTruck", fields: [fromTruckId], references: [id])
+  purchaseRequest   StockPurchaseRequest? @relation(fields: [purchaseRequestId], references: [id])
+  registrar         User                  @relation("StockMovRegistrar", fields: [registeredBy], references: [id])
+  stockItem         StockItem             @relation(fields: [stockItemId], references: [id])
+  toTruck           Truck?                @relation("StockMovToTruck", fields: [toTruckId], references: [id])
+
+  @@index([type])
+  @@index([stockItemId])
+  @@index([fromTruckId])
+  @@index([toTruckId])
+  @@index([acaoId])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
+/// Workflow de aprovação de compra/reposição.
+/// Qualquer role autorizada (ADMIN/COORDINATOR/DRIVER/TEACHER) cria a solicitação.
+/// Apenas ADMIN aprova ou rejeita.
+/// APROVADA → cria StockMovement(REPOSICAO) + ContaPagar (mesma $transaction).
+///
+/// VERBA OPCIONAL (REQ 2026-05): existem 3 mecanismos independentes e combináveis:
+///   A) `valorTeto` (este model)        — teto opcional desta solicitação específica
+///   B) `StockBudget`                    — verba mensal por categoria
+///   C) `AcaoStockBudget`                — verba por Ação (`acaoId` opcional aqui)
+/// Na aprovação, o serviço valida TODAS as verbas configuradas; basta uma estourar
+/// para bloquear. Se o admin não preencheu nenhuma, segue o fluxo simples (atual).
+model StockPurchaseRequest {
+  id             String                     @id @default(uuid())
+  stockItemId    String?
+  stockBudgetId  String?
+  acaoId         String?
+  quantidade     Decimal                    @db.Decimal(12, 3)
+  precoUnitario  Decimal                    @db.Decimal(10, 2)
+  valorTotal     Decimal                    @db.Decimal(12, 2)
+  valorTeto      Decimal?                   @db.Decimal(12, 2)
+  fornecedor     String?
+  urgente        Boolean                    @default(false)
+  justificativa  String
+  comprovanteUrl String?
+  status         StockPurchaseRequestStatus @default(PENDENTE)
+  requestedBy    String
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+  contaPagarId   String?                    @unique
+  movementId     String?                    @unique
+  active         Boolean                    @default(true)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  movement       StockMovement?
+  acao           Acao?                      @relation("AcaoPurchaseRequests", fields: [acaoId], references: [id])
+  contaPagar     ContaPagar?                @relation(fields: [contaPagarId], references: [id])
+  requester      User                       @relation("StockPurchaseRequester", fields: [requestedBy], references: [id])
+  reviewer       User?                      @relation("StockPurchaseReviewer", fields: [reviewedBy], references: [id])
+  stockItem      StockItem?                 @relation(fields: [stockItemId], references: [id])
+  stockBudget    StockBudget?               @relation("StockBudgetPR", fields: [stockBudgetId], references: [id])
+
+  @@index([stockItemId])
+  @@index([stockBudgetId])
+  @@index([acaoId])
+  @@index([status])
+  @@index([requestedBy])
+  @@index([createdAt])
+  @@map("stock_purchase_requests")
+}
+
+/// Verba MENSAL por categoria de estoque (REQ 2026-05, opcional).
+/// Se existir uma linha ativa para (categoria, ano, mes), o aprovador deve
+/// respeitar este teto: soma de PRs APROVADAS no mês × essa categoria não
+/// pode ultrapassar `valorTeto`. Categoria pode ser do enum (categoriaEnum)
+/// OU customizada (categoriaCustomId) — uma das duas é obrigatória.
+model StockBudget {
+  id                String                  @id @default(uuid())
+  categoriaEnum     StockItemCategory?
+  categoriaCustomId String?
+  ano               Int
+  mes               Int
+  valorTeto         Decimal                 @db.Decimal(12, 2)
+  observacao        String?
+  active            Boolean                 @default(true)
+  createdBy         String
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  categoriaCustom   StockCategory?          @relation("StockCategoryBudgets", fields: [categoriaCustomId], references: [id])
+  creator           User                    @relation("StockBudgetCreator", fields: [createdBy], references: [id])
+  purchaseRequests  StockPurchaseRequest[]  @relation("StockBudgetPR")
+
+  @@unique([categoriaEnum, categoriaCustomId, ano, mes])
+  @@index([ano, mes])
+  @@index([active])
+  @@map("stock_budgets")
+}
+
+/// Verba de insumos por Ação (REQ 2026-05, opcional).
+/// Quando preenchida, qualquer PR vinculada à `acaoId` desconta deste teto.
+/// Permite gestão "essa carreta indo pra Imperatriz tem R$ 8.000 em insumos".
+model AcaoStockBudget {
+  id         String   @id @default(uuid())
+  acaoId     String   @unique
+  valorTeto  Decimal  @db.Decimal(12, 2)
+  observacao String?
+  active     Boolean  @default(true)
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  acao       Acao     @relation(fields: [acaoId], references: [id], onDelete: Cascade)
+  creator    User     @relation("AcaoStockBudgetCreator", fields: [createdBy], references: [id])
+
+  @@index([active])
+  @@map("acao_stock_budgets")
+}
+
+enum UserRole {
+  IT_ADMIN
+  ADMIN
+  COORDINATOR
+  FINANCIAL
+  TEACHER
+  STUDENT
+  DRIVER
+}
+
+enum CertificateTemplateScope {
+  GLOBAL
+  COURSE
+  STATE
+  COURSE_STATE
+  /// Uma linha = um ficheiro da pasta public (import); key única por ficheiro
+  PUBLIC_FILE
+}
+
+enum CertificateTemplateType {
+  PDF_BASE
+  HTML
+}
+
+enum CertificateTemplateStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
+
+enum RaceColor {
+  WHITE
+  BLACK
+  BROWN
+  YELLOW
+  INDIGENOUS
+  PREFER_NOT_TO_SAY
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  SEPARATED
+}
+
+enum EducationLevel {
+  NO_FORMAL_EDUCATION
+  ELEMENTARY_INCOMPLETE
+  ELEMENTARY_COMPLETE
+  HIGH_SCHOOL_INCOMPLETE
+  HIGH_SCHOOL_COMPLETE
+  HIGHER_INCOMPLETE
+  HIGHER_COMPLETE
+  POSTGRADUATE
+}
+
+enum EmploymentStatus {
+  EMPLOYED_CLT
+  EMPLOYED_PJ
+  SELF_EMPLOYED
+  UNEMPLOYED
+  STUDENT
+  HOMEMAKER
+  RETIRED
+  OTHER
+}
+
+enum SocialProgram {
+  NONE
+  BOLSA_FAMILIA
+  BPC
+  AUXILIO_BRASIL
+  PE_DE_MEIA
+  OTHER
+}
+
+enum DisabilityType {
+  NONE
+  VISUAL
+  HEARING
+  PHYSICAL
+  INTELLECTUAL
+  MULTIPLE
+  OTHER
+}
+
+enum Zone {
+  URBAN
+  RURAL
+}
+
+enum FamilyIncome {
+  UP_TO_1_MW
+  FROM_1_TO_2_MW
+  FROM_2_TO_3_MW
+  FROM_3_TO_5_MW
+  ABOVE_5_MW
+  PREFER_NOT_TO_SAY
+}
+
+enum CareerGoal {
+  SEEK_EMPLOYMENT
+  ENTREPRENEURSHIP
+  SELF_EMPLOYED
+  NOT_SURE
+  OTHER
+}
+
+enum ClassStatus {
+  PLANNED
+  ENROLLMENT_OPEN
+  ENROLLMENT_CLOSED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+/// Dias úteis vs. fins de semana para contagem de aulas previstas (certificado / alertas).
+enum ClassWeekendPolicy {
+  FOLLOW_SCHEDULE
+  WEEKDAYS_ONLY
+  ALL_WEEKENDS
+  SELECT_WEEKENDS
+}
+
+enum Period {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+enum EnrollmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DOCUMENT_PENDING
+  WAITLIST
+  ENROLLED
+  DROPOUT
+}
+
+enum DocumentType {
+  PHOTO
+  RG_FRONT
+  RG_BACK
+  CPF
+  ADDRESS_PROOF
+  EDUCATION_PROOF
+}
+
+enum TruckType {
+  STANDARD
+  MULTICOURSE
+}
+
+enum TruckStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum TripStatus {
+  PLANNED
+  IN_TRANSIT
+  COMPLETED
+}
+
+enum ExpenseCategory {
+  FUEL
+  FOOD
+  TOLL
+  MAINTENANCE
+  LODGING
+  MATERIALS
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  ENROLLMENT_RECEIVED
+  ENROLLMENT_APPROVED
+  ENROLLMENT_REJECTED
+  COURSE_REMINDER
+  CLASS_REMINDER
+  CLASS_CANCELLED
+  ABSENCE_REGISTERED
+  EXCESSIVE_ABSENCES
+  MATERIAL_AVAILABLE
+  CERTIFICATE_AVAILABLE
+  JUSTIFICATION_APPROVED
+  JUSTIFICATION_REJECTED
+  GENERAL_ANNOUNCEMENT
+  FEEDBACK_INVITATION
+  FEEDBACK_REMINDER
+  FEEDBACK_CONTENT_APPROVED
+  FEEDBACK_PIX_APPROVED
+  FEEDBACK_PIX_REJECTED
+  FEEDBACK_PIX_REVERTED
+  NEW_STUDENT_REGISTRATION
+  REIMBURSEMENT_REQUESTED
+  REIMBURSEMENT_APPROVED
+  REIMBURSEMENT_REJECTED
+  TRUCK_MAINTENANCE_ALERT
+  TRIP_SCHEDULED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+enum CertificateStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum MaterialVisibility {
+  PUBLIC
+  COURSE_RESTRICTED
+  CLASS_RESTRICTED
+  PRIVATE
+}
+
+enum ContractType {
+  CLT
+  PJ
+  FREELANCE
+}
+
+enum AcaoStatus {
+  PLANEJADA
+  EM_ANDAMENTO
+  CONCLUIDA
+  CANCELADA
+}
+
+enum AcaoCustoTipo {
+  ABASTECIMENTO
+  DESPESA_GERAL
+  DIARIA_FUNCIONARIO
+}
+
+enum ContaPagarStatus {
+  pendente
+  paga
+  vencida
+  cancelada
+}
+
+enum EmployeeRole {
+  INSTRUCTOR
+  DRIVER
+  COORDINATOR
+  NURSE
+  TECHNICIAN
+  ADMINISTRATIVE
+  /// Perfil de gestão (convite IT_ADMIN → UserRole ADMIN)
+  ADMIN
+  OTHER
+}
+
+enum EmployeeDepartment {
+  ACADEMIC
+  OPERATIONS
+  HEALTH
+  FINANCIAL
+  ADMINISTRATION
+  LOGISTICS
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ReimbursementType {
+  CLASSROOM_MATERIAL
+  CLEANING_MATERIAL
+  EMERGENCY_REPAIR
+  FOOD
+  OTHER
+}
+
+enum AbsenceType {
+  ILLNESS
+  PERSONAL
+  EMERGENCY
+  TRIP
+  ACCIDENT
+  OTHER
+}
+
+enum AbsenceStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+  PENALIZED
+}
+
+enum FeedbackStatus {
+  PENDING_STUDENT_RESPONSE
+  SUBMITTED
+  CONTENT_APPROVED
+  APPROVED
+  REJECTED
+  REVERTED
+  EXPIRED
+}
+
+/// Pagamento em massa R$ 50 (lote banco) — independente de ContaPagar individual
+enum FeedbackRewardStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum FeedbackCurrentStatus {
+  EMPLOYED_CLT
+  EMPLOYED_PJ
+  SELF_EMPLOYED
+  STUDYING
+  UNEMPLOYED_LOOKING
+  OTHER
+}
+
+enum PixKeyType {
+  CPF
+  EMAIL
+  PHONE
+  RANDOM
+}
+
+enum StockItemCategory {
+  CONSUMIVEL
+  DIDATICO
+  LIMPEZA
+  EQUIPAMENTO
+  EPI
+  ALIMENTACAO
+  ESCRITORIO
+  OUTRO
+}
+
+enum StockMovementType {
+  ENTRADA
+  SAIDA
+  TRANSFERENCIA
+  DEVOLUCAO
+  AJUSTE
+  PERDA
+  REPOSICAO
+  ENCOMENDA
+}
+
+enum StockPurchaseRequestStatus {
+  PENDENTE
+  APROVADA
+  RECEBIDA
+  REJEITADA
+  CANCELADA
+}

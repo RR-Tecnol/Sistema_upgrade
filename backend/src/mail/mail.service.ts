@@ -1,0 +1,296 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { BrevoClient } from '@getbrevo/brevo';
+import { getPrimaryFrontendUrl } from '../common/cors-origins';
+
+/**
+ * MailService — envia emails transacionais via Brevo.
+ *
+ * Fallback de desenvolvimento: quando BREVO_API_KEY não está configurada,
+ * todos os emails são logados no console em vez de enviados.
+ * Isso garante que o sistema funciona em dev sem configuração de email.
+ */
+@Injectable()
+export class MailService {
+    private readonly logger = new Logger(MailService.name);
+    private readonly brevo: BrevoClient | null;
+
+    private readonly senderEmail: string;
+    private readonly senderName: string;
+
+    constructor() {
+        const apiKey = process.env.BREVO_API_KEY?.trim();
+        this.senderEmail = process.env.BREVO_SENDER_EMAIL?.trim() || 'noreply@qualifica.com.br';
+        this.senderName  = process.env.BREVO_SENDER_NAME?.trim()  || 'Qualifica MA/PI';
+
+        if (apiKey) {
+            this.brevo = new BrevoClient({ apiKey });
+            this.logger.log('✅ Brevo configurado — emails serão enviados via API');
+        } else {
+            this.brevo = null;
+            this.logger.warn('⚠️  BREVO_API_KEY não configurada — emails serão logados no console (modo dev)');
+        }
+    }
+
+    // ── Método interno de envio ───────────────────────────────────────────────
+
+    private async send(to: string, subject: string, html: string): Promise<void> {
+        if (!this.brevo) {
+            // Modo dev: log claro no console
+            this.logger.warn([
+                '',
+                '╔═══════════════════════════════════════════════════════════╗',
+                '║                   [DEV] EMAIL NÃO ENVIADO                ║',
+                `║  Para:    ${to.slice(0, 48).padEnd(48)}║`,
+                `║  Assunto: ${subject.slice(0, 48).padEnd(48)}║`,
+                '╚═══════════════════════════════════════════════════════════╝',
+            ].join('\n'));
+            return;
+        }
+
+        try {
+            await this.brevo.transactionalEmails.sendTransacEmail({
+                sender: { email: this.senderEmail, name: this.senderName },
+                to: [{ email: to }],
+                subject,
+                htmlContent: html,
+            });
+        } catch (err) {
+            // Log do erro mas nunca lança exceção — email nunca bloqueia o fluxo principal
+            this.logger.error(`Falha ao enviar email para ${to}: ${err}`);
+        }
+    }
+
+    // ── OTP de login (obrigatório para todos os usuários) ─────────────────────
+
+    async sendOtpLogin(to: string, name: string, code: string): Promise<void> {
+        // Dev sem API key: código visível no console para facilitar testes
+        if (!this.brevo) {
+            this.logger.warn([
+                '',
+                '╔══════════════════════════════════════════════╗',
+                '║          [DEV] CÓDIGO OTP DE LOGIN           ║',
+                `║  Para:   ${to.slice(0, 36).padEnd(36)}║`,
+                `║  Nome:   ${name.slice(0, 36).padEnd(36)}║`,
+                `║  Código: ${code.padEnd(36)}║`,
+                '║  Expira: 10 minutos                          ║',
+                '╚══════════════════════════════════════════════╝',
+            ].join('\n'));
+            return;
+        }
+
+        const html = this.templateOtp(name, code);
+        await this.send(to, `${code} — Código de acesso Qualifica`, html);
+    }
+
+    // ── Boas-vindas para novo funcionário ─────────────────────────────────────
+
+    async sendStaffWelcome(to: string, name: string): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Welcome staff email → ${name} <${to}>`);
+            return;
+        }
+        const html = this.templateStaffWelcome(name);
+        await this.send(to, 'Bem-vindo ao Sistema Qualifica', html);
+    }
+
+    // ── Certificado emitido ───────────────────────────────────────────────────
+
+    async sendCertificateIssued(
+        to: string,
+        name: string,
+        courseName: string,
+        verificationCode: string,
+    ): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Certificado email → ${name} <${to}> | ${courseName}`);
+            return;
+        }
+        const base = getPrimaryFrontendUrl().replace(/\/$/, '');
+        const verifyUrl  = `${base}/certificado/verificar/${encodeURIComponent(verificationCode)}`;
+        const downloadUrl = `${base}/api/certificates/download/${encodeURIComponent(verificationCode)}`;
+        const html = this.templateCertificate(name, courseName, verifyUrl, downloadUrl, verificationCode);
+        await this.send(
+            to,
+            `Seu certificado de ${courseName} está pronto — Qualifica`,
+            html,
+        );
+    }
+
+    // ── Inscrição recebida ────────────────────────────────────────────────────
+
+    async sendEnrollmentReceived(
+        to: string,
+        name: string,
+        courseName: string,
+        protocol: string,
+    ): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Inscrição recebida email → ${name} <${to}>`);
+            return;
+        }
+        const html = this.templateEnrollmentReceived(name, courseName, protocol);
+        await this.send(to, `Inscrição recebida — ${courseName}`, html);
+    }
+
+    // ── Inscrição aprovada ────────────────────────────────────────────────────
+
+    async sendEnrollmentApproved(
+        to: string,
+        name: string,
+        courseName: string,
+        startDate?: string,
+        city?: string,
+    ): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Inscrição aprovada email → ${name} <${to}>`);
+            return;
+        }
+        const html = this.templateEnrollmentApproved(name, courseName, startDate, city);
+        await this.send(to, `✅ Inscrição aprovada — ${courseName}`, html);
+    }
+
+    // ── Inscrição rejeitada ───────────────────────────────────────────────────
+
+    async sendEnrollmentRejected(
+        to: string,
+        name: string,
+        courseName: string,
+        reason?: string,
+    ): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Inscrição rejeitada email → ${name} <${to}>`);
+            return;
+        }
+        const html = this.templateEnrollmentRejected(name, courseName, reason);
+        await this.send(to, `Atualização sobre sua inscrição — ${courseName}`, html);
+    }
+
+    // ── Reset de senha ────────────────────────────────────────────────────────
+
+    async sendPasswordReset(to: string, name: string, resetLink: string): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Password reset email → ${name} <${to}> | Link: ${resetLink}`);
+            return;
+        }
+        const html = this.templatePasswordReset(name, resetLink);
+        await this.send(to, 'Redefinição de senha — Qualifica', html);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // TEMPLATES HTML
+    // ═════════════════════════════════════════════════════════════════════════
+
+    private baseWrapper(content: string): string {
+        return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#F4F6FA">
+  <div style="max-width:560px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.08)">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#FFD600 0%,#F59E0B 100%);padding:28px 32px">
+      <h1 style="margin:0;font-size:22px;font-weight:900;color:#000;letter-spacing:.08em;font-family:Arial Black,sans-serif">UPGRADE</h1>
+      <p style="margin:4px 0 0;font-size:11px;color:rgba(0,0,0,.55);letter-spacing:.15em;text-transform:uppercase">Sistema de Qualificação Profissional</p>
+    </div>
+    <!-- Body -->
+    <div style="padding:32px">
+      ${content}
+    </div>
+    <!-- Footer -->
+    <div style="padding:16px 32px;background:#F9FAFB;border-top:1px solid #E5E7EB">
+      <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center">
+        Qualifica MA/PI · Este é um email automático, não responda a esta mensagem.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+    }
+
+    private esc(s: string): string {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    private templateOtp(name: string, code: string): string {
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 8px">Olá, <strong>${this.esc(name)}</strong></p>
+      <p style="color:#6B7280;font-size:14px;margin:0 0 24px">Use o código abaixo para acessar o sistema:</p>
+      <div style="background:#FFFBEB;border:2px solid #FFD600;border-radius:10px;padding:24px;text-align:center;margin:0 0 24px">
+        <span style="font-family:'Courier New',Courier,monospace;font-size:40px;font-weight:900;color:#000;letter-spacing:.2em">${this.esc(code)}</span>
+      </div>
+      <p style="color:#9CA3AF;font-size:12px;margin:0 0 4px">⏱ Este código expira em <strong>10 minutos</strong>.</p>
+      <p style="color:#9CA3AF;font-size:12px;margin:0">🔒 Se não foi você quem solicitou, ignore este e-mail.</p>`);
+    }
+
+    private templateStaffWelcome(name: string): string {
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">Olá, <strong>${this.esc(name)}</strong>!</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 16px">Sua conta no Sistema Qualifica foi criada com sucesso.</p>
+      <div style="background:#FFFBEB;border-left:4px solid #FFD600;padding:12px 16px;border-radius:4px;margin:0 0 20px">
+        <p style="margin:0;font-size:13px;color:#92400E;font-weight:600">⚠️ Ação necessária no primeiro acesso</p>
+        <p style="margin:6px 0 0;font-size:13px;color:#92400E">No seu primeiro login, você será solicitado a configurar o <strong>Google Authenticator</strong> para proteger sua conta.</p>
+      </div>
+      <p style="color:#6B7280;font-size:13px">Instale o app Google Authenticator no seu celular antes de fazer o login.</p>`);
+    }
+
+    private templateCertificate(
+        name: string,
+        courseName: string,
+        verifyUrl: string,
+        downloadUrl: string,
+        code: string,
+    ): string {
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">🎉 Parabéns, <strong>${this.esc(name)}</strong>!</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 20px">Seu certificado de conclusão do curso <strong>${this.esc(courseName)}</strong> foi emitido.</p>
+      <div style="display:flex;gap:12px;margin:0 0 20px">
+        <a href="${this.esc(verifyUrl)}" style="flex:1;display:block;padding:12px;background:#FFD600;color:#000;text-align:center;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">🔍 Verificar Autenticidade</a>
+        <a href="${this.esc(downloadUrl)}" style="flex:1;display:block;padding:12px;background:#111827;color:#fff;text-align:center;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">📄 Baixar PDF</a>
+      </div>
+      <p style="color:#9CA3AF;font-size:12px;margin:0">Código de verificação: <code style="background:#F3F4F6;padding:2px 6px;border-radius:4px">${this.esc(code)}</code></p>`);
+    }
+
+    private templateEnrollmentReceived(name: string, courseName: string, protocol: string): string {
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">Olá, <strong>${this.esc(name)}</strong>!</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 16px">Recebemos sua inscrição para o curso <strong>${this.esc(courseName)}</strong>.</p>
+      <div style="background:#FFFBEB;border:1px solid rgba(255,214,0,.4);border-radius:8px;padding:16px;margin:0 0 20px">
+        <p style="margin:0;font-size:12px;color:#92400E;font-weight:600;letter-spacing:.08em;text-transform:uppercase">Número do protocolo</p>
+        <p style="margin:6px 0 0;font-size:20px;font-weight:900;color:#000;font-family:monospace;letter-spacing:.1em">${this.esc(protocol)}</p>
+      </div>
+      <p style="color:#6B7280;font-size:13px;margin:0">Sua inscrição está sendo analisada. Você receberá um e-mail assim que houver uma atualização.</p>`);
+    }
+
+    private templateEnrollmentApproved(
+        name: string,
+        courseName: string,
+        startDate?: string,
+        city?: string,
+    ): string {
+        const details = [
+            startDate ? `<li style="margin:4px 0">📅 <strong>Início:</strong> ${this.esc(startDate)}</li>` : '',
+            city       ? `<li style="margin:4px 0">📍 <strong>Local:</strong> ${this.esc(city)}</li>`      : '',
+        ].filter(Boolean).join('');
+
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">🎉 Parabéns, <strong>${this.esc(name)}</strong>!</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 16px">Sua inscrição no curso <strong>${this.esc(courseName)}</strong> foi <strong style="color:#16a34a">aprovada</strong>.</p>
+      ${details ? `<ul style="color:#374151;font-size:14px;padding-left:20px;margin:0 0 16px">${details}</ul>` : ''}
+      <p style="color:#6B7280;font-size:13px;margin:0">Acesse o portal do aluno para acompanhar sua turma e materiais.</p>`);
+    }
+
+    private templateEnrollmentRejected(name: string, courseName: string, reason?: string): string {
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">Olá, <strong>${this.esc(name)}</strong>.</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 16px">Infelizmente sua inscrição no curso <strong>${this.esc(courseName)}</strong> não foi aprovada neste momento.</p>
+      ${reason ? `<div style="background:#FEF2F2;border-left:4px solid #FECACA;padding:12px 16px;border-radius:4px;margin:0 0 16px"><p style="margin:0;font-size:13px;color:#DC2626"><strong>Motivo:</strong> ${this.esc(reason)}</p></div>` : ''}
+      <p style="color:#6B7280;font-size:13px;margin:0">Em caso de dúvidas, entre em contato com a equipe Qualifica.</p>`);
+    }
+
+    private templatePasswordReset(name: string, resetLink: string): string {
+        return this.baseWrapper(`
+      <p style="color:#374151;font-size:15px;margin:0 0 12px">Olá, <strong>${this.esc(name)}</strong>.</p>
+      <p style="color:#374151;font-size:14px;margin:0 0 20px">Recebemos uma solicitação para redefinir sua senha.</p>
+      <a href="${this.esc(resetLink)}" style="display:block;padding:14px;background:linear-gradient(180deg,#FFD600 0%,#F59E0B 100%);color:#000;text-align:center;border-radius:8px;text-decoration:none;font-weight:800;font-size:14px;margin:0 0 20px">🔐 Redefinir Minha Senha</a>
+      <p style="color:#9CA3AF;font-size:12px;margin:0">Este link expira em 30 minutos. Se não foi você, ignore este e-mail.</p>`);
+    }
+}
