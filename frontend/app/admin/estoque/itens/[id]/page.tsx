@@ -19,9 +19,7 @@ import {
     ReservationsByItemResponse,
     RESERVATION_STATUS_COLOR,
     RESERVATION_STATUS_LABEL,
-    CATEGORIA_LABEL,
-    CATEGORIA_COLOR,
-    CATEGORIA_ICON,
+    resolveCategoria,
     MOV_TYPE_LABEL,
     MOV_TYPE_COLOR,
     MOV_TYPE_ICON,
@@ -188,8 +186,7 @@ export default function ItemDetailPage() {
         );
     }
 
-    const color = CATEGORIA_COLOR[item.categoria];
-    const icon = CATEGORIA_ICON[item.categoria];
+    const { color, icon, label: catLabel } = resolveCategoria(item);
     const low = isLowStock(item);
     const dias = daysUntilExpiry(item);
     const vencido = dias !== null && dias < 0;
@@ -245,7 +242,7 @@ export default function ItemDetailPage() {
                                 background: `${color}15`, border: `1px solid ${color}35`,
                                 fontSize: '0.66rem', fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.05em',
                             }}>
-                                {CATEGORIA_LABEL[item.categoria]}
+                                {catLabel}
                             </span>
                             <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
                                 {item.codigoInterno || '—'}
@@ -707,7 +704,7 @@ function ReadView({ item }: { item: StockItem }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem 2rem' }}>
             <ReadField label="Nome" value={item.nome} />
             <ReadField label="Código Interno" value={item.codigoInterno} mono />
-            <ReadField label="Categoria" value={CATEGORIA_LABEL[item.categoria]} />
+            <ReadField label="Categoria" value={resolveCategoria(item).label} />
             <ReadField label="Unidade" value={item.unidade} />
             <ReadField label="Quantidade Mínima" value={`${Number(item.quantidadeMinima)} ${item.unidade}`} />
             <ReadField label="Validade" value={item.validade ? new Date(item.validade).toLocaleDateString('pt-BR') : null} />
