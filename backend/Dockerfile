@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Instala dependências
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # Gera o Prisma Client e compila
 COPY . .
@@ -19,7 +19,7 @@ RUN apk add --no-cache openssl
 
 # Apenas dependências de produção
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --legacy-peer-deps
 
 # Copia artefatos do builder
 COPY --from=builder /app/dist ./dist
