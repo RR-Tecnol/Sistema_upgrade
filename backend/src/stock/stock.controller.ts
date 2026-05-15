@@ -262,6 +262,7 @@ export class StockController {
     // ═══════════════════════════════════════════════════════════════════
 
     @Get('categories')
+    @Roles('ADMIN', 'IT_ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER', 'DRIVER')
     @ApiOperation({
         summary: 'Lista todas as categorias (8 default + customizadas pelo admin)',
         description:
