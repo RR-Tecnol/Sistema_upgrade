@@ -63,6 +63,8 @@ services:
       dockerfile: Dockerfile
     container_name: upgrade-backend
     restart: always
+    ports:
+      - "3001:3001"
     env_file:
       - ./backend/.env
     environment:
@@ -91,6 +93,8 @@ services:
       dockerfile: Dockerfile
     container_name: upgrade-frontend
     restart: always
+    ports:
+      - "3000:3000"
     env_file:
       - ./frontend/.env.local
     environment:
