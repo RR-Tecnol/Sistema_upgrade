@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { getPrimaryFrontendUrl } from '../common/cors-origins';
 import { MailService } from '../mail/mail.service';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 export type IssuedCertificatePayload = {
   verificationCode: string;
@@ -9,12 +10,13 @@ export type IssuedCertificatePayload = {
   studentName: string;
   courseName: string;
   studentUserId?: string;
+  studentId?: string;  // ← necessário para enviar WhatsApp via student_contacts
 };
 
 /**
  * CertificateNotificationService — notificações pós-emissão de certificado.
  *
- * Usa MailService (Brevo) para email — mantém webhook WhatsApp para futura integração.
+ * Usa MailService (Brevo) para email e WhatsAppService (Z-API) para WhatsApp.
  * Falhas nunca bloqueiam a emissão do certificado (chamado com void).
  */
 @Injectable()
@@ -24,14 +26,14 @@ export class CertificateNotificationService {
   constructor(
     private readonly mail: MailService,
     private readonly notificationsSender: NotificationsSenderService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   async notifyCertificateIssued(p: IssuedCertificatePayload): Promise<void> {
     const base = getPrimaryFrontendUrl().replace(/\/$/, '');
-    const verifyUrl   = `${base}/certificado/verificar/${encodeURIComponent(p.verificationCode)}`;
-    const downloadUrl = `${base}/api/certificates/download/${encodeURIComponent(p.verificationCode)}`;
+    const verifyUrl = `${base}/certificado/verificar/${encodeURIComponent(p.verificationCode)}`;
 
-    // Email via Brevo (MailService)
+    // ── Email via Brevo ──────────────────────────────────────────────────────
     if (p.studentEmail?.includes('@')) {
       await this.mail.sendCertificateIssued(
         p.studentEmail,
@@ -43,42 +45,25 @@ export class CertificateNotificationService {
       this.log.debug('Sem e-mail do aluno — notificação por e-mail ignorada');
     }
 
-    // Webhook WhatsApp — reservado para futura integração
-    await this.postWhatsappHook(p, verifyUrl, downloadUrl);
+    // ── WhatsApp via Z-API ───────────────────────────────────────────────────
+    if (p.studentId) {
+      try {
+        void this.whatsapp.notifyCertificateIssued(
+          p.studentId,
+          p.studentName,
+          p.courseName,
+          p.verificationCode,
+          verifyUrl,
+        );
+      } catch {
+        /* WhatsApp nunca bloqueia a emissão do certificado */
+      }
+    }
 
-    // Notificação in-app via WebSocket
+    // ── Notificação in-app via WebSocket ─────────────────────────────────────
     if (p.studentUserId) {
       await this.notificationsSender.certificateIssued(p.studentUserId, p.courseName).catch(() => {});
     }
   }
-
-  private async postWhatsappHook(
-    p: IssuedCertificatePayload,
-    verifyUrl: string,
-    downloadUrl: string,
-  ): Promise<void> {
-    const url = process.env.CERT_WHATSAPP_WEBHOOK_URL?.trim();
-    if (!url) return;
-
-    const body = {
-      event: 'certificate.issued',
-      verificationCode: p.verificationCode,
-      studentName: p.studentName,
-      courseName: p.courseName,
-      verifyUrl,
-      downloadUrl,
-    };
-
-    try {
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!r.ok) this.log.warn(`Webhook WhatsApp respondeu ${r.status}`);
-    } catch (e) {
-      this.log.warn(`Webhook WhatsApp falhou: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
 }
+

@@ -15,6 +15,7 @@ import {
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { MailService } from '../mail/mail.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 /**
  * ReimbursementService — REQ-10
@@ -39,6 +40,7 @@ export class ReimbursementService {
       private notifications: NotificationsGateway,
       private notificationsSender: NotificationsSenderService,
       private mail: MailService,
+      private whatsapp: WhatsAppService,
   ) {}
 
   /**
@@ -354,6 +356,20 @@ export class ReimbursementService {
       }
     } catch { /* email nunca bloqueia */ }
 
+    // ── WHATSAPP: avisar sobre reembolso aprovado ──────────────────────
+    try {
+      const requester = await this.prisma.user.findUnique({
+        where: { id: item.requestedBy },
+        select: { name: true },
+      });
+      void this.whatsapp.notifyReimbursementApproved(
+        item.requestedBy,
+        requester?.name || 'Funcionário',
+        Number(item.amount),
+        item.description ?? 'Despesa de campo',
+      );
+    } catch { /* WhatsApp nunca bloqueia */ }
+
     return updated;
   }
 
@@ -425,6 +441,21 @@ export class ReimbursementService {
           );
         }
       } catch { /* email nunca bloqueia */ }
+
+      // ── WHATSAPP: avisar sobre reembolso rejeitado ────────────────────
+      try {
+        const requester = await this.prisma.user.findUnique({
+          where: { id: item.requestedBy },
+          select: { name: true },
+        });
+        void this.whatsapp.notifyReimbursementRejected(
+          item.requestedBy,
+          requester?.name || 'Funcionário',
+          Number(item.amount),
+          item.description ?? 'Despesa de campo',
+          rejectionReason,
+        );
+      } catch { /* WhatsApp nunca bloqueia */ }
 
       return updated;
     });

@@ -14,6 +14,7 @@ import {
     looksLikeAlreadyPresignedGetUrl,
     parseMinioPublicUrlToBucketKey,
 } from '../reimbursement/minio-public-url.util';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 /** `YYYY-MM-DD` em JS vira meia-noite UTC → em fusos atrás do UTC aparece dia anterior na UI. Normaliza como «dia civil» (meio-dia UTC). */
 function parseCalendarDateOnlyOrThrow(dateInput: string): Date {
@@ -42,6 +43,7 @@ export class AbsencesService {
         private notifications: NotificationsGateway,
         private notificationsSender: NotificationsSenderService,
         private minio: MinioService,
+        private whatsapp: WhatsAppService,
     ) {}
 
     private dayStampUtc(d: Date): number {
@@ -456,6 +458,17 @@ export class AbsencesService {
                 ...(notificationId ? { notificationId } : {}),
             });
         } catch { /* WS / persistência secundária */ }
+
+        // ── WHATSAPP: notificar resultado da revisão de imprevisto ──────────────
+        try {
+            void this.whatsapp.notifyAbsenceReviewed(
+                absence.userId,
+                absence.user?.name || 'Usuário',
+                data.status,
+                absence.description,
+                data.adminNote,
+            );
+        } catch { /* WhatsApp nunca bloqueia */ }
 
         return updated;
     }

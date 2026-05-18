@@ -6,9 +6,10 @@ import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { FeedbackStatus, FeedbackRewardStatus, PixKeyType, Prisma } from '@prisma/client';
 import { SubmitFeedbackDto } from './dto/submit-feedback.dto';
-import { NoopEmailProvider, NoopSmsProvider, NoopWhatsappProvider } from './providers/noop-notification.provider';
+import { NoopEmailProvider, NoopSmsProvider } from './providers/noop-notification.provider';
 import { FeedbacksMinioService } from './feedbacks-minio.service';
 import { MailService } from '../mail/mail.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 /**
  * FeedbacksService — Regras de negócio do módulo Feedback Pós-Curso + Recompensa PIX.
@@ -28,9 +29,9 @@ export class FeedbacksService {
         private readonly notifSender: NotificationsSenderService,
         private readonly email: NoopEmailProvider,
         private readonly sms: NoopSmsProvider,
-        private readonly whatsapp: NoopWhatsappProvider,
         private readonly minio: FeedbacksMinioService,
         private readonly mail: MailService,
+        private readonly whatsapp: WhatsAppService,
     ) {}
 
     // ── STUDENT ──────────────────────────────────────────────

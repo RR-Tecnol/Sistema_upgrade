@@ -15,6 +15,7 @@ import {
     ExclamationTriangleIcon,
     CurrencyDollarIcon,
     MapPinIcon,
+    ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { ConfiguracoesSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
@@ -22,6 +23,7 @@ import { SettingRow } from '@/components/settings/SettingRow';
 import AuthenticatorSettingsTotpBlock from '@/components/auth/AuthenticatorSettingsTotpBlock';
 import ChangePasswordSettingsPanel from '@/components/auth/ChangePasswordSettingsPanel';
 import { runAdminQuickExport, type QuickExportKey } from '@/lib/exports/adminQuickExport';
+import WhatsAppConfigPanel from './whatsapp/page';
 
 /* ── Toggle Switch ── */
 function Toggle({ checked, onChange, color = '#FFD600' }: { checked: boolean; onChange: (v: boolean) => void; color?: string }) {
@@ -374,6 +376,7 @@ const TABS = [
 
     { id: 'geral', label: 'Geral', icon: Cog6ToothIcon },
     { id: 'notificacoes', label: 'Notificações', icon: BellIcon },
+    { id: 'whatsapp', label: 'WhatsApp', icon: ChatBubbleLeftRightIcon },
     { id: 'seguranca', label: 'Segurança', icon: ShieldCheckIcon },
     { id: 'sistema', label: 'Sistema', icon: GlobeAltIcon },
     { id: 'financeiro', label: 'Financeiro', icon: CurrencyDollarIcon },
@@ -1158,6 +1161,13 @@ export default function ConfiguracoesPage() {
                             <span style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 600 }}>{cfg.emailAdmin || '—'}</span>
                         </SettingRow>
                     </div>
+                </div>
+            )}
+
+            {/* ── TAB: WHATSAPP ── */}
+            {tab === 'whatsapp' && (
+                <div className="animate-fade-in">
+                    <WhatsAppConfigPanel />
                 </div>
             )}
         </div>

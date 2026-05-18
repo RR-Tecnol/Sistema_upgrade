@@ -46,6 +46,8 @@ import { HealthModule } from './health/health.module';
 import { StockModule } from './stock/stock.module';
 // CADASTRO-LINK: Upload público anônimo (PDF/imagem) para cadastro de funcionários via link
 import { PublicUploadModule } from './public-upload/public-upload.module';
+// WHATSAPP: Integração Z-API — disparos automáticos de mensagens (@Global)
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 
 @Module({
@@ -90,6 +92,7 @@ import { PublicUploadModule } from './public-upload/public-upload.module';
         HealthModule,         // Probes: GET /api/health, GET /api/ready
         StockModule,          // EST-01: Módulo de Estoque
         PublicUploadModule,   // POST /api/public/upload — cadastro público (funcionário, inscrição, etc.)
+        WhatsAppModule,       // WHATSAPP: Integração Z-API — disparos automáticos (@Global)
     ],
     providers: [
         // ThrottlerGuard global — aplica rate limiting em TODOS os endpoints

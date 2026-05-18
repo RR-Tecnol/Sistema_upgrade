@@ -9,6 +9,7 @@ import * as bcrypt from 'bcryptjs';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { MailService } from '../mail/mail.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 /** Metadados opcionais da requisição pública (LGPD — prova de quando/como o consentimento foi recolhido) */
 export type PublicEnrollmentRequestMeta = {
@@ -23,6 +24,7 @@ export class EnrollmentsService {
         private readonly notifications: NotificationsGateway,
         private readonly notificationsSender: NotificationsSenderService,
         private readonly mail: MailService,
+        private readonly whatsapp: WhatsAppService,
     ) { }
 
     async adminEnroll(studentId: string, classId: string) {
@@ -292,6 +294,15 @@ export class EnrollmentsService {
             }
         } catch { /* email nunca bloqueia */ }
 
+        // ── WHATSAPP: confirmar recebimento da inscrição ──────────────────────
+        try {
+            const studentName = enrollment.student?.user?.name || 'Aluno';
+            const courseName  = (enrollment.class as any)?.course?.name || 'Curso';
+            void this.whatsapp.notifyEnrollmentReceived(
+                enrollment.studentId, studentName, courseName, enrollment.protocol,
+            );
+        } catch { /* WhatsApp nunca bloqueia */ }
+
         return {
             ...enrollment,
             protocol: enrollment.protocol,
@@ -452,6 +463,20 @@ export class EnrollmentsService {
             }
         } catch { /* email nunca bloqueia */ }
 
+        // ── WHATSAPP: avisar aluno que inscrição foi aprovada ─────────────────
+        try {
+            const studentName = updated.student?.user?.name || 'Aluno';
+            const courseName  = (updated.class as any)?.course?.name || 'Curso';
+            const classData   = updated.class as any;
+            const startDate   = classData?.startDate
+                ? new Date(classData.startDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+                : undefined;
+            const city = classData?.city?.name || undefined;
+            void this.whatsapp.notifyEnrollmentApproved(
+                updated.studentId, studentName, courseName, startDate, city,
+            );
+        } catch { /* WhatsApp nunca bloqueia */ }
+
         return updated;
     }
 
@@ -513,6 +538,15 @@ export class EnrollmentsService {
                 void this.mail.sendEnrollmentRejected(studentEmail, studentName, courseName, rejectionReason);
             }
         } catch { /* email nunca bloqueia */ }
+
+        // ── WHATSAPP: avisar aluno que inscrição foi rejeitada ────────────────
+        try {
+            const studentName = updated.student?.user?.name || 'Aluno';
+            const courseName  = (updated.class as any)?.course?.name || 'Curso';
+            void this.whatsapp.notifyEnrollmentRejected(
+                updated.studentId, studentName, courseName, rejectionReason,
+            );
+        } catch { /* WhatsApp nunca bloqueia */ }
 
         return updated;
     }

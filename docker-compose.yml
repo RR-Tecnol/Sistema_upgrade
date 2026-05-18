@@ -11,8 +11,9 @@ services:
       POSTGRES_PASSWORD: cursos_password
       POSTGRES_DB: cursos_db
       POSTGRES_INITDB_ARGS: "--locale=pt_BR.UTF-8 --encoding=UTF8"
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
-import { NoopEmailProvider, NoopSmsProvider, NoopWhatsappProvider } from './providers/noop-notification.provider';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { MIN_CERTIFICATE_ATTENDANCE_PCT } from '../common/certificate-attendance.util';
 import { evaluateCertificateEligibilityForEnrollment } from '../common/certificate-enrollment-evaluation.helper';
 
@@ -19,9 +19,7 @@ export class FeedbacksInvitationService {
         private readonly prisma: PrismaService,
         private readonly notifSender: NotificationsSenderService,
         private readonly notifications: NotificationsGateway,
-        private readonly emailProvider: NoopEmailProvider,
-        private readonly smsProvider: NoopSmsProvider,
-        private readonly whatsappProvider: NoopWhatsappProvider,
+        private readonly whatsapp: WhatsAppService,
     ) {}
 
     /**
@@ -109,18 +107,15 @@ export class FeedbacksInvitationService {
             this.logger.warn(`Falha ao persistir notificação IN_APP: ${err}`);
         }
 
-        // Noop providers para canais extras
-        const payload = {
-            userId: student.user.id,
-            title: 'Conte como foi o curso e ganhe um PIX! 🎁',
-            message: `Seu certificado do curso "${courseName}" foi emitido. Responda nossa pesquisa rápida e receba uma recompensa em PIX.`,
-        };
-
-        if (channels.includes('EMAIL')) {
-            try { await this.emailProvider.send(payload); } catch {}
-        }
+        // ── WHATSAPP: Convite de feedback pós-certificado ────────────────────
         if (channels.includes('WHATSAPP')) {
-            try { await this.whatsappProvider.send(payload); } catch {}
+            try {
+                void this.whatsapp.notifyFeedbackInvitation(
+                    certificate.studentId,
+                    student.user.name,
+                    courseName,
+                );
+            } catch {}
         }
 
         // WS — fora da transação, try/catch
@@ -168,18 +163,15 @@ export class FeedbacksInvitationService {
             this.logger.warn(`Falha ao enviar lembrete: ${err}`);
         }
 
-        // Noop providers
-        const payload = {
-            userId: fb.student.user.id,
-            title: `Lembrete: seu feedback do curso "${courseName}" ⏰`,
-            message: 'Ainda não recebemos sua avaliação. Leva menos de 3 minutos e você ganha um PIX de recompensa.',
-        };
-
-        if (fb.invitedChannels.includes('EMAIL')) {
-            try { await this.emailProvider.send(payload); } catch {}
-        }
+        // ── WHATSAPP: Lembrete de feedback ───────────────────────────────────
         if (fb.invitedChannels.includes('WHATSAPP')) {
-            try { await this.whatsappProvider.send(payload); } catch {}
+            try {
+                void this.whatsapp.notifyFeedbackInvitation(
+                    fb.student.id,
+                    fb.student.user.id,
+                    courseName,
+                );
+            } catch {}
         }
 
         this.logger.log(`Lembrete #${newCount} enviado para feedback ${feedbackId}`);
