@@ -251,11 +251,15 @@ export default function DriverDashboard() {
             const { data: presigned } = await api.post('/driver/trips/presigned-url', {
                 filename: `hodometro_inicial.${ext}`,
             });
-            await fetch(presigned.uploadUrl, {
+            // BUG A: validar se o PUT realmente funcionou antes de gravar URL na BD
+            const uploadRes = await fetch(presigned.uploadUrl, {
                 method: 'PUT',
                 body: photoFile,
                 headers: { 'Content-Type': photoFile.type }
             });
+            if (!uploadRes.ok) {
+                throw new Error(`Upload da foto falhou (HTTP ${uploadRes.status}). Verifique a conexão e tente novamente.`);
+            }
 
             await api.patch(`/driver/trips/${nextTrip.id}/start`, {
                 startOdometerPhotoUrl: presigned.fileUrl,
@@ -268,7 +272,7 @@ export default function DriverDashboard() {
             load();
         } catch (err: any) {
             if (!err?.code) {
-                toast.error(err?.response?.data?.message || 'Erro ao iniciar viagem');
+                toast.error(err?.response?.data?.message || err?.message || 'Erro ao iniciar viagem');
             }
         } finally { setSaving(false); }
     };
@@ -289,11 +293,14 @@ export default function DriverDashboard() {
             });
 
             // 2. Fazer upload da imagem
-            await fetch(presigned.uploadUrl, {
+            const uploadRes = await fetch(presigned.uploadUrl, {
                 method: 'PUT',
                 body: photoFile,
                 headers: { 'Content-Type': photoFile.type }
             });
+            if (!uploadRes.ok) {
+                throw new Error(`Upload da foto falhou (HTTP ${uploadRes.status}). Verifique a conexão e tente novamente.`);
+            }
 
             // 3. Finalizar viagem no backend com a URL da foto
             await api.patch(`/driver/trips/${activeTrip.id}/complete`, { 

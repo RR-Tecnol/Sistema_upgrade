@@ -780,64 +780,84 @@ export function NovoInsumoWizard({ isModal, onModalClose, onModalSuccess }: { is
                                                 }}
                                                 title={c.description ?? undefined}
                                                 style={{
-                                                    padding: '0.65rem 0.75rem', borderRadius: 10,
-                                                    cursor: 'pointer', textAlign: 'left',
+                                                    padding: '0.55rem 0.65rem',
+                                                    borderRadius: 10,
+                                                    cursor: 'pointer',
                                                     transition: 'all 0.18s',
                                                     background: isSelected ? `${color}12` : '#F9FAFB',
                                                     border: `1.5px solid ${isSelected ? color : '#E5E7EB'}`,
-                                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '0.3rem',
                                                     position: 'relative',
+                                                    minWidth: 0,
+                                                    overflow: 'hidden',
                                                 }}>
-                                                <span style={{ fontSize: '1rem' }}>{c.icon}</span>
-                                                <span style={{
-                                                    fontSize: '0.78rem',
-                                                    fontWeight: isSelected ? 800 : 600,
-                                                    color: isSelected ? color : '#6B7280',
-                                                }}>{c.nome}</span>
+                                                {/* Linha 1: ícone + nome + check */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
+                                                    <span style={{ fontSize: '0.9rem', flexShrink: 0 }}>{c.icon}</span>
+                                                    <span style={{
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: isSelected ? 800 : 600,
+                                                        color: isSelected ? color : '#6B7280',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        whiteSpace: 'nowrap',
+                                                        flex: 1,
+                                                        minWidth: 0,
+                                                    }}>{c.nome}</span>
+                                                    {isSelected && (
+                                                        <CheckCircleIcon style={{ width: 13, height: 13, color: color, flexShrink: 0 }} />
+                                                    )}
+                                                </div>
+                                                {/* Linha 2 (só custom): CUSTOM badge + X */}
                                                 {!c.isDefault && (
-                                                    <span title="Categoria customizada" style={{
-                                                        marginLeft: 4, fontSize: '0.55rem', fontWeight: 700,
-                                                        background: color, color: '#fff', padding: '1px 5px',
-                                                        borderRadius: 6,
-                                                    }}>CUSTOM</span>
-                                                )}
-                                                {!c.isDefault && (
-                                                    <button
-                                                        type="button"
-                                                        tabIndex={0}
-                                                        title={`Apagar categoria ${c.nome}`}
-                                                        aria-label={`Apagar categoria ${c.nome}`}
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            handleDeleteCustomCategory(c as StockCategory);
-                                                        }}
-                                                        disabled={deletingCategoryId === c.id}
-                                                        style={{
-                                                            width: 28,
-                                                            height: 28,
-                                                            borderRadius: 999,
-                                                            marginLeft: 'auto',
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                                        <span style={{
+                                                            fontSize: '0.52rem', fontWeight: 700,
+                                                            background: color, color: '#fff',
+                                                            padding: '1px 5px', borderRadius: 5,
                                                             flexShrink: 0,
-                                                            background: deletingCategoryId === c.id ? '#F3F4F6' : '#FEF2F2',
-                                                            border: '1px solid #FECACA',
-                                                            color: deletingCategoryId === c.id ? '#9CA3AF' : '#DC2626',
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            fontSize: '1rem',
-                                                            fontWeight: 700,
-                                                            lineHeight: 1,
-                                                            cursor: deletingCategoryId === c.id ? 'wait' : 'pointer',
-                                                            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                                                            transition: 'transform 0.15s, background 0.15s',
-                                                        }}
-                                                    >
-                                                        {deletingCategoryId === c.id ? '…' : '×'}
-                                                    </button>
-                                                )}
-                                                {isSelected && (
-                                                    <CheckCircleIcon style={{ width: 14, height: 14, color: color, marginLeft: c.isDefault ? 'auto' : 2 }} />
+                                                        }}>CUSTOM</span>
+                                                        <span style={{ flex: 1 }} />
+                                                        <span
+                                                            role="button"
+                                                            tabIndex={0}
+                                                            title={`Apagar categoria ${c.nome}`}
+                                                            aria-label={`Apagar categoria ${c.nome}`}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                handleDeleteCustomCategory(c as StockCategory);
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key !== 'Enter' && e.key !== ' ') return;
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                handleDeleteCustomCategory(c as StockCategory);
+                                                            }}
+                                                            style={{
+                                                                width: 18,
+                                                                height: 18,
+                                                                borderRadius: 999,
+                                                                flexShrink: 0,
+                                                                background: deletingCategoryId === c.id ? '#F3F4F6' : '#FEF2F2',
+                                                                border: '1px solid #FECACA',
+                                                                color: deletingCategoryId === c.id ? '#9CA3AF' : '#DC2626',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontSize: '0.8rem',
+                                                                fontWeight: 900,
+                                                                lineHeight: 1,
+                                                                cursor: deletingCategoryId === c.id ? 'wait' : 'pointer',
+                                                                boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                                                                transition: 'transform 0.15s, background 0.15s',
+                                                            }}
+                                                        >
+                                                            {deletingCategoryId === c.id ? '…' : '×'}
+                                                        </span>
+                                                    </div>
                                                 )}
                                             </div>
                                         );

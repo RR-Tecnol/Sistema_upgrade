@@ -55,30 +55,47 @@ export class ClassesService {
     }
 
     async findPublicClasses(filters?: { state?: string; city?: string }) {
+        // Localização filter
+        const cityWhere: Prisma.CityWhereInput | undefined =
+            filters?.state && filters?.city
+                ? { state: filters.state, name: { contains: filters.city, mode: 'insensitive' } }
+                : filters?.state
+                  ? { state: filters.state }
+                  : filters?.city
+                    ? { name: { contains: filters.city, mode: 'insensitive' } }
+                    : undefined;
+
+        // Turmas abertas para inscrição online:
+        //   1) Status ENROLLMENT_OPEN (clássico), OU
+        //   2) Controladas por Período de Curso (Ação) com permitirInscricoes=true
+        //      — APENAS turmas que ainda não iniciaram (não IN_PROGRESS/COMPLETED/CANCELLED)
+        //      — Quando a turma transita para IN_PROGRESS o curso já começou: sem novas inscrições
+        const statusNaoIniciados = ['PLANNED', 'ENROLLMENT_OPEN', 'ENROLLMENT_CLOSED'] as ClassStatus[];
         const where: Prisma.ClassWhereInput = {
-            status: 'ENROLLMENT_OPEN',
+            OR: [
+                {
+                    status: 'ENROLLMENT_OPEN',
+                    ...(cityWhere ? { city: cityWhere } : {}),
+                },
+                {
+                    status: { in: statusNaoIniciados },
+                    acaoTurmas: {
+                        some: {
+                            acao: { permitirInscricoes: true },
+                        },
+                    },
+                    ...(cityWhere ? { city: cityWhere } : {}),
+                },
+            ],
         };
 
-        if (filters?.state && filters?.city) {
-            where.city = {
-                state: filters.state,
-                name: {
-                    contains: filters.city,
-                    mode: 'insensitive',
-                },
-            };
-        } else if (filters?.state) {
-            where.city = {
-                state: filters.state,
-            };
-        } else if (filters?.city) {
-            where.city = {
-                name: {
-                    contains: filters.city,
-                    mode: 'insensitive',
-                },
-            };
-        }
+        const locationFields = {
+            locationName: true,
+            locationAddress: true,
+            locationReference: true,
+            locationLatitude: true,
+            locationLongitude: true,
+        };
 
         return this.prisma.class.findMany({
             where,

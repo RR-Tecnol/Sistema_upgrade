@@ -318,6 +318,14 @@ export class TruckMaintenanceService {
     async remove(id: string) {
         const existing = await this.findOne(id);
         const updated = await this.prisma.truckMaintenance.update({ where: { id }, data: { status: 'cancelada' } });
+        
+        const openCount = await this.prisma.truckMaintenance.count({
+            where: { truckId: existing.truckId, id: { not: id }, status: { in: ['agendada', 'em_andamento'] } },
+        });
+        if (openCount === 0) {
+            await this.prisma.truck.update({ where: { id: existing.truckId }, data: { status: 'AVAILABLE' } });
+        }
+
         await this.syncTruckDates(existing.truckId);
         return updated;
     }

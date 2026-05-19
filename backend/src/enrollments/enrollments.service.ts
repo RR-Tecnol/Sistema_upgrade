@@ -106,7 +106,21 @@ export class EnrollmentsService {
             include: { course: true },
         });
         if (!classData) throw new NotFoundException('Turma não encontrada');
-        if (classData.status !== 'ENROLLMENT_OPEN') {
+
+        // Verificar se inscrições estão abertas:
+        // 1) Status ENROLLMENT_OPEN (clássico), OU
+        // 2) Turma vinculada a Período de Curso com permitirInscricoes=true e ainda não iniciada
+        const statusAceitaInscricao = ['PLANNED', 'ENROLLMENT_OPEN', 'ENROLLMENT_CLOSED'];
+        const temAcaoAberta = await this.prisma.acaoTurma.findFirst({
+            where: {
+                turmaId: classData.id,
+                acao: { permitirInscricoes: true },
+            },
+        });
+        const inscricoesAbertas =
+            classData.status === 'ENROLLMENT_OPEN' ||
+            (statusAceitaInscricao.includes(classData.status as string) && !!temAcaoAberta);
+        if (!inscricoesAbertas) {
             throw new BadRequestException('Inscrições não estão abertas para esta turma');
         }
 

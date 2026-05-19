@@ -27,6 +27,7 @@ export function TripOdometerPhotosPreview({
 }) {
     const apiBase = scope === 'admin' ? '/admin/trips' : '/driver/trips';
     const [resolved, setResolved] = useState<{ start?: string; end?: string }>({});
+    const [unavailable, setUnavailable] = useState<{ start?: boolean; end?: boolean }>({});
     const needsFetch = !!(String(startUrl ?? '').trim() || String(endUrl ?? '').trim());
     const [loading, setLoading] = useState(needsFetch);
 
@@ -40,25 +41,31 @@ export function TripOdometerPhotosPreview({
                 return;
             }
             const next: { start?: string; end?: string } = {};
-            try {
-                if (hasStart) {
+            const notFound: { start?: boolean; end?: boolean } = {};
+            if (hasStart) {
+                try {
                     const { data } = await api.get<{ url: string }>(`${apiBase}/${tripId}/odometer-photo-url`, {
                         params: { kind: 'start' },
                     });
                     next.start = data.url;
+                } catch (e: any) {
+                    // 404 = arquivo não existe no MinIO; não usar URL crua (retorna XML de erro)
+                    notFound.start = true;
                 }
-                if (hasEnd) {
+            }
+            if (hasEnd) {
+                try {
                     const { data } = await api.get<{ url: string }>(`${apiBase}/${tripId}/odometer-photo-url`, {
                         params: { kind: 'end' },
                     });
                     next.end = data.url;
+                } catch {
+                    notFound.end = true;
                 }
-            } catch {
-                if (hasStart) next.start = String(startUrl).trim();
-                if (hasEnd) next.end = String(endUrl).trim();
             }
             if (!cancelled) {
                 setResolved(next);
+                setUnavailable(notFound);
                 setLoading(false);
             }
         };
@@ -85,21 +92,37 @@ export function TripOdometerPhotosPreview({
         );
     }
 
+    // Fotos antigas (URL na BD mas ficheiro não existe no MinIO) — mostrar aviso
+    const hasAnyUnavailable = unavailable.start || unavailable.end;
+
     return (
-        <EnrollmentDocumentsPreview
-            documents={{
-                startOdometer: resolved.start ?? startUrl ?? undefined,
-                endOdometer: resolved.end ?? endUrl ?? undefined,
-            }}
-            variant="light"
-            adminDownloads
-            enableLightbox
-            heading="Fotos comprobatórias"
-            customLabels={{
-                startOdometer: 'Hodômetro — ida (saída)',
-                endOdometer: 'Hodômetro — volta (chegada)',
-            }}
-            emptyMessage={emptyMessage}
-        />
+        <>
+            {hasAnyUnavailable && (
+                <div style={{
+                    padding: '0.6rem 0.85rem', borderRadius: 8, background: '#FEF3C7',
+                    border: '1px solid #FDE68A', fontSize: '0.75rem', color: '#92400E',
+                    marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem',
+                }}>
+                    ⚠️ {unavailable.start && !unavailable.end ? 'Foto de ida' :
+                         !unavailable.start && unavailable.end ? 'Foto de chegada' :
+                         'Fotos'} não disponível(is) — arquivo não encontrado no armazenamento.
+                </div>
+            )}
+            <EnrollmentDocumentsPreview
+                documents={{
+                    startOdometer: resolved.start,
+                    endOdometer: resolved.end,
+                }}
+                variant="light"
+                adminDownloads
+                enableLightbox
+                heading="Fotos comprobatórias"
+                customLabels={{
+                    startOdometer: 'Hodômetro — ida (saída)',
+                    endOdometer: 'Hodômetro — volta (chegada)',
+                }}
+                emptyMessage={emptyMessage}
+            />
+        </>
     );
 }

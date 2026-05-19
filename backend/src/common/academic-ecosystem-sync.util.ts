@@ -545,6 +545,26 @@ export async function findTurmasForCourseContext(
     return eligible;
 }
 
+/** Ao iniciar o período, inicia as turmas vinculadas. */
+export async function startTurmasWhenAcaoStarted(prisma: PrismaService, acaoId: string) {
+    const links = await prisma.acaoTurma.findMany({
+        where: { acaoId },
+        select: { turmaId: true },
+    });
+    if (!links.length) return { updated: 0, turmaIds: [] as string[] };
+
+    const turmaIds = links.map(l => l.turmaId);
+    const result = await prisma.class.updateMany({
+        where: {
+            id: { in: turmaIds },
+            status: { notIn: ['IN_PROGRESS', 'CANCELLED', 'COMPLETED'] },
+        },
+        data: { status: 'IN_PROGRESS' },
+    });
+
+    return { updated: result.count, turmaIds };
+}
+
 /** Ao concluir o período, encerra turmas vinculadas para não reaparecerem no wizard. */
 export async function completeTurmasWhenAcaoConcluded(prisma: PrismaService, acaoId: string) {
     const links = await prisma.acaoTurma.findMany({

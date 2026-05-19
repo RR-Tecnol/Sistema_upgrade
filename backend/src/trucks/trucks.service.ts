@@ -222,8 +222,8 @@ export class TrucksService {
             where: { id },
             data: {
                 ...rest,
-                ...(lastMaintenanceDate ? { lastMaintenanceDate: this.parseDateSafe(lastMaintenanceDate) } : {}),
-                ...(nextMaintenanceDate ? { nextMaintenanceDate: this.parseDateSafe(nextMaintenanceDate) } : {}),
+                ...(lastMaintenanceDate !== undefined ? { lastMaintenanceDate: lastMaintenanceDate ? this.parseDateSafe(lastMaintenanceDate) : null } : {}),
+                ...(nextMaintenanceDate !== undefined ? { nextMaintenanceDate: nextMaintenanceDate ? this.parseDateSafe(nextMaintenanceDate) : null } : {}),
             },
             include: {
                 group: true,

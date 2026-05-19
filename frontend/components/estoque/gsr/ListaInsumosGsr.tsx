@@ -274,6 +274,9 @@ export function ListaInsumosGsr({
                                     </td>
                                     <td style={{ ...TD, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
+                                            <ActionBtn title="Visualizar Detalhes" color="#6366F1" href={`/admin/estoque/itens/${item.id}`}>
+                                                👁️
+                                            </ActionBtn>
                                             <ActionBtn title="Movimentação" color="#059669" onClick={() => onMovement({ item, quantidadeExibida })}>
                                                 ⇅
                                             </ActionBtn>

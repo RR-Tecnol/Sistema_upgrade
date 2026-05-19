@@ -53,6 +53,7 @@ export default function DriverViagens() {
     const [showModal, setShowModal] = useState<{ trip: Trip; type: 'start' | 'end' } | null>(null);
     const [saving, setSaving] = useState(false);
     const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
     const [respondingId, setRespondingId] = useState<string | null>(null);
     const [rejectModal, setRejectModal] = useState<{ tripId: string; reason: string } | null>(null);
 
@@ -94,6 +95,14 @@ export default function DriverViagens() {
 
     useEffect(() => { load(); }, []);
 
+    // Preview local da foto
+    useEffect(() => {
+        if (!photoFile) { setPhotoPreviewUrl(null); return; }
+        const url = URL.createObjectURL(photoFile);
+        setPhotoPreviewUrl(url);
+        return () => URL.revokeObjectURL(url);
+    }, [photoFile]);
+
     const filtered =
         tab === 'PLANNED'
             ? sortPlannedTripsAsc(trips.filter(t => t.status === 'PLANNED'))
@@ -104,28 +113,48 @@ export default function DriverViagens() {
         setSaving(true);
         try {
             if (showModal.type === 'start') {
-                if (!photoFile) return;
+                if (!photoFile) { toast.error('Foto do hodômetro inicial é obrigatória.'); return; }
                 const ext = photoFile.name.split('.').pop();
                 const { data: presigned } = await api.post('/driver/trips/presigned-url', {
                     filename: `hodometro_inicial.${ext}`,
                 });
-                await fetch(presigned.uploadUrl, {
+                // BUG A: validar se o PUT de upload realmente funcionou antes de salvar a URL
+                const uploadRes = await fetch(presigned.uploadUrl, {
                     method: 'PUT',
                     body: photoFile,
                     headers: { 'Content-Type': photoFile.type },
                 });
+                if (!uploadRes.ok) {
+                    throw new Error(`Upload da foto falhou (HTTP ${uploadRes.status}). Verifique a conexão e tente novamente.`);
+                }
                 await api.patch(`/driver/trips/${showModal.trip.id}/start`, {
                     startOdometerPhotoUrl: presigned.fileUrl,
                 });
                 toast.success('Viagem iniciada com sucesso.');
             } else {
-                if (!kmInput) return;
-                await api.patch(`/driver/trips/${showModal.trip.id}/complete`, { kmEnd: parseInt(kmInput) });
+                // BUG D: exigir foto também na finalização (alinhado com dashboard)
+                if (!photoFile) { toast.error('Foto do hodômetro final é obrigatória.'); return; }
+                const ext = photoFile.name.split('.').pop();
+                const { data: presigned } = await api.post('/driver/trips/presigned-url', {
+                    filename: `hodometro_final.${ext}`,
+                });
+                const uploadRes = await fetch(presigned.uploadUrl, {
+                    method: 'PUT',
+                    body: photoFile,
+                    headers: { 'Content-Type': photoFile.type },
+                });
+                if (!uploadRes.ok) {
+                    throw new Error(`Upload da foto falhou (HTTP ${uploadRes.status}). Verifique a conexão e tente novamente.`);
+                }
+                await api.patch(`/driver/trips/${showModal.trip.id}/complete`, {
+                    endOdometerPhotoUrl: presigned.fileUrl,
+                    ...(kmInput ? { kmEnd: parseInt(kmInput) } : {}),
+                });
                 toast.success('Viagem finalizada com sucesso.');
             }
-            setShowModal(null); setKmInput(''); setPhotoFile(null); load();
+            setShowModal(null); setKmInput(''); setPhotoFile(null); setPhotoPreviewUrl(null); load();
         } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'Erro ao executar ação da viagem.');
+            toast.error(err?.response?.data?.message || err?.message || 'Erro ao executar ação da viagem.');
         } finally { setSaving(false); }
     };
 
@@ -323,10 +352,24 @@ export default function DriverViagens() {
                         {showModal.type === 'end' && (
                             <>
                                 <label style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
-                                    Hodômetro final (km)
+                                    Hodômetro final (km) — opcional
                                 </label>
                                 <input type="number" placeholder="Ex: 145020" value={kmInput} onChange={e => setKmInput(e.target.value)}
                                     style={{ width: '100%', padding: '0.85rem', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: '#0F172A', color: '#F1F5F9', fontSize: '1.1rem', fontFamily: 'monospace', boxSizing: 'border-box', marginBottom: '1rem' }} />
+                                <label style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
+                                    Foto do hodômetro final (obrigatório)
+                                </label>
+                                <input
+                                    type="file" accept="image/*" capture="environment"
+                                    id="end-photo-upload"
+                                    onChange={e => e.target.files && setPhotoFile(e.target.files[0])}
+                                    style={{ display: 'none' }}
+                                />
+                                <label htmlFor="end-photo-upload" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.85rem', borderRadius: 10, border: '1.5px dashed rgba(255,255,255,0.2)', background: '#0F172A', marginBottom: '0.75rem' }}>
+                                    <span style={{ fontSize: '1.5rem' }}>📸</span>
+                                    <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 600 }}>{photoFile ? photoFile.name : 'Tirar Foto do Hodômetro'}</span>
+                                </label>
+                                {photoPreviewUrl && <img src={photoPreviewUrl} alt="Preview hodômetro final" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 8, marginBottom: '0.75rem', border: '1px solid rgba(255,255,255,0.1)' }} />}
                             </>
                         )}
                         {showModal.type === 'start' && (
@@ -345,8 +388,9 @@ export default function DriverViagens() {
                         )}
                         <div style={{ display: 'flex', gap: '0.75rem' }}>
                             <button onClick={() => setShowModal(null)} style={{ flex: 1, padding: '0.75rem', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#64748B', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
-                            <button onClick={handleAction} disabled={saving || (showModal.type === 'start' ? !photoFile : !kmInput)}
-                                style={{ flex: 2, padding: '0.75rem', borderRadius: 10, border: 'none', background: showModal.type === 'start' ? '#0891B2' : '#10B981', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: saving || (showModal.type === 'start' ? !photoFile : !kmInput) ? 0.6 : 1 }}>
+                        <button onClick={handleAction}
+                            disabled={saving || (showModal.type === 'start' ? !photoFile : !photoFile)}
+                            style={{ flex: 2, padding: '0.75rem', borderRadius: 10, border: 'none', background: showModal.type === 'start' ? '#0891B2' : '#10B981', color: '#fff', cursor: 'pointer', fontWeight: 700, opacity: saving || (showModal.type === 'start' ? !photoFile : !photoFile) ? 0.6 : 1 }}>
                                 {saving ? 'Salvando...' : showModal.type === 'start' ? 'Iniciar' : 'Finalizar'}
                             </button>
                         </div>

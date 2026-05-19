@@ -121,11 +121,14 @@ export default function CarretaEditPage() {
                 modelYear: form.modelYear || undefined,
                 equipmentList: form.equipmentList || undefined,
                 notes: form.notes || undefined,
+                lastMaintenanceDate: form.lastMaintenanceDate,
+                nextMaintenanceDate: form.nextMaintenanceDate,
             });
             showToast('Carreta atualizada com sucesso!', 'success');
             setTimeout(() => router.replace('/admin/carretas'), 1500);
         } catch (e: any) {
-            setError(e?.response?.data?.message || 'Erro ao salvar carreta');
+            const msg = e?.response?.data?.message;
+            setError(Array.isArray(msg) ? msg.join(', ') : (msg || 'Erro ao salvar carreta'));
         } finally {
             setSaving(false);
         }

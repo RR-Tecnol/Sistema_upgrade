@@ -89,7 +89,7 @@ export function CreateCategoryModal({ open, onClose, onCreated }: Props) {
                 backdropFilter: 'blur(4px)',
                 WebkitBackdropFilter: 'blur(4px)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                zIndex: 99999, padding: '1.5rem',
+                zIndex: 600000, padding: '1.5rem',
                 animation: 'cat-modal-fade .18s ease-out',
             }}>
             <style>{`

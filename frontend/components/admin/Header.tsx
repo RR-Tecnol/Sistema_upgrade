@@ -1,6 +1,4 @@
-'use client';
-
-import { BellIcon, MagnifyingGlassIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
+import { BellIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState, useRef } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuthStore } from '@/stores/useAuthStore';
@@ -11,14 +9,12 @@ interface HeaderProps {
 
 export default function Header({ onMenuToggle }: HeaderProps) {
     // useAuthStore é reativo — atualiza automaticamente quando nome muda nas configurações
-    const { user, logout } = useAuthStore();
+    const { user } = useAuthStore();
     const [currentDate, setCurrentDate] = useState('');
     const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
-    const [showUserMenu, setShowUserMenu] = useState(false);
     const { notifications, unreadCount, connected, markAllRead } = useNotifications();
 
     const notificationsRef = useRef<HTMLDivElement>(null);
-    const userMenuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const now = new Date();
@@ -30,9 +26,6 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
                 setShowNotificationsPanel(false);
             }
-            if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-                setShowUserMenu(false);
-            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -41,12 +34,6 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     const initials = user?.name
         ? user.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()
         : 'AD';
-
-    const handleLogout = () => {
-        logout();
-        setShowUserMenu(false);
-        window.location.href = '/login';
-    };
 
     return (
         <header className="admin-topbar">
@@ -169,65 +156,23 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                 {/* Divider */}
                 <div style={{ width: 1, height: 24, background: '#E5E7EB' }} />
 
-                {/* User */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', position: 'relative' }} ref={userMenuRef}>
+                {/* User — apenas exibição, sem dropdown (navegação via sidebar) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                     <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#111827', lineHeight: 1.2 }}>{user?.name || 'Administrador'}</div>
                         <div style={{ fontSize: '0.62rem', color: '#B89B00', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>{user?.role || 'ADMIN'}</div>
-                        {/* useAuthStore é reativo: nome atualiza sem reload ao salvar configurações */}
                     </div>
                     <div
-                        onClick={() => setShowUserMenu(!showUserMenu)}
                         style={{
                             width: 34, height: 34, borderRadius: 9,
                             background: '#FFD600', color: '#000',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.65rem',
                             boxShadow: '0 2px 8px rgba(255,214,0,0.35)',
-                            cursor: 'pointer', transition: 'transform 0.2s',
                         }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform = 'scale(1.08)'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform = 'scale(1)'}
                     >
                         {initials}
                     </div>
-
-                    {showUserMenu && (
-                        <div style={{
-                            position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-                            width: 180, background: '#fff', borderRadius: 8,
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100,
-                            border: '1px solid #E5E7EB',
-                            overflow: 'hidden',
-                        }}>
-                            <a href="/settings" style={{
-                                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#374151',
-                                textDecoration: 'none', transition: 'background-color 0.2s',
-                            }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F9FAFB'}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                            >
-                                <Cog6ToothIcon style={{ width: 16, height: 16 }} />
-                                Configurações
-                            </a>
-                            <button
-                                onClick={handleLogout}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                                    width: '100%', textAlign: 'left',
-                                    padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#EF4444',
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    transition: 'background-color 0.2s',
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FEF2F2'}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                            >
-                                <ArrowRightOnRectangleIcon style={{ width: 16, height: 16 }} />
-                                Sair
-                            </button>
-                        </div>
-                    )}
                 </div>
             </div>
         </header>

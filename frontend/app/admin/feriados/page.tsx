@@ -50,27 +50,44 @@ const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; ic
     OTHER: { label: 'Outro Imprevisto', color: '#7C3AED', bg: '#F5F3FF', icon: '⚠️' },
 };
 
-const fmtDate = (d: string) =>
-    new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+const fmtDate = (d: string | undefined | null) => {
+    if (!d) return '';
+    const dateStr = d.includes('T') ? d.split('T')[0] : d;
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+};
 
 /** Infere o tipo do feriado a partir do campo reason/description quando type não existe */
 function inferType(h: Holiday): string {
     if (h.type) return h.type; // Se a API retornar o campo, usa
     const r = (h.reason || h.description || '').toLowerCase();
-    if (r.includes('\ud83c\udde7\ud83c\uddf7') || r.includes('nacional') || r.includes('tiradentes') ||
+    if (r.includes('🇧🇷') || r.includes('nacional') || r.includes('tiradentes') ||
         r.includes('carnaval') || r.includes('trabalho') || r.includes('independ') ||
-        r.includes('aparecida') || r.includes('finados') || r.includes('rep\u00fablica') ||
+        r.includes('aparecida') || r.includes('finados') || r.includes('república') ||
         r.includes('natal') || r.includes('ano novo') || r.includes('corpus')) {
         return 'NATIONAL';
     }
-    if (r.includes('\u26c8') || r.includes('chuva') || r.includes('clima') || r.includes('enchente') ||
-        r.includes('temporal') || r.includes('inundac')) {
+    if (r.includes('⛈') || r.includes('chuva') || r.includes('clima') || r.includes('enchente') ||
+        r.includes('temporal') || r.includes('inundac') || r.includes('[weather]')) {
         return 'WEATHER';
     }
-    if (r.includes('local') || r.includes('municipal') || r.includes('estadual')) {
+    if (r.includes('📍') || r.includes('local') || r.includes('municipal') || r.includes('estadual') || r.includes('[local]')) {
         return 'LOCAL';
     }
+    if (r.includes('⚠') || r.includes('[other]')) {
+        return 'OTHER';
+    }
     return 'OTHER';
+}
+
+/** Remove prefixos legados como [OTHER], [LOCAL], [WEATHER] que ficaram salvos no banco. */
+function cleanReason(text: string | undefined | null): string {
+    if (!text) return '—';
+    return text
+        .replace(/^\[OTHER\]\s*/i, '')
+        .replace(/^\[LOCAL\]\s*/i, '')
+        .replace(/^\[WEATHER\]\s*/i, '')
+        .replace(/^\[NATIONAL\]\s*/i, '')
+        .trim() || '—';
 }
 
 /* ── Feriados Nacionais Brasileiros 2025/2026 ── FEAT-FERIADO ── */
@@ -132,14 +149,15 @@ function ModalNovaOcorrencia({
         if (!form.reason.trim()) { setError('Informe a descrição'); return; }
         setLoading(true); setError('');
         try {
-            // Incluir prefixo do tipo no reason para que inferType() classifique corretamente
-            const TYPE_PREFIX: Record<string, string> = {
+            // Incluir emoji do tipo no reason para que inferType() classifique corretamente
+            // sem poluir a exibição com tags como [OTHER], [LOCAL], etc.
+            const TYPE_EMOJI: Record<string, string> = {
                 NATIONAL: '🇧🇷 ',
-                LOCAL: '[LOCAL] 📍 ',
-                WEATHER: '[WEATHER] ⛈️ ',
-                OTHER: '[OTHER] ⚠️ ',
+                LOCAL: '📍 ',
+                WEATHER: '⛈️ ',
+                OTHER: '⚠️ ',
             };
-            const prefix = TYPE_PREFIX[form.type] ?? '';
+            const prefix = TYPE_EMOJI[form.type] ?? '';
             // Evitar prefixo duplo
             const reasonWithType = form.reason.startsWith(prefix.trim())
                 ? form.reason
@@ -514,7 +532,7 @@ export default function FeriadosPage() {
                                     <div style={{ position: 'relative', zIndex: 1, padding: '12px 14px' }}>
                                         <div style={{ marginBottom: 6 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: '0.65rem', fontWeight: 700, border: `1px solid ${cfg.color}30` }}>{cfg.icon} {cfg.label}</span></div>
                                         <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem', fontWeight: 700, color: '#111827' }}>{fmtDate(h.date.split('T')[0])}</div>
-                                        <div style={{ fontSize: '0.8rem', color: '#374151', marginTop: 8, lineHeight: 1.35 }}>{h.reason ?? h.description ?? '—'}</div>
+                                        <div style={{ fontSize: '0.8rem', color: '#374151', marginTop: 8, lineHeight: 1.35 }}>{cleanReason(h.reason ?? h.description)}</div>
                                         <div style={{ fontSize: '0.72rem', color: '#92400E', marginTop: 8, fontFamily: 'JetBrains Mono' }}>{turmaLabel}</div>
                                         <div style={{ fontSize: '0.72rem', color: '#D97706', marginTop: 4, fontWeight: 600 }}>
                                             {h.source === 'catalog'
@@ -562,7 +580,7 @@ export default function FeriadosPage() {
                                                     {fmtDate(h.date.split('T')[0])}
                                                 </div>
                                             </td>
-                                            <td style={{ maxWidth: 220, fontSize: '0.82rem', color: '#374151' }}>{h.reason ?? h.description ?? '—'}</td>
+                                            <td style={{ maxWidth: 220, fontSize: '0.82rem', color: '#374151' }}>{cleanReason(h.reason ?? h.description)}</td>
                                             <td>
                                                 <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.75rem', color: '#B89B00', fontWeight: 700 }}>{turmaLabel}</span>
                                             </td>

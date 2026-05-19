@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsInt, IsEnum, IsOptional, IsDateString, Min, Length } from 'class-validator';
+import { IsString, IsNotEmpty, IsInt, IsEnum, IsOptional, IsDateString, Min, Length, ValidateIf } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { TruckType, TruckStatus } from '@prisma/client';
 
@@ -52,11 +52,13 @@ export class CreateTruckDto {
     modelYear?: string;
 
     @ApiProperty({ example: '2024-01-15', required: false })
+    @ValidateIf((o) => o.lastMaintenanceDate != null && o.lastMaintenanceDate !== '')
     @IsDateString()
     @IsOptional()
     lastMaintenanceDate?: string;
 
     @ApiProperty({ example: '2024-07-15', required: false })
+    @ValidateIf((o) => o.nextMaintenanceDate != null && o.nextMaintenanceDate !== '')
     @IsDateString()
     @IsOptional()
     nextMaintenanceDate?: string;

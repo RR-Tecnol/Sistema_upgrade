@@ -127,11 +127,41 @@ export class ReimbursementService {
     description: string;
     receiptUrl?: string; // opcional — sem MinIO usa string vazia
   }) {
+    let finalAcaoId = data.acaoId;
+    let finalEmployeeId = data.employeeId;
+
+    if (!finalEmployeeId) {
+      const emp = await this.prisma.employee.findUnique({ where: { userId: data.requestedBy } });
+      if (emp) finalEmployeeId = emp.id;
+    }
+
+    if (!finalAcaoId && finalEmployeeId) {
+      // Tentar via AcaoFuncionario (ex: motoristas)
+      const acaoFunc = await this.prisma.acaoFuncionario.findFirst({
+        where: { employeeId: finalEmployeeId, acao: { status: 'EM_ANDAMENTO' } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (acaoFunc) finalAcaoId = acaoFunc.acaoId;
+    }
+
+    if (!finalAcaoId) {
+      // Tentar via ClassTeacher (ex: professores)
+      const classTeacher = await this.prisma.classTeacher.findFirst({
+        where: { teacher: { userId: data.requestedBy }, class: { status: 'IN_PROGRESS' } },
+        include: { class: { include: { acaoTurmas: { include: { acao: true } } } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (classTeacher) {
+        const at = classTeacher.class.acaoTurmas.find(at => at.acao.status === 'EM_ANDAMENTO');
+        if (at) finalAcaoId = at.acaoId;
+      }
+    }
+
     return this.prisma.reimbursement.create({
       data: {
         requestedBy: data.requestedBy,
-        employeeId: data.employeeId,
-        acaoId: data.acaoId,
+        employeeId: finalEmployeeId,
+        acaoId: finalAcaoId,
         type: data.type,
         amount: data.amount,
         description: data.description,

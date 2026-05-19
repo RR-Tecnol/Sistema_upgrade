@@ -226,7 +226,26 @@ export class TripsService {
                 endOdometerPhotoUrl,
                 actualArrivalDate: actualArrivalDate ? new Date(actualArrivalDate) : new Date(),
             },
+            include: { class: { include: { acaoTurmas: true } }, originCity: true, destinationCity: true }
         });
+
+        if (updated.classId && updated.class?.status === 'PLANNED') {
+            if (updated.destinationCityId === updated.class.cityId) {
+                await this.prisma.class.update({
+                    where: { id: updated.classId },
+                    data: { status: 'IN_PROGRESS' }
+                });
+                for (const at of updated.class.acaoTurmas) {
+                    const acao = await this.prisma.acao.findUnique({ where: { id: at.acaoId } });
+                    if (acao && acao.status === 'PLANEJADA') {
+                        await this.prisma.acao.update({
+                            where: { id: acao.id },
+                            data: { status: 'EM_ANDAMENTO' }
+                        });
+                    }
+                }
+            }
+        }
 
         const adminIds = await this.notificationsSender.getAdminAndCoordinatorIds().catch(() => []);
         await this.notificationsSender.sendToMany(

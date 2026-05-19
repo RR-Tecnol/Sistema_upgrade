@@ -31,6 +31,7 @@ import {
     completeTurmasWhenAcaoConcluded,
     syncDriverForEmployeeOnAcao,
     tryGenerateTripsForNewTurmaOnAcao,
+    startTurmasWhenAcaoStarted,
     type TripGenPerClass,
 } from '../common/academic-ecosystem-sync.util';
 import { EmployeeRole } from '@prisma/client';
@@ -550,6 +551,13 @@ export class AcoesService {
         }
 
         const updated = await this.prisma.acao.update({ where: { id }, data: { status } });
+
+        if (status === AcaoStatus.EM_ANDAMENTO) {
+            const started = await startTurmasWhenAcaoStarted(this.prisma, id);
+            if (started.updated > 0) {
+                this.logger.log(`Período ${id} iniciado: ${started.updated} turma(s) marcada(s) como IN_PROGRESS.`);
+            }
+        }
 
         if (status === AcaoStatus.CONCLUIDA) {
             const closed = await completeTurmasWhenAcaoConcluded(this.prisma, id);
