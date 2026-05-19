@@ -2,6 +2,10 @@
 
 **Última reorganização:** 2026-05-08 · **Atualização README/changelog:** 2026-05-20 (CLT/diária, fotos MinIO, manutenção+cidade, rastreamento/OSRM). **Caminhos:** `docs/sistema-atual/`, `docs/mapeamentos/`, `docs/SEEDS_GUIDE.md`, [`../README.md`](../README.md) (changelog operacional).
 
+### Registo completo do commit `6576564` (maio/2026)
+
+**[`ATUALIZACOES-COMMIT-6576564.md`](./ATUALIZACOES-COMMIT-6576564.md)** — documentação única com todas as alterações da branch `nuevo`: CLT/diária, MinIO, manutenção+cidade, motorista/OSRM, migrations, scripts `*:verify`, checklist manual e deploy VPS.
+
 ---
 
 ## 1. Fonte de verdade técnica (estado atual do código)

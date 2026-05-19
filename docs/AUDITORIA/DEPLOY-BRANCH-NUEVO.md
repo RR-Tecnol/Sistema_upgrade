@@ -2,6 +2,8 @@
 
 Guia para **commit** no repositório; o deploy na VPS fica com quem opera o servidor.
 
+> **Registo completo das funcionalidades do commit `6576564`:** [`../ATUALIZACOES-COMMIT-6576564.md`](../ATUALIZACOES-COMMIT-6576564.md)
+
 ## O que vai no commit
 
 - Código backend/frontend, migrations Prisma, `nginx/sistemaupgrade.conf`, `docker-compose.prod.yml`

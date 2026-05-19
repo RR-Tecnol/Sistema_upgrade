@@ -2,7 +2,7 @@
 
 Sistema completo de gestão WEB para os programas **Qualifica Maranhão** e **Qualifica Piauí** — capacitação profissional itinerante em unidades móveis (carretas).
 
-**Branch de trabalho atual:** `nuevo` · último commit: `Correcoes-para-vps` (2026-05-19) + alterações locais (atualizado **maio/2026** — ver changelog abaixo).
+**Branch de trabalho atual:** `nuevo` · último commit relevante: **`6576564`** (2026-05-20) — ver [`docs/ATUALIZACOES-COMMIT-6576564.md`](docs/ATUALIZACOES-COMMIT-6576564.md) (documentação completa).
 
 ---
 
@@ -176,29 +176,31 @@ Pacote principal de correções mapeadas na auditoria VPS (BUG/MEL). Destaques:
 
 ---
 
-### Alterações locais (após `ae9eef6`, pendentes de commit)
+### Commit `6576564` — *feat: CLT/diária, fotos MinIO, manutenção com cidade e rastreamento* (20/05/2026)
 
-Integrações financeiras, UX motorista e validação automatizada:
+**Documentação completa:** [`docs/ATUALIZACOES-COMMIT-6576564.md`](docs/ATUALIZACOES-COMMIT-6576564.md)
+
+Resumo (72 ficheiros):
 
 | Área | Implementação |
 |------|----------------|
-| **Custos do período → Contas a pagar** | `acao-custo-conta-pagar.util` + `acoes.service` (criar/remover abastecimento e despesa gera/desativa `ContaPagar`; backfill ao abrir ação) |
-| **Imprevisto colaborador → diária** | `absence-employee-penalty.util` — penalidade reduz conta `diaria_funcionario` ou regista reembolso devido se já paga; preview no admin |
-| **Manutenção carreta → Contas a pagar** | Corrige erro 500 (`fornecedor` inválido no Prisma); `truck-maintenance-conta-pagar.util`; conta ao salvar com custo |
-| **Motorista — próxima viagem** | `frontend/lib/driver-trips.ts` — ida antes da volta (`pickNextPlannedTrip`); API lista viagens por data ASC |
-| **Motorista — aceite de viagem** | Botões Aceitar/Recusar somem após `driverDecision=ACCEPTED`; Iniciar só após aceite e no dia da partida |
-| **Data de partida ida** | `Acao.driverDepartureDate` + migration `20260519130000`; wizard/logística; `generateTripsForClass` usa ida correta |
-| **Layout portal motorista/professor** | Frequência, viagens e chamada de turma em **largura total** (sem `max-width` centralizado) |
-| **Baixa de estoque — UI Upgrade** | `BaixaEstoqueEditor` com `EstoqueSection`, KPIs, Orbitron, botões amarelo/ciano |
-| **Validação CI local** | `backend/scripts/validate-vps-deploy.sh` + `npm run validate:vps` + scripts `*:verify` |
+| **Custos do período → Contas a pagar** | `acao-custo-conta-pagar.util` + `acoes.service` |
+| **Imprevisto colaborador → diária** | `absence-employee-penalty.util` + preview admin |
+| **Manutenção carreta → Contas a pagar** | `truck-maintenance-conta-pagar.util` + **cidade** obrigatória |
+| **Motorista — próxima viagem** | `driver-trips.ts`, aceite/início no dia certo |
+| **Data de partida ida** | `driverDepartureDate` + migration `20260519130000` |
+| **Layout motorista/professor** | Largura total em frequência/viagens |
+| **Baixa de estoque — UI** | `BaixaEstoqueEditor` tema Upgrade |
+| **Validação** | `validate:vps` + scripts `*:verify` |
+| **CLT vs diária** | Aprovação RH + custo no período |
+| **Fotos MinIO** | `resolve-stored-media-url` + reembolsos |
+| **Rastreamento/OSRM** | `routing/`, `DriverLocationSync`, mapa admin |
 
-**Migration nova (aplicar na VPS após deploy):** `20260519130000_acao_driver_departure_date`
-
-**Reparo operacional:** períodos antigos podem precisar regenerar viagens PLANNED após deploy — ver [`docs/AUDITORIA/SINCRONIA-CURSO-PERIODO-TURMA.md`](docs/AUDITORIA/SINCRONIA-CURSO-PERIODO-TURMA.md)
+**Migrations:** `20260519130000_acao_driver_departure_date`, `20260520160000_truck_maintenance_cidade`
 
 ---
 
-### Maio/2026 — RH, fotos, manutenção, mapa e rastreamento
+### Maio/2026 — RH, fotos, manutenção, mapa e rastreamento (detalhe)
 
 | Área | Implementação |
 |------|----------------|
@@ -300,6 +302,7 @@ Sistema_upgrade/
 | [`docs/INDEX.md`](docs/INDEX.md) | Índice geral da documentação |
 | [`docs/sistema-atual/README.md`](docs/sistema-atual/README.md) | Arquitetura e fluxos (fonte técnica) |
 | [`docs/AUDITORIA/README.md`](docs/AUDITORIA/README.md) | Auditoria VPS (BUG-01…21) |
+| [`docs/ATUALIZACOES-COMMIT-6576564.md`](docs/ATUALIZACOES-COMMIT-6576564.md) | **Todas as atualizações** commit `6576564` (completo) |
 | [`docs/AUDITORIA/DEPLOY-BRANCH-NUEVO.md`](docs/AUDITORIA/DEPLOY-BRANCH-NUEVO.md) | Validar, commit, deploy VPS |
 | [`docs/AUDITORIA/SINCRONIA-CURSO-PERIODO-TURMA.md`](docs/AUDITORIA/SINCRONIA-CURSO-PERIODO-TURMA.md) | Curso, período, turma, viagens |
 | [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) | Seeds e credenciais de desenvolvimento |

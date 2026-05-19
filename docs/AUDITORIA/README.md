@@ -2,7 +2,9 @@
 
 Documentação derivada dos relatórios Word (`Auditoria_VPS_Upgrade_v2` … `v4`) **cruzada com o código atual** do repositório. Use isto para entender o que está quebrado, porquê, e como corrigir.
 
-**Data de referência:** 2026-05-18
+**Data de referência:** 2026-05-20
+
+**Atualizações entregues (commit `6576564`):** [`../ATUALIZACOES-COMMIT-6576564.md`](../ATUALIZACOES-COMMIT-6576564.md) — CLT/diária, MinIO, manutenção+cidade, rastreamento, migrations e checklists.
 **Fontes Word (evidências visuais):** esta pasta (`*.docx`)
 **Fonte técnica canónica:** [`../sistema-atual/README.md`](../sistema-atual/README.md)
 
