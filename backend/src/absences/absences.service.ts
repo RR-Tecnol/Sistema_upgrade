@@ -21,6 +21,7 @@ import {
     applyEmployeePenaltyToFinance,
     computeEmployeePenaltyPreview,
 } from '../common/absence-employee-penalty.util';
+import { MailService } from '../mail/mail.service';
 
 /** `YYYY-MM-DD` em JS vira meia-noite UTC → em fusos atrás do UTC aparece dia anterior na UI. Normaliza como «dia civil» (meio-dia UTC). */
 function parseCalendarDateOnlyOrThrow(dateInput: string): Date {
@@ -50,6 +51,7 @@ export class AbsencesService {
         private notificationsSender: NotificationsSenderService,
         private minio: MinioService,
         private whatsapp: WhatsAppService,
+        private mail: MailService,
     ) {}
 
     private dayStampUtc(d: Date): number {
@@ -316,25 +318,20 @@ export class AbsencesService {
     }
 
     // Admin: lista todas as ausências com filtros (apenas activas por padrão)
-    async findAll(
-        status?: string,
-        userId?: string,
-        opts?: { page?: number; limit?: number },
-    ) {
+    async findAll(status?: string, userId?: string, pagination?: { page?: number; limit?: number }) {
         const where: any = { active: true };
         if (status) where.status = status;
         if (userId) where.userId = userId;
 
-        const { skip, page, limit } = resolvePagination(opts?.page, opts?.limit, 20);
-        const include = {
-            user: { select: { id: true, name: true, role: true, email: true } },
-        };
+        const limit = pagination?.limit || 50;
+        const page = pagination?.page || 1;
+        const skip = (page - 1) * limit;
 
         const [data, total] = await Promise.all([
             this.prisma.absence.findMany({
                 where,
                 orderBy: { date: 'desc' },
-                include,
+                include: { user: { select: { id: true, name: true, role: true, email: true } } },
                 skip,
                 take: limit,
             }),
@@ -342,6 +339,7 @@ export class AbsencesService {
         ]);
 
         return paginatedResult(data, total, page, limit);
+
     }
 
     // Admin: cria imprevisto manualmente (PASSO 3.6)
@@ -438,7 +436,7 @@ export class AbsencesService {
     ) {
         const absence = await this.prisma.absence.findUnique({
             where: { id },
-            include: { user: { select: { id: true, name: true, role: true } } },
+            include: { user: { select: { id: true, name: true, role: true, email: true } } },
         });
         const admin = await this.prisma.user.findUnique({ where: { id: adminId }, select: { name: true } });
         if (!absence) throw new NotFoundException('Imprevisto não encontrado');
@@ -553,6 +551,19 @@ export class AbsencesService {
                 ...(notificationId ? { notificationId } : {}),
             });
         } catch { /* WS / persistência secundária */ }
+
+        // ── EMAIL: notificar resultado da revisão de imprevisto ──────────────
+        try {
+            if (absence.user?.email) {
+                await this.mail.sendImprevistoReviewed(
+                    absence.user.email,
+                    absence.user.name,
+                    absence.date.toLocaleDateString('pt-BR'),
+                    data.status,
+                    data.adminNote
+                );
+            }
+        } catch { /* Email nunca bloqueia */ }
 
         // ── WHATSAPP: notificar resultado da revisão de imprevisto ──────────────
         try {

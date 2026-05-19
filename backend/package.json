@@ -4,7 +4,7 @@
     "description": "Backend API for Projeto Cursos Upgrade",
     "main": "dist/main.js",
     "scripts": {
-        "prebuild": "rimraf dist",
+        "prebuild": "rm -rf dist",
         "prestart:dev": "prisma migrate deploy && prisma generate",
         "build": "nest build",
         "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

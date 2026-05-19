@@ -112,6 +112,32 @@ export class MailService {
         await this.send(to, 'Bem-vindo ao Sistema Upgrade', html);
     }
 
+    // ── Imprevistos / Ausências ───────────────────────────────────────────────
+    
+    async sendImprevistoReviewed(to: string, name: string, dateIso: string, status: string, reason?: string): Promise<void> {
+        if (!this.brevo) {
+            this.logger.warn(`[DEV] Imprevisto Reviewed → ${name} <${to}> | Status: ${status}`);
+            return;
+        }
+        const isApproved = status === 'VALIDATED';
+        const isPenalized = status === 'PENALIZED';
+        
+        let title = 'Seu imprevisto foi analisado';
+        if (isApproved) title = '✅ Imprevisto validado';
+        else if (isPenalized) title = '⚠️ Imprevisto validado com penalidade';
+        else title = '❌ Imprevisto não aprovado';
+
+        const content = `
+            <h2>Olá, ${name}</h2>
+            <p>Seu registro de imprevisto referente à data <b>${dateIso}</b> foi analisado pela equipe.</p>
+            <p><b>Status:</b> ${title}</p>
+            ${reason ? `<p><b>Observação da coordenação:</b> ${reason}</p>` : ''}
+            <p>Para mais detalhes, acesse o portal.</p>
+        `;
+        const html = this.baseWrapper(content);
+        await this.send(to, title, html);
+    }
+
     // ── Certificado emitido ───────────────────────────────────────────────────
 
     async sendCertificateIssued(

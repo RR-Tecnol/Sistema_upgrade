@@ -13,6 +13,20 @@ export class TrucksService {
         private notificationsSender: NotificationsSenderService,
     ) { }
 
+    private parseDateSafe(dateInput: string | Date | null | undefined): Date | undefined {
+        if (!dateInput) return undefined;
+        if (dateInput instanceof Date) return dateInput;
+        const trimmed = dateInput.trim();
+        const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+        if (isoDay) {
+            const y = Number(isoDay[1]);
+            const m = Number(isoDay[2]) - 1;
+            const d = Number(isoDay[3]);
+            return new Date(Date.UTC(y, m, d, 12, 0, 0, 0));
+        }
+        return new Date(trimmed);
+    }
+
     async findAll(filters?: {
         status?: TruckStatus;
         groupId?: string;
@@ -150,8 +164,8 @@ export class TrucksService {
         return this.prisma.truck.create({
             data: {
                 ...rest,
-                ...(lastMaintenanceDate ? { lastMaintenanceDate: new Date(lastMaintenanceDate) } : {}),
-                ...(nextMaintenanceDate ? { nextMaintenanceDate: new Date(nextMaintenanceDate) } : {}),
+                ...(lastMaintenanceDate ? { lastMaintenanceDate: this.parseDateSafe(lastMaintenanceDate) } : {}),
+                ...(nextMaintenanceDate ? { nextMaintenanceDate: this.parseDateSafe(nextMaintenanceDate) } : {}),
             },
             include: {
                 group: true,
@@ -208,8 +222,8 @@ export class TrucksService {
             where: { id },
             data: {
                 ...rest,
-                ...(lastMaintenanceDate ? { lastMaintenanceDate: new Date(lastMaintenanceDate) } : {}),
-                ...(nextMaintenanceDate ? { nextMaintenanceDate: new Date(nextMaintenanceDate) } : {}),
+                ...(lastMaintenanceDate ? { lastMaintenanceDate: this.parseDateSafe(lastMaintenanceDate) } : {}),
+                ...(nextMaintenanceDate ? { nextMaintenanceDate: this.parseDateSafe(nextMaintenanceDate) } : {}),
             },
             include: {
                 group: true,

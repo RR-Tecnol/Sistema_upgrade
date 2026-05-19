@@ -87,6 +87,13 @@ export default function TeacherReembolsos() {
     async function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        if (file.type === 'application/pdf') {
+            setFotoFile(file);
+            setFotoPreview('PDF');
+            return;
+        }
+
         try {
             const compressed = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1200, useWebWorker: true });
             setFotoFile(compressed as unknown as File);
@@ -372,8 +379,8 @@ export default function TeacherReembolsos() {
 
                             {/* Upload de comprovante */}
                             <div>
-                                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>Comprovante (foto)</label>
-                                <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFotoChange} style={{ display: 'none' }} />
+                                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>Comprovante (foto/pdf)</label>
+                                <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment" onChange={handleFotoChange} style={{ display: 'none' }} />
                                 <button type="button" onClick={() => fileRef.current?.click()} style={{
                                     display: 'flex', alignItems: 'center', gap: '0.5rem',
                                     padding: '0.55rem 1rem', borderRadius: 9,
@@ -386,7 +393,11 @@ export default function TeacherReembolsos() {
                                 </button>
                                 {fotoPreview && (
                                     <div style={{ position: 'relative', display: 'inline-block', marginTop: '0.75rem' }}>
-                                        <img src={fotoPreview} alt="Preview" style={{ maxWidth: 180, maxHeight: 130, borderRadius: 8, objectFit: 'cover', border: '2px solid rgba(255,214,0,0.3)' }} />
+                                        {fotoPreview === 'PDF' ? (
+                                            <div style={{ width: 100, height: 130, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,214,0,0.3)', color: '#DC2626', fontWeight: 800 }}>PDF</div>
+                                        ) : (
+                                            <img src={fotoPreview} alt="Preview" style={{ maxWidth: 180, maxHeight: 130, borderRadius: 8, objectFit: 'cover', border: '2px solid rgba(255,214,0,0.3)' }} />
+                                        )}
                                         <button type="button" onClick={() => { setFotoPreview(null); setFotoFile(null); }}
                                             style={{ position: 'absolute', top: -8, right: -8, background: '#EF4444', border: 'none', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                             <XMarkIcon style={{ width: 13, height: 13 }} />

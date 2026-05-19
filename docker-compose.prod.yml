@@ -74,6 +74,7 @@ services:
       - ./backend/.env
     environment:
       NODE_ENV: production
+      TZ: America/Fortaleza
       DATABASE_URL: postgresql://cursos_user:cursos_password@postgres:5432/cursos_db?schema=public
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -109,6 +110,7 @@ services:
       - ./frontend/.env.local
     environment:
       NODE_ENV: production
+      TZ: America/Fortaleza
       PORT: 3000
       BACKEND_URL: http://backend:3001
     depends_on:

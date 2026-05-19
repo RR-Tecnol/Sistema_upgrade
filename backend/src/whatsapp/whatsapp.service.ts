@@ -141,15 +141,25 @@ export class WhatsAppService {
         try {
             const user = await this.prisma.user.findUnique({
                 where: { id: userId },
-                select: { phone: true, name: true },
+                include: {
+                    employee: { select: { phone: true } },
+                    student: { select: { contact: { select: { phone: true } } } }
+                }
             });
 
-            if (!user?.phone) {
-                this.logger.debug(`[WhatsApp] Usuário ${userId} sem telefone cadastrado`);
+            if (!user) {
+                this.logger.debug(`[WhatsApp] Usuário ${userId} não encontrado`);
                 return;
             }
 
-            await this.sendText(user.phone, message);
+            const phone = user.phone || user.employee?.phone || user.student?.contact?.phone;
+
+            if (!phone) {
+                this.logger.debug(`[WhatsApp] Usuário ${userId} sem telefone cadastrado em lugar nenhum`);
+                return;
+            }
+
+            await this.sendText(phone, message);
         } catch (err) {
             this.logger.warn(`[WhatsApp] Erro ao buscar telefone do usuário ${userId}: ${err}`);
         }

@@ -16,6 +16,20 @@ export class ContasPagarService {
         private readonly stockService: StockService,
     ) { }
 
+    private parseDateSafe(dateInput: string | Date | null | undefined): Date | undefined {
+        if (!dateInput) return undefined;
+        if (dateInput instanceof Date) return dateInput;
+        const trimmed = dateInput.trim();
+        const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+        if (isoDay) {
+            const y = Number(isoDay[1]);
+            const m = Number(isoDay[2]) - 1;
+            const d = Number(isoDay[3]);
+            return new Date(Date.UTC(y, m, d, 12, 0, 0, 0));
+        }
+        return new Date(trimmed);
+    }
+
     /**
      * Quando uma ContaPagar de tipo `estoque_reposicao` é marcada como paga,
      * dispara o recebimento da Solicitação de Compra vinculada (idempotente).
@@ -78,7 +92,7 @@ export class ContasPagarService {
                 tipo_espontaneo: dto.tipo_espontaneo,
                 descricao: dto.descricao,
                 valor: dto.valor,
-                data_vencimento: new Date(dto.data_vencimento),
+                data_vencimento: this.parseDateSafe(dto.data_vencimento) as Date,
                 status: dto.status || 'pendente',
                 recorrente: dto.recorrente ?? false,
                 observacoes: dto.observacoes,
@@ -290,8 +304,8 @@ export class ContasPagarService {
                 ...(dto.tipo_espontaneo !== undefined && { tipo_espontaneo: dto.tipo_espontaneo }),
                 ...(dto.descricao !== undefined && { descricao: dto.descricao }),
                 ...(dto.valor !== undefined && { valor: dto.valor }),
-                ...(dto.data_vencimento !== undefined && { data_vencimento: new Date(dto.data_vencimento) }),
-                ...(dto.data_pagamento !== undefined && { data_pagamento: new Date(dto.data_pagamento) }),
+                ...(dto.data_vencimento !== undefined && { data_vencimento: dto.data_vencimento ? this.parseDateSafe(dto.data_vencimento) : null }),
+                ...(dto.data_pagamento !== undefined && { data_pagamento: dto.data_pagamento ? this.parseDateSafe(dto.data_pagamento) : null }),
                 ...(dto.status !== undefined && { status: dto.status }),
                 ...(dto.recorrente !== undefined && { recorrente: dto.recorrente }),
                 ...(dto.observacoes !== undefined && { observacoes: dto.observacoes }),

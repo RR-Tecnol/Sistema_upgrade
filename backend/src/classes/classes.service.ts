@@ -35,6 +35,20 @@ export class ClassesService {
         private auditLog: AuditLogService,
     ) { }
 
+    private parseDateSafe(dateInput: string | Date | null | undefined): Date | undefined {
+        if (!dateInput) return undefined;
+        if (dateInput instanceof Date) return dateInput;
+        const trimmed = dateInput.trim();
+        const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+        if (isoDay) {
+            const y = Number(isoDay[1]);
+            const m = Number(isoDay[2]) - 1;
+            const d = Number(isoDay[3]);
+            return new Date(Date.UTC(y, m, d, 12, 0, 0, 0));
+        }
+        return new Date(trimmed);
+    }
+
     /** Data civil no fuso da operação (BR) — alinha professor e API. */
     private getTodayBrasiliaYmd(): string {
         return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
@@ -378,8 +392,8 @@ export class ClassesService {
         if (createData.truckId && !acaoId) {
             const availability = await this.trucksService.checkAvailability(
                 createData.truckId,
-                new Date(createData.startDate),
-                new Date(endDateIso),
+                this.parseDateSafe(createData.startDate) as Date,
+                this.parseDateSafe(endDateIso) as Date,
             );
 
             if (!availability.available) {
@@ -402,10 +416,10 @@ export class ClassesService {
         const newClass = await this.prisma.class.create({
             data: {
                 ...classRest,
-                startDate: new Date(createData.startDate),
-                endDate: new Date(endDateIso),
-                enrollmentOpenDate: createData.enrollmentOpenDate ? new Date(createData.enrollmentOpenDate) : null,
-                enrollmentCloseDate: createData.enrollmentCloseDate ? new Date(createData.enrollmentCloseDate) : null,
+                startDate: this.parseDateSafe(createData.startDate) as Date,
+                endDate: this.parseDateSafe(endDateIso) as Date,
+                enrollmentOpenDate: createData.enrollmentOpenDate ? this.parseDateSafe(createData.enrollmentOpenDate) : null,
+                enrollmentCloseDate: createData.enrollmentCloseDate ? this.parseDateSafe(createData.enrollmentCloseDate) : null,
                 weekendExtraDates: Array.isArray(weekendExtraDates) && weekendExtraDates.length
                     ? weekendExtraDates.filter(x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x))
                     : undefined,
@@ -489,8 +503,8 @@ export class ClassesService {
         if (data.truckId) {
             const availability = await this.trucksService.checkAvailability(
                 data.truckId,
-                new Date(startIso),
-                new Date(endDateIso),
+                this.parseDateSafe(startIso) as Date,
+                this.parseDateSafe(endDateIso) as Date,
             );
 
             if (!availability.available) {
@@ -513,10 +527,10 @@ export class ClassesService {
         }
 
         const updateData: any = { ...restUpdate };
-        if (data.startDate) updateData.startDate = new Date(startIso);
-        updateData.endDate = new Date(endDateIso);
-        if (data.enrollmentOpenDate) updateData.enrollmentOpenDate = new Date(data.enrollmentOpenDate);
-        if (data.enrollmentCloseDate) updateData.enrollmentCloseDate = new Date(data.enrollmentCloseDate);
+        if (data.startDate) updateData.startDate = this.parseDateSafe(startIso);
+        updateData.endDate = this.parseDateSafe(endDateIso);
+        if (data.enrollmentOpenDate) updateData.enrollmentOpenDate = this.parseDateSafe(data.enrollmentOpenDate);
+        if (data.enrollmentCloseDate) updateData.enrollmentCloseDate = this.parseDateSafe(data.enrollmentCloseDate);
         if (weekendExtraDates !== undefined) {
             updateData.weekendExtraDates = Array.isArray(weekendExtraDates) && weekendExtraDates.length
                 ? weekendExtraDates.filter(x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x))

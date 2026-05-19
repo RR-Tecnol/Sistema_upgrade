@@ -60,6 +60,20 @@ export class AcoesService {
         private readonly tripsService: TripsService,
     ) { }
 
+    private parseDateSafe(dateInput: string | Date | null | undefined): Date | undefined {
+        if (!dateInput) return undefined;
+        if (dateInput instanceof Date) return dateInput;
+        const trimmed = dateInput.trim();
+        const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+        if (isoDay) {
+            const y = Number(isoDay[1]);
+            const m = Number(isoDay[2]) - 1;
+            const d = Number(isoDay[3]);
+            return new Date(Date.UTC(y, m, d, 12, 0, 0, 0));
+        }
+        return new Date(trimmed);
+    }
+
     private emitFinanceiroListagemRefresh(source: string, extra: Record<string, unknown> = {}) {
         try {
             this.notifications.notifyFinanceiroListagemRefresh({ source, ...extra });
@@ -403,10 +417,10 @@ export class AcoesService {
                 grupoId: data.grupoId,
                 carretaId: data.carretaId,
                 status: data.status ?? AcaoStatus.PLANEJADA,
-                dataInicio: new Date(data.dataInicio),
-                dataFim: new Date(data.dataFim),
+                dataInicio: this.parseDateSafe(data.dataInicio) as Date,
+                dataFim: this.parseDateSafe(data.dataFim) as Date,
                 driverDepartureDate: data.driverDepartureDate
-                    ? new Date(data.driverDepartureDate)
+                    ? this.parseDateSafe(data.driverDepartureDate)
                     : undefined,
                 motorCourseId: data.motorCourseId || undefined,
                 period: data.period,
@@ -451,13 +465,13 @@ export class AcoesService {
             where: { id },
             data: {
                 ...rest,
-                dataInicio: data.dataInicio ? new Date(data.dataInicio) : undefined,
-                dataFim: data.dataFim ? new Date(data.dataFim) : undefined,
+                dataInicio: data.dataInicio ? this.parseDateSafe(data.dataInicio) : undefined,
+                dataFim: data.dataFim ? this.parseDateSafe(data.dataFim) : undefined,
                 driverDepartureDate:
                     rawDriverDeparture === undefined
                         ? undefined
                         : rawDriverDeparture
-                          ? new Date(rawDriverDeparture)
+                          ? this.parseDateSafe(rawDriverDeparture)
                           : null,
                 weekendExtraDates:
                     data.weekendExtraDates === undefined
@@ -846,7 +860,7 @@ export class AcoesService {
                     tipo: data.tipo,
                     descricao: data.descricao,
                     valor: data.valor,
-                    data: new Date(data.data),
+                    data: this.parseDateSafe(data.data) as Date,
                     litros: data.litros,
                     funcionarioId: data.funcionarioId,
                     observacoes: data.observacoes,

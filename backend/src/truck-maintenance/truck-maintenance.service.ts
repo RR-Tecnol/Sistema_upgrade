@@ -30,12 +30,28 @@ export class TruckMaintenanceService {
         return Math.round(Math.max(0, v) * 100) / 100;
     }
 
+    private parseDateSafe(dateInput: string | Date | null | undefined): Date | undefined {
+        if (!dateInput) return undefined;
+        if (dateInput instanceof Date) return dateInput;
+        const trimmed = dateInput.trim();
+        const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+        if (isoDay) {
+            const y = Number(isoDay[1]);
+            const m = Number(isoDay[2]) - 1;
+            const d = Number(isoDay[3]);
+            return new Date(Date.UTC(y, m, d, 12, 0, 0, 0));
+        }
+        return new Date(trimmed);
+    }
+
     private resolveContaVencimento(
         dataConclusao?: Date | string | null,
         dataAgendada?: Date | string | null,
     ): Date {
-        if (dataConclusao) return new Date(dataConclusao);
-        if (dataAgendada) return new Date(dataAgendada);
+        const d1 = this.parseDateSafe(dataConclusao);
+        if (d1) return d1;
+        const d2 = this.parseDateSafe(dataAgendada);
+        if (d2) return d2;
         return new Date();
     }
 
@@ -142,8 +158,8 @@ export class TruckMaintenanceService {
                     prioridade: dto.prioridade ?? 'media',
                     kmAtual: dto.kmAtual,
                     kmProximo: dto.kmProximo,
-                    dataAgendada: dto.dataAgendada ? new Date(dto.dataAgendada) : undefined,
-                    dataConclusao: dto.dataConclusao ? new Date(dto.dataConclusao) : undefined,
+                    dataAgendada: dto.dataAgendada ? this.parseDateSafe(dto.dataAgendada) : undefined,
+                    dataConclusao: dto.dataConclusao ? this.parseDateSafe(dto.dataConclusao) : undefined,
                     custoEstimado: dto.custoEstimado,
                     custoReal: dto.custoReal,
                     fornecedor: dto.fornecedor,
@@ -196,8 +212,8 @@ export class TruckMaintenanceService {
         const existing = await this.findOne(id);
 
         const data: Record<string, unknown> = { ...dto };
-        if (dto.dataAgendada) data.dataAgendada = new Date(dto.dataAgendada);
-        if (dto.dataConclusao) data.dataConclusao = new Date(dto.dataConclusao);
+        if (dto.dataAgendada) data.dataAgendada = this.parseDateSafe(dto.dataAgendada);
+        if (dto.dataConclusao) data.dataConclusao = this.parseDateSafe(dto.dataConclusao);
 
         const valor = this.resolveContaValor(
             dto.custoReal ?? existing.custoReal,
