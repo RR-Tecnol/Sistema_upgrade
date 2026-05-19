@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '@/lib/api/client';
+import { uploadPublicFile } from '@/lib/uploadPublicFile';
+import { toast } from '@/components/ui/Toast';
 import imageCompression from 'browser-image-compression';
 import {
     BanknotesIcon,
@@ -106,16 +108,7 @@ export default function TeacherReembolsos() {
         try {
             let receiptUrl: string | undefined;
             if (fotoFile) {
-                try {
-                    const urlRes = await api.post('/reimbursements/presigned-url', {
-                        filename: fotoFile.name, contentType: fotoFile.type,
-                    });
-                    await fetch(urlRes.data.uploadUrl, {
-                        method: 'PUT', body: fotoFile,
-                        headers: { 'Content-Type': fotoFile.type },
-                    });
-                    receiptUrl = urlRes.data.fileUrl;
-                } catch { /* MinIO indisponivel — continua sem URL */ }
+                receiptUrl = await uploadPublicFile(fotoFile);
             }
             await api.post('/reimbursements', {
                 type: tipo,
@@ -126,7 +119,9 @@ export default function TeacherReembolsos() {
             closeModal();
             loadReembolsos();
         } catch (err: any) {
-            console.error('Erro ao enviar reembolso:', err?.response?.data?.message);
+            const msg = err?.response?.data?.message || err?.message;
+            toast.error(typeof msg === 'string' ? msg : 'Não foi possível enviar o reembolso. Verifique o anexo.');
+            console.error('Erro ao enviar reembolso:', msg);
         } finally {
             setSubmitting(false);
         }

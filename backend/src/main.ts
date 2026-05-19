@@ -136,6 +136,9 @@ async function bootstrap() {
         next();
     });
 
+    // BUG-02: Confiar no Nginx para receber os IPs reais no rate limiting
+    app.set('trust proxy', 1);
+
     await app.listen(port);
 
     console.log(`\n🚀 Server running on http://localhost:${port}`);

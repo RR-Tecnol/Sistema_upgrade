@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '@/lib/api/client';
+import { uploadPublicFile } from '@/lib/uploadPublicFile';
 import imageCompression from 'browser-image-compression';
+import { toast } from '@/components/ui/Toast';
 import { CameraIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -135,16 +137,7 @@ export default function DriverReembolsos() {
         try {
             let receiptUrl: string | undefined;
             if (fotoFile) {
-                try {
-                    const urlRes = await api.post('/reimbursements/presigned-url', {
-                        filename: fotoFile.name, contentType: fotoFile.type,
-                    });
-                    await fetch(urlRes.data.uploadUrl, {
-                        method: 'PUT', body: fotoFile,
-                        headers: { 'Content-Type': fotoFile.type },
-                    });
-                    receiptUrl = urlRes.data.fileUrl;
-                } catch { /* MinIO indisponivel — continua sem URL */ }
+                receiptUrl = await uploadPublicFile(fotoFile);
             }
             await api.post('/reimbursements', {
                 type: form.type,
@@ -156,7 +149,11 @@ export default function DriverReembolsos() {
             setForm({ type: 'FOOD', amount: '', description: '' });
             setFotoPreview(null); setFotoFile(null);
             load();
-        } catch { } finally { setSaving(false); }
+            toast.success('Reembolso enviado com sucesso.');
+        } catch (e: any) {
+            const msg = e?.response?.data?.message || e?.message;
+            toast.error(typeof msg === 'string' ? msg : 'Não foi possível enviar o reembolso. Verifique o anexo e tente novamente.');
+        } finally { setSaving(false); }
     };
 
     async function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -179,7 +176,7 @@ export default function DriverReembolsos() {
     return (
         <>
         <style>{CSS}</style>
-        <div className="rmb-page animate-fade-in" style={{ maxWidth: 580, margin: '0 auto' }}>
+        <div className="rmb-page animate-fade-in" style={{ width: '100%', maxWidth: '100%', margin: '0 auto' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
             <AdminHeaderHero

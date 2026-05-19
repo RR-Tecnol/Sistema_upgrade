@@ -2,7 +2,15 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
-import { listBrazilStateHolidaysForYear, normalizeBrazilUf } from './brazil-state-holidays';
+import { listBrazilStateHolidaysForYear, normalizeBrazilUf, BRAZIL_STATE_FIXED_HOLIDAYS } from './brazil-state-holidays';
+import { filterNationalHolidaysByYears } from './brazil-national-holidays';
+import type { PreloadNationalCatalogDto } from './dto/preload-national-catalog.dto';
+import type { PreloadStateHolidaysDto } from './dto/preload-state-holidays.dto';
+import { CoursesService } from '../courses/courses.service';
+import { recalculateClassEndDateMotor } from '../common/class-teaching-end-date.helper';
+import { syncTurmaLinkedToAcao } from '../common/academic-ecosystem-sync.util';
+import { paymentSuggestionAfterCalendarExtension } from '../common/payment-days-suggestion.util';
+import type { RegisterAcaoHolidaysDto } from './dto/register-acao-holidays.dto';
 
 /**
  * HolidayService — REQ-08
@@ -25,6 +33,7 @@ export class HolidayService {
     private prisma: PrismaService,
     private notifications: NotificationsGateway,
     private notificationsSender: NotificationsSenderService,
+    private coursesService: CoursesService,
   ) {}
 
   // ============================================================
@@ -189,11 +198,38 @@ export class HolidayService {
     }
   }
 
+  private async stateConfigForClass(classId: string) {
+    const cls = await this.prisma.class.findUnique({
+      where: { id: classId },
+      include: {
+        course: {
+          select: {
+            id: true,
+            durationDaysMA: true,
+            durationDaysPI: true,
+            availableInMA: true,
+            availableInPI: true,
+            workloadHours: true,
+          },
+        },
+      },
+    });
+    if (!cls?.course) return null;
+    return this.coursesService.getCourseStateConfig(cls.course);
+  }
+
+  private async syncLinkedAcoesForClass(classId: string) {
+    const links = await this.prisma.acaoTurma.findMany({
+      where: { turmaId: classId },
+      select: { acaoId: true },
+    });
+    for (const link of links) {
+      await syncTurmaLinkedToAcao(this.prisma, link.acaoId, classId);
+    }
+  }
+
   /**
-   * Registra um feriado/imprevisto em uma turma e recalcula a data de término.
-   *
-   * REQ-08: Ao registrar um dia não-aula, o sistema empurra automaticamente
-   * a data de término e todos os dias subsequentes por 1 dia útil.
+   * Registra dia sem aula e recalcula término com motor N (horas÷turno), mantendo N encontros letivos.
    */
   async registerClassHoliday(
     classId: string,
@@ -201,6 +237,7 @@ export class HolidayService {
     reason: string,
     registeredBy: string,
     registrarRole: string,
+    acaoId?: string,
   ) {
     const classEntity = await this.prisma.class.findUnique({
       where: { id: classId },
@@ -213,9 +250,8 @@ export class HolidayService {
     await this.ensureHolidayClassAccess(classId, registeredBy, registrarRole, 'write');
 
     const holidayDate = new Date(date);
-    holidayDate.setUTCHours(12, 0, 0, 0); // normalizar para meio-dia UTC
+    holidayDate.setUTCHours(12, 0, 0, 0);
 
-    // Verificar se já existe feriado naquela data para esta turma
     const existing = await this.prisma.classHoliday.findFirst({
       where: { classId, date: holidayDate, active: true },
     });
@@ -226,10 +262,10 @@ export class HolidayService {
 
     const endSnapshot = new Date(classEntity.endDate);
 
-    // Registrar o feriado/imprevisto (UX-15: guardar endDate antes do empurrão)
     const holiday = await this.prisma.classHoliday.create({
       data: {
         classId,
+        acaoId: acaoId ?? null,
         date: holidayDate,
         reason,
         registeredBy,
@@ -237,21 +273,88 @@ export class HolidayService {
       },
     });
 
-    // Recalcular a data de término: empurrar 1 dia útil para frente
-    const newEndDate = this.nextWorkday(classEntity.endDate);
+    const stateConfig = await this.stateConfigForClass(classId);
+    const motor = await recalculateClassEndDateMotor(this.prisma, classId, stateConfig);
+    await this.syncLinkedAcoesForClass(classId);
 
-    await this.prisma.class.update({
-      where: { id: classId },
-      data: { endDate: newEndDate },
-    });
+    await this.notifyStakeholdersEndDateShift(classId, motor.previousEndDate, motor.newEndDate);
 
-    await this.notifyStakeholdersEndDateShift(classId, classEntity.endDate, newEndDate);
+    const calendarDaysExtended = Math.max(
+      0,
+      Math.floor(
+        (motor.newEndDate.getTime() - motor.previousEndDate.getTime()) / 86400000,
+      ),
+    );
+
+    const payment = paymentSuggestionAfterCalendarExtension(motor.teachingDaysTarget, motor.teachingDaysTarget);
 
     return {
       holiday,
-      previousEndDate: classEntity.endDate,
-      newEndDate,
-      message: `Data de término atualizada de ${classEntity.endDate.toISOString().slice(0, 10)} para ${newEndDate.toISOString().slice(0, 10)}`,
+      previousEndDate: motor.previousEndDate,
+      newEndDate: motor.newEndDate,
+      calendarDaysExtended,
+      teachingDaysTarget: motor.teachingDaysTarget,
+      paymentSuggestionUnchanged: payment.suggestedDiasPagamento,
+      formulaLabel: motor.formulaLabel,
+      message:
+        `Ocorrência em ${date} — calendário ${calendarDaysExtended > 0 ? `+${calendarDaysExtended} dia(s) ` : ''}` +
+        `para manter ${motor.teachingDaysTarget} encontros letivos (${motor.formulaLabel}). ` +
+        `Diárias sugeridas: ${payment.suggestedDiasPagamento} (inalteradas).`,
+    };
+  }
+
+  /** Registra ocorrências no período de curso (turma vinculada). */
+  async registerAcaoHolidays(
+    acaoId: string,
+    dto: RegisterAcaoHolidaysDto,
+    registeredBy: string,
+    registrarRole: string,
+  ) {
+    const acao = await this.prisma.acao.findUnique({
+      where: { id: acaoId },
+      include: { turmas: { select: { turmaId: true } } },
+    });
+    if (!acao) throw new NotFoundException('Período não encontrado');
+    if (!acao.turmas.length) {
+      throw new BadRequestException('Vincule uma turma ao período antes de registrar ocorrências.');
+    }
+
+    let classId = dto.turmaId;
+    if (classId) {
+      const linked = acao.turmas.some((t) => t.turmaId === classId);
+      if (!linked) throw new BadRequestException('Turma não está vinculada a este período.');
+    } else {
+      if (acao.turmas.length > 1) {
+        throw new BadRequestException('Informe turmaId — o período tem mais de uma turma vinculada.');
+      }
+      classId = acao.turmas[0].turmaId;
+    }
+
+    const results: Array<Awaited<ReturnType<HolidayService['registerClassHoliday']>>> = [];
+    let lastResult: (typeof results)[number] | null = null;
+    for (const d of dto.dates) {
+      lastResult = await this.registerClassHoliday(
+        classId!,
+        d,
+        dto.reason,
+        registeredBy,
+        registrarRole,
+        acaoId,
+      );
+      results.push(lastResult);
+    }
+
+    return {
+      acaoId,
+      classId,
+      holidays: results.map((r) => r.holiday),
+      previousEndDate: results[0]?.previousEndDate,
+      newEndDate: lastResult?.newEndDate,
+      calendarDaysExtended: lastResult?.calendarDaysExtended ?? 0,
+      teachingDaysTarget: lastResult?.teachingDaysTarget,
+      paymentSuggestionUnchanged: lastResult?.paymentSuggestionUnchanged,
+      formulaLabel: lastResult?.formulaLabel,
+      message: lastResult?.message,
     };
   }
 
@@ -282,34 +385,25 @@ export class HolidayService {
 
     const endBeforeRemove = new Date(holiday.class.endDate);
 
-    let restoredEnd: Date;
-    if (holiday.endDateBeforePush) {
-      restoredEnd = new Date(holiday.endDateBeforePush);
-    } else {
-      // Linhas antigas sem snapshot — mantém comportamento anterior (retrocesso por dia útil)
-      restoredEnd = new Date(holiday.class.endDate);
-      restoredEnd.setDate(restoredEnd.getDate() - 1);
-      while (!this.isWorkday(restoredEnd)) {
-        restoredEnd.setDate(restoredEnd.getDate() - 1);
-      }
-    }
-
-    // Soft Delete — não deleta fisicamente (02_LIVRO_DE_REGRAS.md §3)
     await this.prisma.classHoliday.update({
       where: { id: holidayId },
       data: { active: false },
     });
 
-    await this.prisma.class.update({
-      where: { id: holiday.classId },
-      data: { endDate: restoredEnd },
-    });
+    const stateConfig = await this.stateConfigForClass(holiday.classId);
+    const motor = await recalculateClassEndDateMotor(this.prisma, holiday.classId, stateConfig);
+    await this.syncLinkedAcoesForClass(holiday.classId);
 
-    await this.notifyStakeholdersEndDateShift(holiday.classId, endBeforeRemove, restoredEnd);
+    await this.notifyStakeholdersEndDateShift(
+      holiday.classId,
+      endBeforeRemove,
+      motor.newEndDate,
+    );
 
     return {
-      message: 'Feriado removido e data de término revertida',
-      newEndDate: restoredEnd,
+      message: 'Ocorrência removida; data de término recalculada pelo motor letivo',
+      newEndDate: motor.newEndDate,
+      teachingDaysTarget: motor.teachingDaysTarget,
     };
   }
 
@@ -334,21 +428,224 @@ export class HolidayService {
    * Registra feriados estaduais automáticos em todas as turmas IN_PROGRESS,
    * usando o estado (`City.state`) da cidade da turma.
    */
-  async preloadStateHolidaysForActiveClasses(
-    registeredBy: string,
-    registrarRole: string,
-    yearsInput?: number[],
-  ): Promise<{ ok: number; skip: number; classesProcessed: number }> {
+  private assertCatalogAdmin(registrarRole: string): void {
     if (!['ADMIN', 'COORDINATOR'].includes(registrarRole)) {
-      throw new ForbiddenException('Apenas administrador ou coordenador pode pré-carregar feriados estaduais.');
+      throw new ForbiddenException('Apenas administrador ou coordenador pode gerir o catálogo de feriados.');
     }
+  }
 
+  private resolveYears(yearsInput?: number[]): number[] {
     const defaultYears = [new Date().getFullYear(), new Date().getFullYear() + 1];
     const rawYears = yearsInput?.length ? yearsInput : defaultYears;
-    const years = [...new Set(rawYears)].filter((y) => Number.isInteger(y) && y >= 2000 && y <= 2100).sort((a, b) => a - b);
+    const years = [...new Set(rawYears)]
+      .filter((y) => Number.isInteger(y) && y >= 2000 && y <= 2100)
+      .sort((a, b) => a - b);
     if (!years.length) {
       throw new BadRequestException('Informe pelo menos um ano válido (2000–2100).');
     }
+    return years;
+  }
+
+  private holidayDateUtc(iso: string): Date {
+    const d = new Date(iso);
+    d.setUTCHours(12, 0, 0, 0);
+    return d;
+  }
+
+  /** BUG-15: catálogo global — lista feriados do sistema (sem turma). */
+  async listCatalog(_viewerId: string, viewerRole: string) {
+    this.assertCatalogAdmin(viewerRole);
+    const rows = await this.prisma.globalHoliday.findMany({
+      where: { active: true },
+      orderBy: [{ date: 'asc' }, { scope: 'asc' }, { stateCode: 'asc' }],
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      date: r.date,
+      reason: r.reason,
+      scope: r.scope,
+      stateCode: r.stateCode || null,
+      source: 'catalog' as const,
+      active: r.active,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async removeCatalogHoliday(holidayId: string, viewerRole: string) {
+    this.assertCatalogAdmin(viewerRole);
+    const row = await this.prisma.globalHoliday.findUnique({ where: { id: holidayId } });
+    if (!row) throw new NotFoundException(`Feriado de catálogo ${holidayId} não encontrado`);
+    await this.prisma.globalHoliday.update({
+      where: { id: holidayId },
+      data: { active: false },
+    });
+    return { message: 'Feriado removido do catálogo global' };
+  }
+
+  private async upsertCatalogHoliday(
+    registeredBy: string,
+    scope: 'NATIONAL' | 'STATE',
+    dateIso: string,
+    reason: string,
+    stateCode = '',
+  ): Promise<'ok' | 'skip'> {
+    const date = this.holidayDateUtc(dateIso);
+    const uf = scope === 'STATE' ? (normalizeBrazilUf(stateCode) || '') : '';
+    try {
+      await this.prisma.globalHoliday.upsert({
+        where: {
+          date_scope_stateCode: {
+            date,
+            scope,
+            stateCode: uf,
+          },
+        },
+        create: {
+          date,
+          reason,
+          scope,
+          stateCode: uf,
+          registeredBy,
+        },
+        update: {
+          reason,
+          active: true,
+          registeredBy,
+        },
+      });
+      return 'ok';
+    } catch {
+      return 'skip';
+    }
+  }
+
+  /**
+   * BUG-15: pré-carga nacional no catálogo global (não exige turma IN_PROGRESS).
+   */
+  async preloadNationalCatalog(
+    registeredBy: string,
+    registrarRole: string,
+    dto?: PreloadNationalCatalogDto,
+  ): Promise<{ ok: number; skip: number; applyToActiveClasses: boolean; classesProcessed: number }> {
+    this.assertCatalogAdmin(registrarRole);
+    const years = this.resolveYears(dto?.years);
+    const entries = filterNationalHolidaysByYears(years);
+
+    let ok = 0;
+    let skip = 0;
+    for (const h of entries) {
+      const r = await this.upsertCatalogHoliday(registeredBy, 'NATIONAL', h.date, h.reason);
+      if (r === 'ok') ok++;
+      else skip++;
+    }
+
+    let classesProcessed = 0;
+    if (dto?.applyToActiveClasses) {
+      const applied = await this.applyNationalCatalogToActiveClasses(registeredBy, registrarRole, entries);
+      ok += applied.ok;
+      skip += applied.skip;
+      classesProcessed = applied.classesProcessed;
+    }
+
+    return {
+      ok,
+      skip,
+      applyToActiveClasses: !!dto?.applyToActiveClasses,
+      classesProcessed,
+    };
+  }
+
+  private async applyNationalCatalogToActiveClasses(
+    registeredBy: string,
+    registrarRole: string,
+    entries: Array<{ date: string; reason: string }>,
+  ): Promise<{ ok: number; skip: number; classesProcessed: number }> {
+    const classes = await this.prisma.class.findMany({
+      where: { status: 'IN_PROGRESS' },
+      select: { id: true },
+    });
+    let ok = 0;
+    let skip = 0;
+    for (const cls of classes) {
+      for (const h of entries) {
+        try {
+          await this.registerClassHoliday(cls.id, h.date, h.reason, registeredBy, registrarRole);
+          ok++;
+        } catch {
+          skip++;
+        }
+      }
+    }
+    return { ok, skip, classesProcessed: classes.length };
+  }
+
+  /**
+   * BUG-15: pré-carga estadual no catálogo (UF opcional; não exige turma).
+   */
+  async preloadStateCatalog(
+    registeredBy: string,
+    registrarRole: string,
+    dto?: PreloadStateHolidaysDto,
+  ): Promise<{ ok: number; skip: number; statesProcessed: number; applyToActiveClasses: boolean; classesProcessed: number }> {
+    this.assertCatalogAdmin(registrarRole);
+    const years = this.resolveYears(dto?.years);
+
+    const ufsRaw = dto?.states?.length
+      ? dto.states.map((s) => normalizeBrazilUf(s)).filter((u): u is string => !!u)
+      : Object.keys(BRAZIL_STATE_FIXED_HOLIDAYS);
+    const ufs = [...new Set(ufsRaw)];
+
+    let ok = 0;
+    let skip = 0;
+    const holidaysFlat: Array<{ date: string; name: string; uf: string }> = [];
+
+    for (const uf of ufs) {
+      for (const y of years) {
+        for (const h of listBrazilStateHolidaysForYear(uf, y)) {
+          holidaysFlat.push({ ...h, uf });
+        }
+      }
+    }
+
+    for (const h of holidaysFlat) {
+      const reason = `[LOCAL] 📍 Feriado estadual (${h.uf}) — ${h.name}`;
+      const r = await this.upsertCatalogHoliday(registeredBy, 'STATE', h.date, reason, h.uf);
+      if (r === 'ok') ok++;
+      else skip++;
+    }
+
+    let classesProcessed = 0;
+    if (dto?.applyToActiveClasses) {
+      const applied = await this.preloadStateHolidaysForActiveClasses(registeredBy, registrarRole, {
+        years: dto.years,
+        states: dto.states,
+        applyToActiveClasses: true,
+      });
+      ok += applied.ok;
+      skip += applied.skip;
+      classesProcessed = applied.classesProcessed;
+    }
+
+    return {
+      ok,
+      skip,
+      statesProcessed: ufs.length,
+      applyToActiveClasses: !!dto?.applyToActiveClasses,
+      classesProcessed,
+    };
+  }
+
+  /**
+   * Registra feriados estaduais nas turmas IN_PROGRESS (opcional após catálogo).
+   */
+  async preloadStateHolidaysForActiveClasses(
+    registeredBy: string,
+    registrarRole: string,
+    dto?: PreloadStateHolidaysDto,
+  ): Promise<{ ok: number; skip: number; classesProcessed: number }> {
+    this.assertCatalogAdmin(registrarRole);
+
+    const years = this.resolveYears(dto?.years);
 
     const classes = await this.prisma.class.findMany({
       where: { status: 'IN_PROGRESS' },
@@ -358,9 +655,16 @@ export class HolidayService {
     let ok = 0;
     let skip = 0;
 
+    const filterUfs = dto?.states?.length
+      ? new Set(
+          dto.states.map((s) => normalizeBrazilUf(s)).filter((u): u is string => !!u),
+        )
+      : null;
+
     for (const cls of classes) {
       const uf = normalizeBrazilUf(cls.city?.state);
       if (!uf) continue;
+      if (filterUfs && !filterUfs.has(uf)) continue;
 
       const holidaysFlat: Array<{ date: string; name: string }> = [];
       for (const y of years) {

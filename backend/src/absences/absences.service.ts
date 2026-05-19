@@ -10,10 +10,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { MinioService } from '../reimbursement/minio.service';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
 import {
     looksLikeAlreadyPresignedGetUrl,
     parseMinioPublicUrlToBucketKey,
 } from '../reimbursement/minio-public-url.util';
+import { isVpsStorageMode, resolveBrowserViewUrl } from '../common/minio-browser-url.util';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 /** `YYYY-MM-DD` em JS vira meia-noite UTC → em fusos atrás do UTC aparece dia anterior na UI. Normaliza como «dia civil» (meio-dia UTC). */
@@ -258,18 +260,32 @@ export class AbsencesService {
     }
 
     // Admin: lista todas as ausências com filtros (apenas activas por padrão)
-    async findAll(status?: string, userId?: string) {
+    async findAll(
+        status?: string,
+        userId?: string,
+        opts?: { page?: number; limit?: number },
+    ) {
         const where: any = { active: true };
         if (status) where.status = status;
         if (userId) where.userId = userId;
 
-        return this.prisma.absence.findMany({
-            where,
-            orderBy: { date: 'desc' },
-            include: {
-                user: { select: { id: true, name: true, role: true, email: true } },
-            },
-        });
+        const { skip, page, limit } = resolvePagination(opts?.page, opts?.limit, 20);
+        const include = {
+            user: { select: { id: true, name: true, role: true, email: true } },
+        };
+
+        const [data, total] = await Promise.all([
+            this.prisma.absence.findMany({
+                where,
+                orderBy: { date: 'desc' },
+                include,
+                skip,
+                take: limit,
+            }),
+            this.prisma.absence.count({ where }),
+        ]);
+
+        return paginatedResult(data, total, page, limit);
     }
 
     // Admin: cria imprevisto manualmente (PASSO 3.6)
@@ -499,6 +515,11 @@ export class AbsencesService {
         const raw = absence.documentUrl?.trim();
         if (!raw) throw new BadRequestException('Nenhum documento anexado');
 
+        const browserUrl = resolveBrowserViewUrl(raw);
+        if (browserUrl) {
+            return { url: browserUrl, expiresIn: 0 };
+        }
+
         if (looksLikeAlreadyPresignedGetUrl(raw)) {
             return { url: raw, expiresIn: 0 };
         }
@@ -506,6 +527,12 @@ export class AbsencesService {
         const parsed = parseMinioPublicUrlToBucketKey(raw);
         if (!parsed) {
             throw new BadRequestException('URL do documento não reconhecida para leitura segura');
+        }
+
+        if (isVpsStorageMode()) {
+            throw new BadRequestException(
+                'URL do documento não reconhecida. Anexe novamente pelo portal ou contacte o suporte.',
+            );
         }
 
         const expirySeconds = 3600;

@@ -4,7 +4,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { acoesApi, Acao, AcaoStatus, AcaoCustoTipo } from '@/lib/api/acoes';
+import { holidayApi } from '@/lib/api/holiday';
 import api from '@/lib/api/acoes';
+import apiClient from '@/lib/api/client';
+import { toast } from '@/components/ui/Toast';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import { LocationFields, LocationFieldsValue } from '@/components/admin/LocationFields';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -12,6 +15,9 @@ import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import { KitInsumosEditor } from '@/components/estoque/KitInsumosEditor';
 import { BaixaEstoqueEditor } from '@/components/estoque/BaixaEstoqueEditor';
 import { ConcluirAcaoModal } from '@/components/acoes/ConcluirAcaoModal';
+import { AcaoEquipeVinculoPanel } from '@/components/admin/acoes/AcaoEquipeVinculoPanel';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_CARDS, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 
 const FUTURISTIC_CSS = `
 @keyframes holo-scan {
@@ -101,12 +107,22 @@ const fmtCurrency = (v: number | string) =>
 const TABS = [
     { id: 'geral', label: 'Visão Geral', icon: '📊' },
     { id: 'turmas', label: 'Turmas', icon: '🎓' },
-    { id: 'funcionarios', label: 'Funcionários', icon: '👷' },
+    { id: 'funcionarios', label: 'Equipe e diárias', icon: '👷' },
     { id: 'custos', label: 'Custos', icon: '💰' },
     { id: 'insumos', label: 'Kit de Insumos', icon: '🎒' },
     { id: 'baixa', label: 'Baixa de Estoque', icon: '↧' },
     { id: 'inscricoes', label: 'Inscrições', icon: '📋' },
 ];
+
+// MEL-04: Mapeamento de status de turma
+const TURMA_STATUS_CFG: Record<string, string> = {
+    PLANNED: 'Planejada',
+    ENROLLMENT_OPEN: 'Matrículas Abertas',
+    ENROLLMENT_CLOSED: 'Matrículas Fechadas',
+    IN_PROGRESS: 'Em Andamento',
+    COMPLETED: 'Concluída',
+    CANCELLED: 'Cancelada',
+};
 
 // Estilos reutilizáveis inline
 const INPUT: React.CSSProperties = {
@@ -287,24 +303,47 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
 // ── TabTurmas ─────────────────────────────────────────────────────
 
 function TabTurmas({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
+    const [turmaPage, setTurmaPage] = useState(1);
+    const turmasVinculadas = acao.turmas || [];
+    const turmasPaged = turmasVinculadas.slice((turmaPage - 1) * ADMIN_PAGE_SIZE_TABLE, turmaPage * ADMIN_PAGE_SIZE_TABLE);
+    const turmasTotalPages = Math.max(1, Math.ceil(turmasVinculadas.length / ADMIN_PAGE_SIZE_TABLE));
+
     const [turmasDisponiveis, setTurmasDisponiveis] = useState<any[]>([]);
     const [selectedTurma, setSelectedTurma] = useState('');
     const [loading, setLoading] = useState(false);
+    const [loadingList, setLoadingList] = useState(false);
 
     useEffect(() => {
-        api.get('/classes').then(r => {
-            const d = r.data;
-            setTurmasDisponiveis(Array.isArray(d) ? d : d.data || []);
-        }).catch(() => { });
-    }, []);
+        if (!acao.grupoId) {
+            setTurmasDisponiveis([]);
+            return;
+        }
+        setLoadingList(true);
+        acoesApi
+            .listTurmasElegiveis(acao.id)
+            .then(rows => setTurmasDisponiveis(Array.isArray(rows) ? rows : []))
+            .catch(() => setTurmasDisponiveis([]))
+            .finally(() => setLoadingList(false));
+    }, [acao.grupoId, acao.id]);
 
     const vincular = async () => {
         if (!selectedTurma) return;
         setLoading(true);
-        await acoesApi.addTurma(acao.id, selectedTurma);
-        setSelectedTurma('');
-        setLoading(false);
-        onUpdate();
+        try {
+            const res = await acoesApi.addTurma(acao.id, selectedTurma);
+            const inherited = res?.inheritedClassTeachers ?? 0;
+            if (inherited > 0) {
+                toast.success(`Turma vinculada. ${inherited} professor(es) do curso base aplicado(s) à turma.`);
+            } else {
+                toast.success('Turma vinculada ao período.');
+            }
+            setSelectedTurma('');
+            onUpdate();
+        } catch (e: any) {
+            toast.error(e?.response?.data?.message || 'Não foi possível vincular a turma.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const [confirmDesvincular, setConfirmDesvincular] = useState<string | null>(null);
@@ -317,23 +356,50 @@ function TabTurmas({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
     const vinculadasIds = (acao.turmas || []).map(t => t.turmaId);
     const disponiveis = turmasDisponiveis.filter(t => !vinculadasIds.includes(t.id));
 
+    const turmaRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' };
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Vincular */}
             <div className="glass-card">
-                <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#B89B00', marginBottom: 12 }}>🎓 Vincular Nova Turma</div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <select style={{ flex: 1, minWidth: 240, ...INPUT }} value={selectedTurma} onChange={e => setSelectedTurma(e.target.value)}>
-                        <option value="">Selecione uma turma...</option>
-                        {disponiveis.map((t: any) => (
-                            <option key={t.id} value={t.id}>{t.classIdentifier} — {t.course?.name || 'Curso'} ({t.status})</option>
-                        ))}
-                    </select>
-                    <button className="btn-primary" onClick={vincular} disabled={!selectedTurma || loading}>{loading ? 'Vinculando...' : '+ Vincular'}</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#B89B00' }}>🎓 Vincular turma</div>
+                    <Link href={`/admin/turmas/nova?acaoId=${acao.id}`} className="btn-primary" style={{ fontSize: '0.75rem', padding: '6px 14px', textDecoration: 'none' }}>
+                        + Nova turma
+                    </Link>
                 </div>
+                <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: '0 0 12px', lineHeight: 1.45 }}>
+                    Turmas do mesmo grupo do período (qualquer curso). O curso motor do período aparece primeiro na lista. Professor,
+                    motorista e diárias: aba <strong>Funcionários</strong>.
+                </p>
+                {loadingList ? (
+                    <p style={{ fontSize: '0.78rem', color: '#9CA3AF' }}>Carregando…</p>
+                ) : (
+                    <>
+                    <div style={turmaRow}>
+                        <select style={INPUT} value={selectedTurma} onChange={e => setSelectedTurma(e.target.value)}>
+                            <option value="">Selecione uma turma…</option>
+                            {disponiveis.map((t: any) => (
+                                <option key={t.id} value={t.id}>
+                                    {t.classIdentifier} — {t.course?.name || 'Curso'}
+                                    {acao.motorCourseId && t.courseId === acao.motorCourseId ? ' ★' : ''} (
+                                    {TURMA_STATUS_CFG[t.status] || t.status})
+                                </option>
+                            ))}
+                        </select>
+                        <button type="button" className="btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={vincular} disabled={!selectedTurma || loading}>
+                            {loading ? '…' : '+ Vincular'}
+                        </button>
+                    </div>
+                        {disponiveis.length === 0 && (
+                            <p style={{ fontSize: '0.75rem', color: '#9CA3AF', margin: '10px 0 0', lineHeight: 1.45 }}>
+                                Nenhuma turma elegível. Verifique se a turma pertence ao mesmo grupo, não está concluída/cancelada nem
+                                vinculada a outro período ativo.
+                            </p>
+                        )}
+                    </>
+                )}
             </div>
 
-            {/* Tabela */}
             <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ padding: '14px 20px', borderBottom: '1px solid #F3F4F6', background: '#FFFDE7', borderRadius: '16px 16px 0 0' }}>
                     <span style={{ fontFamily: 'Orbitron', fontSize: '0.68rem', fontWeight: 800, color: '#B89B00', letterSpacing: '0.1em' }}>📚 TURMAS VINCULADAS ({acao.turmas?.length || 0})</span>
@@ -345,11 +411,11 @@ function TabTurmas({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                         <table className="data-table">
                             <thead><tr><th>Identificador</th><th>Curso</th><th>Status</th><th>Vagas</th><th>Inscritos</th><th>Período</th><th></th></tr></thead>
                             <tbody>
-                                {(acao.turmas || []).map(at => (
+                                {turmasPaged.map(at => (
                                     <tr key={at.id}>
                                         <td><span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.78rem', background: '#FFFDE7', color: '#B89B00', padding: '2px 7px', borderRadius: 5, border: '1px solid #FEF08A' }}>{at.turma?.classIdentifier}</span></td>
                                         <td style={{ fontWeight: 600 }}>{at.turma?.course?.name || '—'}</td>
-                                        <td><span className="badge badge-gray">{at.turma?.status}</span></td>
+                                        <td><span className="badge badge-gray">{TURMA_STATUS_CFG[at.turma?.status || ''] || at.turma?.status}</span></td>
                                         <td>{at.turma?.vacancies}</td>
                                         <td>{at.turma?._count?.enrollments ?? '—'}</td>
                                         <td style={{ fontSize: '0.8rem', color: '#6B7280' }}>{fmtDate(at.turma?.startDate)} → {fmtDate(at.turma?.endDate)}</td>
@@ -368,6 +434,14 @@ function TabTurmas({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                         </table>
                     </div>
                 )}
+                <AdminListPagination
+                    page={turmaPage}
+                    totalPages={turmasTotalPages}
+                    total={turmasVinculadas.length}
+                    onPageChange={setTurmaPage}
+                    itemLabel="turma(s)"
+                    style={{ padding: '0 20px 16px' }}
+                />
             </div>
         </div>
     );
@@ -377,6 +451,7 @@ function TabTurmas({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
 // ── TabCustos ─────────────────────────────────────────────────────
 
 function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
+    const [custoPage, setCustoPage] = useState(1);
     const [showModal, setShowModal] = useState<'ABASTECIMENTO' | 'DESPESA_GERAL' | null>(null);
     const [form, setForm] = useState({ descricao: '', valor: '', data: new Date().toISOString().split('T')[0], litros: '', observacoes: '' });
     const [loading, setLoading] = useState(false);
@@ -413,6 +488,10 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
     };
 
     const custosFiltrados = (acao.custos || []).filter(c => !filter || c.tipo === filter);
+    const custosPaged = custosFiltrados.slice((custoPage - 1) * ADMIN_PAGE_SIZE_TABLE, custoPage * ADMIN_PAGE_SIZE_TABLE);
+    const custosTotalPages = Math.max(1, Math.ceil(custosFiltrados.length / ADMIN_PAGE_SIZE_TABLE));
+
+    useEffect(() => { setCustoPage(1); }, [filter]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -453,7 +532,7 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button onClick={() => setShowModal('ABASTECIMENTO')} style={{ padding: '9px 18px', borderRadius: 9, background: '#FFF9C4', border: '1px solid #FFE97A', color: '#92400E', fontWeight: 700, cursor: 'pointer', fontSize: '0.88rem' }}>⛽ + Abastecimento</button>
                 <button onClick={() => setShowModal('DESPESA_GERAL')} style={{ padding: '9px 18px', borderRadius: 9, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', fontWeight: 700, cursor: 'pointer', fontSize: '0.88rem' }}>📋 + Despesa Geral</button>
-                <select style={{ ...INPUT, width: 'auto', minWidth: 160 }} value={filter} onChange={e => setFilter(e.target.value)}>
+                <select style={{ ...INPUT, width: 'auto', minWidth: 160 }} value={filter} onChange={e => { setFilter(e.target.value); setCustoPage(1); }}>
                     <option value="">Todos os tipos</option>
                     <option value="ABASTECIMENTO">Abastecimentos</option>
                     <option value="DESPESA_GERAL">Despesas Gerais</option>
@@ -473,7 +552,7 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                         <table className="data-table">
                             <thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>{filter === 'ABASTECIMENTO' ? 'Litros' : filter === 'DIARIA_FUNCIONARIO' ? 'Dias Trab.' : filter === 'DESPESA_GERAL' ? 'Detalhe' : 'Detalhe'}</th><th>Valor</th><th></th></tr></thead>
                             <tbody>
-                                {custosFiltrados.map(c => {
+                                {custosPaged.map(c => {
                                     const tb = tipoBadge[c.tipo];
                                     return (
                                         <tr key={c.id}>
@@ -514,6 +593,14 @@ function TabCustos({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                         </table>
                     </div>
                 )}
+                <AdminListPagination
+                    page={custoPage}
+                    totalPages={custosTotalPages}
+                    total={custosFiltrados.length}
+                    onPageChange={setCustoPage}
+                    itemLabel="lançamento(s)"
+                    style={{ padding: '0 20px 16px' }}
+                />
             </div>
 
             {/* Modal de custo */}
@@ -563,61 +650,98 @@ const ROLE_CFG: Record<string, { label: string; icon: string; color: string; glo
     OTHER: { label: 'Outro', icon: '👤', color: '#6B7280', glow: 'rgba(107,114,128,0.4)', bg: 'rgba(156,163,175,0.08)' },
 };
 
-function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
-    // Auto-calcular dias com base nas datas da ação
-    const diasAuto = (() => {
+function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void | Promise<void> }) {
+    const [funcionarios, setFuncionarios] = useState<NonNullable<Acao['funcionarios']>>([]);
+    const [funcPage, setFuncPage] = useState(1);
+    const [funcTotal, setFuncTotal] = useState(0);
+    const [funcTotalPages, setFuncTotalPages] = useState(1);
+    const [loadingFunc, setLoadingFunc] = useState(false);
+
+    const diasCorridos = (() => {
         if (!acao.dataInicio || !acao.dataFim) return 1;
         const diff = new Date(acao.dataFim).getTime() - new Date(acao.dataInicio).getTime();
         return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1);
     })();
 
-    const [employees, setEmployees] = useState<any[]>([]);
-    const [form, setForm] = useState({ employeeId: '', valorDiaria: '', diasTrabalhados: String(diasAuto) });
+    const [calResumo, setCalResumo] = useState<{
+        temTurma: boolean;
+        diasLetivos: number;
+        diasCorridos: number;
+        aviso?: string;
+        paymentNote?: string;
+        workloadScopeNote?: string;
+        suggestedDiasPagamento?: number;
+        paymentAdjustmentNote?: string;
+        applyPaymentSuggestionRecommended?: boolean;
+        teachingDaysTarget?: number;
+        formulaLabel?: string;
+        motorResumo?: string;
+        motorCourseName?: string;
+        courseWorkloadHours?: number;
+        hoursPerSession?: number;
+        workload?: { status: string; message: string } | null;
+    } | null>(null);
+
+    const [occDates, setOccDates] = useState('');
+    const [occReason, setOccReason] = useState('');
+    const [occLoading, setOccLoading] = useState(false);
+
+    const diasSugeridos =
+        calResumo?.suggestedDiasPagamento ?? calResumo?.diasLetivos ?? diasCorridos;
+
     const [editDias, setEditDias] = useState<Record<string, number>>({});
-    const [loading, setLoading] = useState(false);
-    const [adding, setAdding] = useState(false);
     const [hovCard, setHovCard] = useState<string | null>(null);
     const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
     const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+    const [recalcMotorLoading, setRecalcMotorLoading] = useState(false);
+    const [recalcMotorResult, setRecalcMotorResult] = useState<string | null>(null);
+    const [regeneratingTrips, setRegeneratingTrips] = useState<string | null>(null);
 
     const showToast = (msg: string, ok: boolean) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3000); };
 
-    useEffect(() => {
-        // Buscar todos employees ativos para o select
-        api.get('/employees?active=true&limit=200').then(r => {
-            const d = r.data;
-            setEmployees(Array.isArray(d) ? d : d.employees || d.data || []);
-        }).catch(() => { });
-    }, []);
-
-    const vinculadosIds = (acao.funcionarios || []).map(f => f.employeeId);
-    const disponiveis = employees.filter(e => !vinculadosIds.includes(e.id));
-
-    const handleSelectEmployee = (id: string) => {
-        const emp = employees.find(e => e.id === id);
-        setForm(f => ({
-            ...f,
-            employeeId: id,
-            valorDiaria: emp?.dailyCost ? String(Number(emp.dailyCost).toFixed(2)) : f.valorDiaria,
-        }));
-    };
-
-    const addFuncionario = async () => {
-        if (!form.employeeId || !form.valorDiaria) return;
-        setAdding(true);
+    const recalcularMotor = async () => {
+        if (!(acao.turmas?.length ?? 0)) {
+            showToast('Vincule turmas na aba Turmas antes de recalcular.', false);
+            return;
+        }
+        setRecalcMotorLoading(true);
+        setRecalcMotorResult(null);
         try {
-            await acoesApi.addFuncionario(acao.id, {
-                employeeId: form.employeeId,
-                valorDiaria: Number(form.valorDiaria),
-                diasTrabalhados: Number(form.diasTrabalhados) || 1,
-            });
-            setForm({ employeeId: '', valorDiaria: '', diasTrabalhados: String(diasAuto) });
-            showToast('Funcionário vinculado!', true);
-            onUpdate();
+            const res = await acoesApi.recalcularMotorPeriodo(acao.id);
+            setRecalcMotorResult(res.message);
+            showToast(res.message, true);
+            await onUpdate();
+            const fresh = await acoesApi.getCalendarioResumo(acao.id);
+            setCalResumo(fresh);
         } catch (e: any) {
-            showToast(e?.response?.data?.message || 'Erro ao vincular', false);
-        } finally { setAdding(false); }
+            showToast(e?.response?.data?.message || 'Erro ao recalcular o período.', false);
+        } finally {
+            setRecalcMotorLoading(false);
+        }
     };
+
+    useEffect(() => {
+        acoesApi.getCalendarioResumo(acao.id).then(setCalResumo).catch(() => setCalResumo(null));
+    }, [acao.id, acao.dataInicio, acao.dataFim, acao.turmas?.length, acao.period, acao.startTime, acao.endTime]);
+
+    const loadFuncionarios = useCallback(async () => {
+        setLoadingFunc(true);
+        try {
+            const raw = await acoesApi.listFuncionarios(acao.id, { page: funcPage, limit: ADMIN_PAGE_SIZE_CARDS });
+            const norm = normalizePaginated<NonNullable<Acao['funcionarios']>[number]>(raw, ADMIN_PAGE_SIZE_CARDS);
+            setFuncionarios(norm.data);
+            setFuncTotal(norm.total);
+            setFuncTotalPages(norm.totalPages);
+        } catch {
+            setFuncionarios([]);
+            setFuncTotal(0);
+            setFuncTotalPages(1);
+        } finally {
+            setLoadingFunc(false);
+        }
+    }, [acao.id, funcPage]);
+
+    useEffect(() => { loadFuncionarios(); }, [loadFuncionarios]);
 
     const updateDias = async (employeeId: string) => {
         const dias = editDias[employeeId];
@@ -639,10 +763,58 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
         }
     };
 
+    const regenerarViagens = async (employeeId: string) => {
+        setRegeneratingTrips(employeeId);
+        try {
+            const res = await acoesApi.regenerateFuncionarioTrips(acao.id, employeeId);
+            const detail = res.perClass?.length
+                ? res.perClass.map(pc => `${pc.classIdentifier || 'Turma'}: ${pc.generated} — ${pc.message}`).join(' | ')
+                : res.message;
+            if ((res.tripsGenerated ?? 0) === 0) {
+                showToast(res.tripsWarning ? `${detail}. ${res.tripsWarning}` : detail, false);
+            } else {
+                showToast(`${res.message} (${res.tripsGenerated} viagem(ns))`, true);
+            }
+        } catch (e: any) {
+            showToast(e?.response?.data?.message || 'Erro ao regenerar viagens.', false);
+        } finally {
+            setRegeneratingTrips(null);
+        }
+    };
+
+    const submitOcorrencia = async () => {
+        const dates = occDates
+            .split(/[\n,;]+/)
+            .map((d) => d.trim())
+            .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+        if (!dates.length || !occReason.trim()) {
+            showToast('Informe data(s) YYYY-MM-DD e motivo.', false);
+            return;
+        }
+        setOccLoading(true);
+        try {
+            const res = await holidayApi.registerAcaoHolidays(acao.id, {
+                dates,
+                reason: occReason.trim(),
+            });
+            setOccDates('');
+            setOccReason('');
+            showToast(res.message || 'Ocorrência registrada.', true);
+            acoesApi.getCalendarioResumo(acao.id).then(setCalResumo).catch(() => {});
+            onUpdate();
+        } catch (e: any) {
+            showToast(e?.response?.data?.message || 'Erro ao registrar ocorrência', false);
+        } finally {
+            setOccLoading(false);
+        }
+    };
+
     const totalEstimado = (acao.funcionarios || []).reduce((sum, f) => {
         const dias = editDias[f.employeeId] ?? f.diasTrabalhados;
         return sum + Number(f.valorDiaria) * dias;
     }, 0);
+
+    const funcionariosList = funcionarios.length > 0 ? funcionarios : (acao.funcionarios || []);
 
     const FMT_CSS: React.CSSProperties = {
         width: '100%', padding: '0.65rem 0.9rem', borderRadius: 9,
@@ -662,6 +834,78 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
                     fontSize: '0.85rem', fontWeight: 600, color: toast.ok ? '#065F46' : '#991B1B',
                     animation: 'counter-up 0.25s both'
                 }}>{toast.msg}</div>
+            )}
+
+            <div style={{ padding: '14px 18px', borderRadius: 14, border: '1px solid #E5E7EB', background: '#FAFAFA', fontSize: '0.8rem', color: '#4B5563', lineHeight: 1.55 }}>
+                <div style={{ fontFamily: 'Orbitron', fontSize: '0.62rem', fontWeight: 800, color: '#374151', letterSpacing: '0.1em', marginBottom: 8 }}>
+                    COMO ESTA ABA FUNCIONA
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+                    <li><strong>Motor do período</strong> — turno, feriados e carga horária definem os dias letivos para pagamento.</li>
+                    <li><strong>Um único vínculo</strong> — busque no cadastro de Funcionários; ao confirmar, cria o card de diária.</li>
+                    <li><strong>Instrutor</strong> — escolha a turma/curso; as diárias seguem a carga daquele curso (ex.: 60h ≠ 120h). <strong>Motorista e demais</strong> — usam o motor do período (recalcule após vincular turmas novas).</li>
+                </ul>
+            </div>
+
+            {calResumo && (
+                <div
+                    style={{
+                        padding: '14px 18px',
+                        borderRadius: 14,
+                        border: '1px solid #BFDBFE',
+                        background: 'linear-gradient(180deg, #EFF6FF 0%, #F8FAFC 100%)',
+                    }}
+                >
+                    <div style={{ fontFamily: 'Orbitron', fontSize: '0.65rem', fontWeight: 800, color: '#1D4ED8', letterSpacing: '0.1em', marginBottom: 8 }}>
+                        MOTOR DO PERÍODO (FONTE DAS DIÁRIAS)
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem 1.25rem', fontSize: '0.82rem', color: '#1E3A8A', marginBottom: 8 }}>
+                        {calResumo.motorCourseName ? (
+                            <span>
+                                Curso motor: <strong>{calResumo.motorCourseName}</strong>
+                                {calResumo.courseWorkloadHours ? ` (${calResumo.courseWorkloadHours}h)` : ''}
+                            </span>
+                        ) : null}
+                        <span style={{ fontWeight: 700 }}>Diárias: {diasSugeridos} dia(s)</span>
+                        {calResumo.teachingDaysTarget != null ? (
+                            <span>{calResumo.teachingDaysTarget} encontro(s) no contrato</span>
+                        ) : null}
+                    </div>
+                    {calResumo.motorResumo ? (
+                        <p style={{ margin: 0, fontSize: '0.78rem', color: '#334155', lineHeight: 1.5 }}>{calResumo.motorResumo}</p>
+                    ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem 1.25rem', fontSize: '0.82rem', color: '#1E3A8A' }}>
+                            <span><strong>{calResumo.diasLetivos}</strong> dias letivos no período</span>
+                            <span><strong>{calResumo.diasCorridos}</strong> dias corridos</span>
+                            {calResumo.formulaLabel ? <span>{calResumo.formulaLabel}</span> : null}
+                        </div>
+                    )}
+                    {calResumo.aviso ? (
+                        <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#991B1B', lineHeight: 1.45, fontWeight: 600 }}>
+                            {calResumo.aviso}
+                        </p>
+                    ) : null}
+                    {!calResumo.motorResumo && calResumo.paymentNote ? (
+                        <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: '#1D4ED8', lineHeight: 1.45 }}>{calResumo.paymentNote}</p>
+                    ) : null}
+                    <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                        <button
+                            type="button"
+                            className="btn-primary"
+                            style={{ fontSize: '0.78rem', padding: '8px 14px' }}
+                            disabled={recalcMotorLoading || !(acao.turmas?.length ?? 0)}
+                            onClick={recalcularMotor}
+                        >
+                            {recalcMotorLoading ? 'Recalculando…' : 'Recalcular período pelas turmas'}
+                        </button>
+                        <span style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 420, lineHeight: 1.4 }}>
+                            Ajusta a data fim do período e de cada turma conforme a carga horária de cada curso (ex.: Administração 120h estende o período; Cybersecurity 60h mantém o fim próprio).
+                        </span>
+                    </div>
+                    {recalcMotorResult ? (
+                        <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: '#065F46', lineHeight: 1.45 }}>{recalcMotorResult}</p>
+                    ) : null}
+                </div>
             )}
 
             {/* AVISO CONTA A PAGAR */}
@@ -685,46 +929,38 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
                 </div>
             )}
 
-            {/* ADICIONAR FORM */}
-            <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(255,214,0,0.2)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)', background: '#fff' }}>
-                <div style={{ padding: '14px 20px', background: 'linear-gradient(135deg, #0a0a0f, #111118)', borderBottom: '1px solid rgba(255,214,0,0.15)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(255,214,0,0.15)', border: '1px solid rgba(255,214,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem' }}>👷</div>
-                    <span style={{ fontFamily: 'Orbitron', fontSize: '0.65rem', fontWeight: 800, color: '#FFD600', letterSpacing: '0.15em' }}>VINCULAR FUNCIONÁRIO</span>
+            {calResumo?.temTurma && (
+                <div style={{ padding: '16px 20px', borderRadius: 14, border: '1px solid #E5E7EB', background: '#fff' }}>
+                    <div style={{ fontFamily: 'Orbitron', fontSize: '0.65rem', fontWeight: 800, color: '#6B7280', marginBottom: 10, letterSpacing: '0.1em' }}>
+                        REGISTRAR DIA SEM AULA (OCORRÊNCIA)
+                    </div>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                        <div>
+                            <label style={LABEL}>Datas (YYYY-MM-DD, uma por linha)</label>
+                            <textarea style={{ ...FMT_CSS, minHeight: 64 }} value={occDates} onChange={(e) => setOccDates(e.target.value)} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'end' }}>
+                            <div>
+                                <label style={LABEL}>Motivo</label>
+                                <input style={FMT_CSS} value={occReason} onChange={(e) => setOccReason(e.target.value)} />
+                            </div>
+                            <button type="button" className="btn-secondary" disabled={occLoading} onClick={submitOcorrencia} style={{ height: 42 }}>
+                                {occLoading ? 'Registrando…' : 'Registrar'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div style={{ padding: '18px 20px', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div style={{ flex: '2 1 200px' }}>
-                        <label style={LABEL}>Funcionário</label>
-                        <select style={{ ...FMT_CSS, cursor: 'pointer' }} value={form.employeeId}
-                            onChange={e => handleSelectEmployee(e.target.value)}>
-                            <option value="">Selecione um funcionário...</option>
-                            {disponiveis.map((e: any) => {
-                                const cfg = ROLE_CFG[e.role] || ROLE_CFG.OTHER;
-                                return <option key={e.id} value={e.id}>{cfg.icon} {e.name} — {cfg.label} {e.dailyCost ? `(R$ ${Number(e.dailyCost).toFixed(2)}/dia)` : ''}</option>;
-                            })}
-                        </select>
-                    </div>
-                    <div style={{ flex: '1 1 130px' }}>
-                        <label style={LABEL}>Diária (R$)</label>
-                        <input type="number" step="0.01" placeholder="Ex: 250.00" style={FMT_CSS}
-                            value={form.valorDiaria}
-                            onChange={e => setForm(f => ({ ...f, valorDiaria: e.target.value }))} />
-                    </div>
-                    <div style={{ flex: '0 1 90px' }}>
-                        <label style={LABEL}>Dias</label>
-                        <input type="number" min="1" placeholder="1" style={FMT_CSS}
-                            value={form.diasTrabalhados}
-                            onChange={e => setForm(f => ({ ...f, diasTrabalhados: e.target.value }))} />
-                    </div>
-                    <button className="btn-primary" onClick={addFuncionario}
-                        disabled={!form.employeeId || !form.valorDiaria || adding}
-                        style={{ whiteSpace: 'nowrap' }}>
-                        {adding ? 'Vinculando...' : '❤️ Vincular'}
-                    </button>
-                </div>
-            </div>
+            )}
+
+            <AcaoEquipeVinculoPanel
+                acao={acao}
+                calResumo={calResumo}
+                diasSugeridos={diasSugeridos}
+                onUpdate={onUpdate}
+            />
 
             {/* CARDS DE FUNCIONÁRIOS */}
-            {(acao.funcionarios || []).length === 0 ? (
+            {funcionariosList.length === 0 && !loadingFunc ? (
                 <div style={{ textAlign: 'center', padding: '50px 24px', background: '#fff', borderRadius: 16, border: '1px solid #F3F4F6' }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.3 }}>👷</div>
                     <h3 style={{ color: '#374151', fontSize: '1rem', margin: '0 0 6px', fontFamily: 'Orbitron' }}>Nenhum funcionário vinculado</h3>
@@ -750,7 +986,7 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
 
                     {/* Cards Grid */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
-                        {(acao.funcionarios || []).map((f) => {
+                        {funcionariosList.map((f) => {
                             const emp = f.employee;
                             const cfg = ROLE_CFG[emp?.role || 'OTHER'] || ROLE_CFG.OTHER;
                             const dias = editDias[f.employeeId] ?? f.diasTrabalhados;
@@ -818,7 +1054,7 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
                                             {/* Custo badge */}
                                             <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                                 <div style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '1rem', color: '#059669', filter: 'drop-shadow(0 0 8px rgba(5,150,105,0.4))' }}>{fmtCurrency(custo)}</div>
-                                                <div style={{ fontSize: '0.62rem', color: '#9CA3AF', marginTop: 2 }}>{dias} dia(s)</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#9CA3AF', marginTop: 2 }}>{dias} dia(s) letivo(s)</div>
                                             </div>
                                         </div>
 
@@ -842,6 +1078,24 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
                                                         color: cfg.color, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700
                                                     }}>✓</button>
                                                 </div>
+                                                <p style={{ fontSize: '0.65rem', color: '#6B7280', marginTop: 8, lineHeight: 1.4, textAlign: 'left' }}>
+                                                    {dias} dia(s) letivo(s) no período — diária × dias (motor do período).
+                                                </p>
+                                                {calResumo?.suggestedDiasPagamento != null && (editDias[f.employeeId] ?? f.diasTrabalhados) !== diasSugeridos && (
+                                                    <button
+                                                        type="button"
+                                                        className="btn-secondary"
+                                                        style={{ fontSize: '0.65rem', marginTop: 6, width: '100%' }}
+                                                        onClick={() => setEditDias(d => ({ ...d, [f.employeeId]: diasSugeridos }))}
+                                                    >
+                                                        Usar {diasSugeridos} dia(s) do motor
+                                                    </button>
+                                                )}
+                                                {calResumo?.workload?.status === 'short' && calResumo.workload.message && (
+                                                    <p style={{ fontSize: '0.64rem', color: '#991B1B', marginTop: 6, lineHeight: 1.35, fontWeight: 600 }}>
+                                                        {calResumo.workload.message}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
 
@@ -853,8 +1107,23 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
                                             </div>
                                         )}
 
-                                        {/* Remover */}
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                        {/* Ações */}
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                                            {emp?.role === 'DRIVER' && (
+                                                <button
+                                                    type="button"
+                                                    disabled={regeneratingTrips === f.employeeId}
+                                                    onClick={() => regenerarViagens(f.employeeId)}
+                                                    style={{
+                                                        padding: '6px 14px', borderRadius: 9,
+                                                        background: 'rgba(29,78,216,0.08)', border: '1px solid rgba(29,78,216,0.35)',
+                                                        color: '#1D4ED8', fontWeight: 700, fontSize: '0.75rem',
+                                                        cursor: regeneratingTrips === f.employeeId ? 'wait' : 'pointer',
+                                                    }}
+                                                >
+                                                    {regeneratingTrips === f.employeeId ? 'Gerando…' : '🚛 Regenerar viagens'}
+                                                </button>
+                                            )}
                                             {confirmRemove === f.employeeId ? (
                                                 <>
                                                     <span style={{ fontSize: '0.75rem', color: '#DC2626', alignSelf: 'center', fontWeight: 600 }}>Confirmar remoção?</span>
@@ -887,6 +1156,15 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
                             );
                         })}
                     </div>
+
+                    <AdminListPagination
+                        page={funcPage}
+                        totalPages={funcTotalPages}
+                        total={funcTotal}
+                        loading={loadingFunc}
+                        onPageChange={setFuncPage}
+                        itemLabel="funcionário(s)"
+                    />
                 </>
             )}
         </div>
@@ -922,6 +1200,9 @@ function TabInscricoes({ acao, onRefresh }: { acao: Acao; onRefresh: () => void 
     const debRef = useRef<NodeJS.Timeout>();
 
     const [inscPorTurma, setInscPorTurma] = useState<Record<string, any>>({});
+    const [inscPage, setInscPage] = useState(1);
+    const [inscTotal, setInscTotal] = useState(0);
+    const [inscTotalPages, setInscTotalPages] = useState(1);
     const [loadingInsc, setLoadingInsc] = useState(false);
     const [filtroStatus, setFiltroStatus] = useState('TODOS');
     const [filtroTurma, setFiltroTurma] = useState('TODAS');
@@ -938,20 +1219,31 @@ function TabInscricoes({ acao, onRefresh }: { acao: Acao; onRefresh: () => void 
         try {
             const res = await Promise.all(
                 acao.turmas.map(at =>
-                    api.get(`/enrollments?classId=${at.turmaId}&limit=200`).then(r => ({
-                        turmaId: at.turmaId,
-                        turmaIdentifier: at.turma?.classIdentifier || at.turmaId,
-                        curso: at.turma?.course?.name || '—',
-                        vagas: at.turma?.vacancies || 0,
-                        inscritos: r.data?.data || r.data || [],
-                    })).catch(() => ({ turmaId: at.turmaId, turmaIdentifier: at.turmaId, curso: '—', vagas: 0, inscritos: [] }))
+                    api.get(`/enrollments`, {
+                        params: { classId: at.turmaId, page: inscPage, limit: ADMIN_PAGE_SIZE_TABLE },
+                    }).then(r => {
+                        const norm = normalizePaginated(r.data, ADMIN_PAGE_SIZE_TABLE);
+                        return {
+                            turmaId: at.turmaId,
+                            turmaIdentifier: at.turma?.classIdentifier || at.turmaId,
+                            curso: at.turma?.course?.name || '—',
+                            vagas: at.turma?.vacancies || 0,
+                            inscritos: norm.data,
+                            total: norm.total,
+                        };
+                    }).catch(() => ({ turmaId: at.turmaId, turmaIdentifier: at.turmaId, curso: '—', vagas: 0, inscritos: [], total: 0 }))
                 )
             );
             const mapa: Record<string, any> = {};
-            res.forEach(r => { mapa[r.turmaId] = r; });
+            let totalInsc = 0;
+            res.forEach(r => { mapa[r.turmaId] = r; totalInsc += r.total || r.inscritos?.length || 0; });
             setInscPorTurma(mapa);
+            setInscTotal(totalInsc);
+            setInscTotalPages(Math.max(1, Math.ceil(totalInsc / ADMIN_PAGE_SIZE_TABLE)));
         } finally { setLoadingInsc(false); }
-    }, [acao]);
+    }, [acao, inscPage]);
+
+    useEffect(() => { setInscPage(1); }, [filtroStatus, filtroTurma]);
 
     useEffect(() => { carregarInsc(); }, [carregarInsc]);
 
@@ -1220,6 +1512,15 @@ function TabInscricoes({ acao, onRefresh }: { acao: Acao; onRefresh: () => void 
                         </table>
                     </div>
                 )}
+
+                <AdminListPagination
+                    page={inscPage}
+                    totalPages={inscTotalPages}
+                    total={inscTotal}
+                    loading={loadingInsc}
+                    onPageChange={setInscPage}
+                    itemLabel="inscrição(ões)"
+                />
             </div>
         </div>
     );

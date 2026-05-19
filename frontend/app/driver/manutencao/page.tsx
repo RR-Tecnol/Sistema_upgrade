@@ -130,17 +130,27 @@ function ModalNovaManutencao({ onClose, onSaved }: { onClose: () => void; onSave
     const [success, setSuccess] = useState(false);
 
     const [truckId, setTruckId] = useState<string | null>(null);
+    const [availableTrucks, setAvailableTrucks] = useState<any[]>([]);
 
-    // BUG 5 — km sugerido automaticamente da última viagem
+    // BUG 5 — km sugerido automaticamente da última viagem e carretas
     useEffect(() => {
-        api.get('/driver/trips').then(res => {
-            const trips = Array.isArray(res.data) ? res.data : [];
+        Promise.all([
+            api.get('/driver/trips').catch(() => ({ data: [] })),
+            api.get('/trucks').catch(() => ({ data: [] }))
+        ]).then(([tripsRes, trucksRes]) => {
+            const trips = Array.isArray(tripsRes.data) ? tripsRes.data : [];
+            const trks = Array.isArray(trucksRes.data) ? trucksRes.data : (trucksRes.data?.data || []);
+            setAvailableTrucks(trks);
+
             const active = trips.find((t: any) => t.status === 'IN_TRANSIT');
             const lastCompleted = trips.find((t: any) => t.status === 'COMPLETED' && t.truckId);
             const kmSugerido = active?.kmStart || lastCompleted?.kmEnd;
             if (kmSugerido) setForm(f => ({ ...f, km: String(kmSugerido) }));
-            setTruckId(active?.truckId || lastCompleted?.truckId || null);
-        }).catch(() => {});
+            
+            const autoId = active?.truckId || lastCompleted?.truckId || null;
+            if (autoId) setTruckId(autoId);
+            else if (trks.length === 1) setTruckId(trks[0].id);
+        });
     }, []);
 
     const handleSave = async () => {
@@ -199,6 +209,18 @@ function ModalNovaManutencao({ onClose, onSaved }: { onClose: () => void; onSave
                                 alinhamento="center"
                                 minHeight="auto"
                             />
+                        </div>
+                    )}
+                    {availableTrucks.length > 0 && (
+                        <div>
+                            <label style={{ display: 'block', fontSize: '0.63rem', fontWeight: 800, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 5 }}>Carreta / Veículo *</label>
+                            <select style={{ ...INPUT, cursor: 'pointer', borderColor: !truckId ? '#EF4444' : '#E5E7EB' }} 
+                                value={truckId || ''} onChange={e => setTruckId(e.target.value || null)}>
+                                <option value="" disabled>Selecione a carreta...</option>
+                                {availableTrucks.map(t => (
+                                    <option key={t.id} value={t.id}>{t.licensePlate} {t.identifier ? `— ${t.identifier}` : ''}</option>
+                                ))}
+                            </select>
                         </div>
                     )}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

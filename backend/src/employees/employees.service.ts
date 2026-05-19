@@ -5,6 +5,7 @@ import { NotificationsSenderService } from '../notifications/notifications-sende
 import { EmployeeRole, EmployeeDepartment, NotificationType, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
 
 @Injectable()
 export class EmployeesService {
@@ -19,6 +20,84 @@ export class EmployeesService {
             return (err?.message || '').includes('driver_checkins');
         }
         return (err?.message || '').includes('driver_checkins');
+    }
+
+    private isMissingCheckoutAtColumn(error: unknown): boolean {
+        const msg = (error as { message?: string })?.message || '';
+        return msg.includes('checkoutAt') || msg.includes('checkout_at');
+    }
+
+    /**
+     * Professores com conta User mas sem linha em employees (frequência admin vazia / 500).
+     */
+    private async syncInstructorEmployeesFromTeachers(): Promise<void> {
+        const teachers = await this.prisma.teacher.findMany({
+            where: {
+                active: true,
+                user: { active: true, role: { in: ['TEACHER', 'COORDINATOR'] } },
+            },
+            include: {
+                user: { select: { id: true, name: true, email: true } },
+            },
+        });
+
+        for (const t of teachers) {
+            if (!t.user) continue;
+            const existing = await this.prisma.employee.findFirst({
+                where: { userId: t.user.id },
+            });
+            if (existing) {
+                if (existing.role !== 'INSTRUCTOR' && existing.active) {
+                    await this.prisma.employee.update({
+                        where: { id: existing.id },
+                        data: { role: 'INSTRUCTOR' },
+                    });
+                }
+                continue;
+            }
+
+            const email = t.user.email || undefined;
+            if (email) {
+                const emailTaken = await this.prisma.employee.findFirst({ where: { email } });
+                if (emailTaken) continue;
+            }
+
+            try {
+                await this.prisma.employee.create({
+                    data: {
+                        name: t.user.name,
+                        role: 'INSTRUCTOR',
+                        department: 'ACADEMIC',
+                        email,
+                        active: true,
+                        userId: t.user.id,
+                    },
+                });
+            } catch {
+                // Conflito de unicidade — ignorar
+            }
+        }
+    }
+
+    private async fetchTeacherCheckinsForDate(
+        userIds: string[],
+        date: string,
+    ): Promise<Array<{ userId: string; checkedAt: Date; checkoutAt?: Date | null }>> {
+        if (!userIds.length) return [];
+        try {
+            return await this.prisma.teacherCheckin.findMany({
+                where: { userId: { in: userIds }, date },
+                select: { userId: true, checkedAt: true, checkoutAt: true },
+            });
+        } catch (error) {
+            if (!this.isMissingCheckoutAtColumn(error)) {
+                throw error;
+            }
+            return await this.prisma.teacherCheckin.findMany({
+                where: { userId: { in: userIds }, date },
+                select: { userId: true, checkedAt: true },
+            });
+        }
     }
 
     async create(dto: CreateEmployeeDto) {
@@ -165,14 +244,23 @@ export class EmployeesService {
         return { message: 'Cadastro enviado com sucesso para análise.' };
     }
 
-    async getRegistrationRequests() {
-        return this.prisma.employeeRegistrationRequest.findMany({
-            where: { status: 'PENDING' },
-            include: {
-                token: { select: { role: true, department: true } }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
+    async getRegistrationRequests(opts?: { page?: number; limit?: number }) {
+        const where = { status: 'PENDING' as const };
+        const { skip, page, limit } = resolvePagination(opts?.page, opts?.limit, 12);
+        const include = {
+            token: { select: { role: true, department: true } },
+        };
+        const [data, total] = await Promise.all([
+            this.prisma.employeeRegistrationRequest.findMany({
+                where,
+                include,
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit,
+            }),
+            this.prisma.employeeRegistrationRequest.count({ where }),
+        ]);
+        return paginatedResult(data, total, page, limit);
     }
 
     async approveRegistrationRequest(
@@ -290,11 +378,17 @@ export class EmployeesService {
         department?: string;
         active?: string;
         search?: string;
+        page?: number;
+        limit?: number;
+        excludeIds?: string[];
     }) {
         const where: any = {};
         if (filters?.role) where.role = filters.role as EmployeeRole;
         if (filters?.department) where.department = filters.department as EmployeeDepartment;
         if (filters?.active !== undefined) where.active = filters.active === 'true';
+        if (filters?.excludeIds?.length) {
+            where.id = { notIn: filters.excludeIds };
+        }
         if (filters?.search) {
             where.OR = [
                 { name: { contains: filters.search, mode: 'insensitive' } },
@@ -304,10 +398,16 @@ export class EmployeesService {
             ];
         }
 
+        const page = Math.max(1, filters?.page ?? 1);
+        const limit = Math.min(50, Math.max(1, filters?.limit ?? 12));
+        const skip = (page - 1) * limit;
+
         const [employees, total] = await Promise.all([
             this.prisma.employee.findMany({
                 where,
                 orderBy: [{ active: 'desc' }, { name: 'asc' }],
+                skip,
+                take: limit,
             }),
             this.prisma.employee.count({ where }),
         ]);
@@ -319,7 +419,8 @@ export class EmployeesService {
             this.prisma.employee.count({ where: { active: true } }),
         ]);
 
-        return { employees, total, activeCount, byRole, byDept };
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+        return { employees, total, page, limit, totalPages, activeCount, byRole, byDept };
     }
 
     async findOne(id: string) {
@@ -541,7 +642,10 @@ export class EmployeesService {
     async getUnifiedAttendance(date: string, role?: string) {
         const [y, m, d] = date.split('-').map(Number);
         const dateObj = new Date(Date.UTC(y, m - 1, d));
-        const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
+
+        if (role === 'TEACHER') {
+            await this.syncInstructorEmployeesFromTeachers();
+        }
 
         // 1. Buscar todos os funcionários ativos com seus Users vinculados
         const where: any = { active: true };
@@ -569,11 +673,7 @@ export class EmployeesService {
             .map(e => e.userId)
             .filter(Boolean) as string[];
 
-        const teacherCheckins = teacherUserIds.length > 0
-            ? await this.prisma.teacherCheckin.findMany({
-                where: { userId: { in: teacherUserIds }, date },
-            })
-            : [];
+        const teacherCheckins = await this.fetchTeacherCheckinsForDate(teacherUserIds, date);
         const checkinByUserId = new Map(teacherCheckins.map(c => [c.userId, c]));
 
         // 4. Buscar DriverCheckins do dia para motoristas
@@ -745,11 +845,17 @@ export class EmployeesService {
 
         // Automáticos (Professor)
         if (!role || role === 'TEACHER') {
-            const teacherC = await this.prisma.teacherCheckin.findMany({
-                where: { userId: { in: userIds } },
-                select: { date: true },
-            });
-            teacherC.forEach(t => results.push({ date: `${t.date}T12:00:00Z`, present: true }));
+            try {
+                const teacherC = await this.prisma.teacherCheckin.findMany({
+                    where: { userId: { in: userIds } },
+                    select: { date: true },
+                });
+                teacherC.forEach(t => results.push({ date: `${t.date}T12:00:00Z`, present: true }));
+            } catch (error) {
+                if (!this.isMissingCheckoutAtColumn(error)) {
+                    throw error;
+                }
+            }
         }
 
         // Automáticos (Motorista)
@@ -802,14 +908,29 @@ export class EmployeesService {
         let teacherCheckins: { date: string; checkedAt: Date }[] = [];
         let driverCheckins: { date: string; checkedAt: Date | null }[] = [];
         if (employee.userId) {
-            teacherCheckins = await this.prisma.teacherCheckin.findMany({
-                where: {
-                    userId: employee.userId,
-                    date: { gte: start, lte: end },
-                },
-                select: { date: true, checkedAt: true },
-                orderBy: { date: 'asc' },
-            });
+            try {
+                teacherCheckins = await this.prisma.teacherCheckin.findMany({
+                    where: {
+                        userId: employee.userId,
+                        date: { gte: start, lte: end },
+                    },
+                    select: { date: true, checkedAt: true, checkoutAt: true },
+                    orderBy: { date: 'asc' },
+                });
+            } catch (error) {
+                if (this.isMissingCheckoutAtColumn(error)) {
+                    teacherCheckins = await this.prisma.teacherCheckin.findMany({
+                        where: {
+                            userId: employee.userId,
+                            date: { gte: start, lte: end },
+                        },
+                        select: { date: true, checkedAt: true },
+                        orderBy: { date: 'asc' },
+                    });
+                } else {
+                    throw error;
+                }
+            }
             try {
                 driverCheckins = await this.prisma.driverCheckin.findMany({
                     where: {

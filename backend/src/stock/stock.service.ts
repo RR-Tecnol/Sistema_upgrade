@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { Prisma, StockItemCategory, StockMovementType, StockPurchaseRequestStatus, UserRole } from '@prisma/client';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
 import { CreateStockItemDto } from './dto/create-stock-item.dto';
 import { UpdateStockItemDto } from './dto/update-stock-item.dto';
 import { CreateMovementDto } from './dto/create-movement.dto';
@@ -79,6 +80,8 @@ export class StockService {
         onlyExpiring?: boolean;
         diasAteVencer?: number;
         includeInactive?: boolean;
+        page?: number;
+        limit?: number;
     }) {
         const where: Prisma.StockItemWhereInput = {};
 
@@ -148,7 +151,11 @@ export class StockService {
         // Anexar contagem de Solicitações de Compra PENDENTES por item.
         // Usado pelo frontend (lista, dashboard, visões) para destacar quem precisa
         // de uma 1ª Solicitação (sem saldo, sem trânsito, sem PR pendente).
-        if (filtered.length === 0) return filtered;
+        const { skip, page, limit } = resolvePagination(filters?.page, filters?.limit, 20);
+
+        if (filtered.length === 0) {
+            return paginatedResult([], 0, page, limit);
+        }
 
         const pendingByItem = await this.prisma.stockPurchaseRequest.groupBy({
             by: ['stockItemId'],
@@ -163,10 +170,12 @@ export class StockService {
             pendingByItem.map((p) => [p.stockItemId, p._count._all]),
         );
 
-        return filtered.map((it) => ({
+        const enriched = filtered.map((it) => ({
             ...it,
             pendingPurchaseRequestsCount: pendingMap.get(it.id) ?? 0,
         }));
+        const total = enriched.length;
+        return paginatedResult(enriched.slice(skip, skip + limit), total, page, limit);
     }
 
     async findOneItem(id: string) {
@@ -951,6 +960,32 @@ export class StockService {
         return { truck, stocks };
     }
 
+    async updateTruckStockMinimo(
+        truckId: string,
+        stockItemId: string,
+        quantidadeMinima: number,
+        actor: { id: string; role: UserRole },
+    ) {
+        if (!['ADMIN', 'IT_ADMIN', 'COORDINATOR'].includes(actor.role)) {
+            throw new ForbiddenException('Sem permissão para alterar o mínimo da carreta');
+        }
+
+        const row = await this.prisma.truckStockItem.findUnique({
+            where: { truckId_stockItemId: { truckId, stockItemId } },
+        });
+        if (!row) {
+            throw new NotFoundException('Item não encontrado no estoque desta carreta');
+        }
+
+        const updated = await this.prisma.truckStockItem.update({
+            where: { id: row.id },
+            data: { quantidadeMinima },
+            select: { id: true, quantidadeMinima: true },
+        });
+
+        return { quantidadeMinima: Number(updated.quantidadeMinima) };
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     //   MOVIMENTAÇÕES — toda escrita de saldo passa POR AQUI dentro de $transaction
     // ═══════════════════════════════════════════════════════════════════
@@ -1380,7 +1415,7 @@ export class StockService {
             take: Math.min(filters?.limit ?? 100, 500),
             orderBy: { createdAt: 'desc' },
             include: {
-                stockItem: { select: { id: true, nome: true, unidade: true } },
+                stockItem: { select: { id: true, nome: true, unidade: true, precoUnitario: true } },
                 fromTruck: { select: { id: true, identifier: true } },
                 toTruck: { select: { id: true, identifier: true } },
                 acao: { select: { id: true, nome: true } },
@@ -1470,14 +1505,27 @@ export class StockService {
         return created;
     }
 
+    /** PRs antigas sem insumo vinculado corrompem o findMany do Prisma (stockItemId obrigatório). */
+    private async deactivateOrphanPurchaseRequests() {
+        await this.prisma.$executeRaw`
+            UPDATE stock_purchase_requests
+            SET active = false, "updatedAt" = NOW()
+            WHERE "stockItemId" IS NULL AND active = true
+        `;
+    }
+
     async listPurchaseRequests(
         actor: { id: string; role: UserRole },
         filters?: {
             status?: StockPurchaseRequestStatus;
             stockItemId?: string;
             onlyMine?: boolean;
+            page?: number;
+            limit?: number;
         },
     ) {
+        await this.deactivateOrphanPurchaseRequests();
+
         const where: Prisma.StockPurchaseRequestWhereInput = { active: true };
 
         if (filters?.status) where.status = filters.status;
@@ -1489,16 +1537,26 @@ export class StockService {
             where.requestedBy = actor.id;
         }
 
-        return this.prisma.stockPurchaseRequest.findMany({
-            where,
-            orderBy: [{ urgente: 'desc' }, { createdAt: 'desc' }],
-            include: {
-                stockItem: { select: { id: true, nome: true, unidade: true, fotoUrl: true } },
-                requester: { select: { id: true, name: true, role: true } },
-                reviewer: { select: { id: true, name: true } },
-                contaPagar: { select: { id: true, status: true } },
-            },
-        });
+        const { skip, page, limit } = resolvePagination(filters?.page, filters?.limit, 12);
+        const include = {
+            stockItem: { select: { id: true, nome: true, unidade: true, fotoUrl: true } },
+            requester: { select: { id: true, name: true, role: true } },
+            reviewer: { select: { id: true, name: true } },
+            contaPagar: { select: { id: true, status: true } },
+        };
+
+        const [data, total] = await Promise.all([
+            this.prisma.stockPurchaseRequest.findMany({
+                where,
+                orderBy: [{ urgente: 'desc' }, { createdAt: 'desc' }],
+                include,
+                skip,
+                take: limit,
+            }),
+            this.prisma.stockPurchaseRequest.count({ where }),
+        ]);
+
+        return paginatedResult(data, total, page, limit);
     }
 
     async findOnePurchaseRequest(id: string, actor: { id: string; role: UserRole }) {

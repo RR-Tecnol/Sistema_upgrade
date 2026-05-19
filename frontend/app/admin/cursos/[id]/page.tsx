@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { coursesApi } from '@/lib/api/courses';
+import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
 import { AcademicCapIcon, ClockIcon, UserGroupIcon, ArrowLeftIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
@@ -134,6 +135,9 @@ export default function CursoDetalhePage() {
     const [error, setError] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [availableTeachers, setAvailableTeachers] = useState<{ id: string; name: string; email?: string }[]>([]);
+    const [selectedTeacherId, setSelectedTeacherId] = useState('');
+    const [assigningTeacher, setAssigningTeacher] = useState(false);
     const [form, setForm] = useState<EditForm>({
         name: '',
         description: '',
@@ -179,6 +183,15 @@ export default function CursoDetalhePage() {
     useEffect(() => {
         if (searchParams.get('edit') === '1') setIsEditing(true);
     }, [searchParams]);
+
+    useEffect(() => {
+        api.get('/users?role=TEACHER')
+            .then(r => {
+                const list = Array.isArray(r.data) ? r.data : r.data?.data || [];
+                setAvailableTeachers(list.filter((u: { active?: boolean }) => u.active !== false));
+            })
+            .catch(() => setAvailableTeachers([]));
+    }, []);
 
     const canSave = useMemo(() => {
         const wh = Number(form.workloadHours);
@@ -439,6 +452,44 @@ export default function CursoDetalhePage() {
                     <h3 style={{ fontFamily: 'Orbitron', fontSize: '0.72rem', letterSpacing: '0.1em', color: '#6B7280', marginBottom: '0.75rem' }}>
                         PROFESSORES VINCULADOS ({teachers.length})
                     </h3>
+                    <p style={{ fontSize: '0.75rem', color: '#6B7280', marginBottom: 10 }}>
+                        Ao vincular aqui, o professor é propagado para todas as turmas ativas deste curso (e períodos que as usem).
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                        <select
+                            value={selectedTeacherId}
+                            onChange={e => setSelectedTeacherId(e.target.value)}
+                            style={{ flex: 1, minWidth: 200, padding: '0.5rem 0.65rem', borderRadius: 8, border: '1px solid #E5E7EB' }}
+                        >
+                            <option value="">Selecione um professor…</option>
+                            {availableTeachers.map(t => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={!selectedTeacherId || assigningTeacher}
+                            onClick={async () => {
+                                if (!selectedTeacherId || !id) return;
+                                setAssigningTeacher(true);
+                                try {
+                                    const res = await coursesApi.assignTeacher(id, selectedTeacherId);
+                                    const n = res?.propagatedClasses ?? res?.academicSync?.classLinks ?? 0;
+                                    toast.success(`Professor vinculado ao curso${n ? ` e a ${n} turma(s)` : ''}.`);
+                                    setSelectedTeacherId('');
+                                    const updated = await coursesApi.getOne(id);
+                                    setCourse(updated);
+                                } catch (e: any) {
+                                    toast.error(e?.response?.data?.message || 'Erro ao vincular professor.');
+                                } finally {
+                                    setAssigningTeacher(false);
+                                }
+                            }}
+                        >
+                            {assigningTeacher ? 'Vinculando…' : '+ Vincular'}
+                        </button>
+                    </div>
                     {teachers.length === 0 ? (
                         <p style={{ color: '#9CA3AF', fontSize: '0.78rem' }}>Nenhum professor vinculado ao curso.</p>
                     ) : (

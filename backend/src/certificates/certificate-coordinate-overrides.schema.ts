@@ -56,6 +56,7 @@ export const certificateCoordinateOverridesZod = z
     p2WorkloadX: optNum,
     p2WorkloadY: optNum,
     p2WorkloadSize: optNum,
+    p2WorkloadW: optNum,
   })
   // Aceita chaves dinâmicas (ex: syllabusBlock0Y, syllabusBlock1Y…) sem descartar
   .catchall(optNum);

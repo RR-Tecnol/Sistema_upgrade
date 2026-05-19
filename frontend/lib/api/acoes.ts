@@ -28,6 +28,13 @@ export interface Acao {
     status: AcaoStatus;
     dataInicio: string;
     dataFim: string;
+    motorCourseId?: string;
+    period?: 'MORNING' | 'AFTERNOON' | 'EVENING';
+    startTime?: string;
+    endTime?: string;
+    weekendPolicy?: 'FOLLOW_SCHEDULE' | 'WEEKDAYS_ONLY' | 'ALL_WEEKENDS' | 'SELECT_WEEKENDS';
+    weekendExtraDates?: string[];
+    teachingDaysOverride?: number;
     localExecucao?: string;
     // ── Tipo de rota (REQ-ROUTE-2026) ──
     routeType?: 'INTERCIDADE' | 'INTRAURBANA';
@@ -144,11 +151,89 @@ export interface AcaoEstatisticas {
 // ── API Calls ────────────────────────────────────────────────────
 
 export const acoesApi = {
-    listar: (params?: { status?: string; grupoId?: string; cidadeId?: string; search?: string }) =>
-        api.get<Acao[]>('/acoes', { params }).then(r => r.data),
+    listar: (params?: {
+        status?: string;
+        grupoId?: string;
+        cidadeId?: string;
+        search?: string;
+        page?: number;
+        limit?: number;
+    }) => api.get('/acoes', { params }).then(r => r.data),
 
     buscar: (id: string) =>
         api.get<Acao>(`/acoes/${id}`).then(r => r.data),
+
+    getCalendarioResumo: (id: string) =>
+        api.get<{
+            temTurma: boolean;
+            diasLetivos: number;
+            diasCorridos: number;
+            weekendPolicy?: string;
+            aviso?: string;
+            workload?: {
+                targetHours: number;
+                hoursPerSession: number;
+                teachingDaysInRange: number;
+                projectedHours: number;
+                deltaHours: number;
+                status: 'ok' | 'short' | 'surplus';
+                message: string;
+            } | null;
+            paymentNote?: string;
+            workloadScopeNote?: string;
+            suggestedDiasPagamento?: number;
+            paymentAdjustmentNote?: string;
+            applyPaymentSuggestionRecommended?: boolean;
+            teachingDaysTarget?: number;
+            formulaLabel?: string;
+            teachingDaysTargetSource?: string;
+            motorResumo?: string;
+            motorCourseName?: string;
+            courseWorkloadHours?: number;
+            hoursPerSession?: number;
+        }>(`/acoes/${id}/calendario-resumo`).then(r => r.data),
+
+    recalcularMotorPeriodo: (id: string) =>
+        api
+            .post<{
+                previousDataFim: string;
+                newDataFim: string;
+                motorCourseId: string | null;
+                motorCourseName: string | null;
+                message: string;
+                turmas: Array<{
+                    classId: string;
+                    classIdentifier: string;
+                    courseName: string;
+                    workloadHours: number;
+                    teachingDaysTarget: number;
+                    formulaLabel: string;
+                    suggestedEndDate: string;
+                    suggestedDiasPagamento: number;
+                }>;
+            }>(`/acoes/${id}/motor/recalcular`)
+            .then(r => r.data),
+
+    previewInstructorDias: (acaoId: string, classIds: string[]) =>
+        api
+            .post<{
+                suggestedDiasPagamento: number;
+                teachingDaysTarget: number | null;
+                formulaLabel: string;
+                workloadHours: number;
+                courseNames: string[];
+                note: string;
+                turmas?: Array<{
+                    classId: string;
+                    classIdentifier: string;
+                    courseName: string;
+                    workloadHours: number;
+                    teachingDaysTarget: number;
+                    suggestedDiasPagamento: number;
+                    formulaLabel: string;
+                }>;
+            }>(`/acoes/${acaoId}/instructor-dias-preview`, { classIds })
+            .then(r => r.data),
 
     estatisticas: () =>
         api.get<AcaoEstatisticas>('/acoes/estatisticas').then(r => r.data),
@@ -172,6 +257,42 @@ export const acoesApi = {
     removeTurma: (acaoId: string, turmaId: string) =>
         api.delete(`/acoes/${acaoId}/turmas/${turmaId}`).then(r => r.data),
 
+    listTeachers: (acaoId: string) =>
+        api.get<Array<{
+            teacherId: string;
+            userId: string;
+            name: string;
+            email: string;
+            courses: { id: string; name: string }[];
+            classIdentifiers: string[];
+        }>>(`/acoes/${acaoId}/teachers`).then(r => r.data),
+
+    assignTeacher: (acaoId: string, teacherUserId: string) =>
+        api.post(`/acoes/${acaoId}/teachers/${teacherUserId}`).then(r => r.data),
+
+    listTeacherPool: (acaoId: string) =>
+        api.get(`/acoes/${acaoId}/teachers/pool`).then(r => r.data),
+
+    assignDriver: (acaoId: string, driverUserId: string) =>
+        api.post(`/acoes/${acaoId}/drivers/${driverUserId}`).then(r => r.data),
+
+    assignDriverTurma: (acaoId: string, turmaId: string, driverUserId: string) =>
+        api.post(`/acoes/${acaoId}/turmas/${turmaId}/driver/${driverUserId}`).then(r => r.data),
+
+    listTurmasByCourse: (courseId: string, groupId?: string, excludeAcaoId?: string) =>
+        api
+            .get(`/acoes/turmas-by-course/${courseId}`, {
+                params: {
+                    ...(groupId ? { groupId } : {}),
+                    ...(excludeAcaoId ? { excludeAcaoId } : {}),
+                },
+            })
+            .then(r => r.data),
+
+    /** Turmas do mesmo grupo do período (qualquer curso), exceto já vinculadas ou em outro período ativo. */
+    listTurmasElegiveis: (acaoId: string) =>
+        api.get(`/acoes/${acaoId}/turmas-elegiveis`).then(r => r.data),
+
     // Equipe
     addEquipe: (acaoId: string, data: { userId: string; funcao: string; diaria: number }) =>
         api.post(`/acoes/${acaoId}/equipe`, data).then(r => r.data),
@@ -194,11 +315,72 @@ export const acoesApi = {
         api.delete(`/acoes/${acaoId}/custos/${custoId}`).then(r => r.data),
 
     // Funcionários
-    listFuncionarios: (acaoId: string) =>
-        api.get(`/acoes/${acaoId}/funcionarios`).then(r => r.data),
+    listFuncionarios: (
+        acaoId: string,
+        params?: { page?: number; limit?: number },
+    ) => api.get(`/acoes/${acaoId}/funcionarios`, { params }).then(r => r.data),
 
-    addFuncionario: (acaoId: string, data: { employeeId: string; valorDiaria: number; diasTrabalhados?: number }) =>
-        api.post(`/acoes/${acaoId}/funcionarios`, data).then(r => r.data),
+    listFuncionariosDisponiveis: (
+        acaoId: string,
+        params?: { search?: string; role?: string; page?: number; limit?: number },
+    ) =>
+        api
+            .get<{
+                employees: Array<{
+                    id: string;
+                    name: string;
+                    role: string;
+                    dailyCost?: number | string | null;
+                    specialty?: string | null;
+                }>;
+                total: number;
+                page: number;
+                limit: number;
+                totalPages: number;
+            }>(`/acoes/${acaoId}/funcionarios/disponiveis`, { params })
+            .then(r => r.data),
+
+    addFuncionario: (
+        acaoId: string,
+        data: { employeeId: string; valorDiaria: number; diasTrabalhados?: number; classIds?: string[] },
+    ) =>
+        api
+            .post<{
+                diasTrabalhados?: number;
+                diasCalculados?: number;
+                roleEffects?: {
+                    instructor?: { turmasNoPeriodo: number; novosVinculosTurma: number; message: string };
+                    driver?: {
+                        truckSynced: boolean;
+                        turmasAtualizadas: number;
+                        tripsGenerated: number;
+                        tripsWarning?: string;
+                        perClass?: Array<{
+                            classId: string;
+                            classIdentifier?: string;
+                            generated: number;
+                            message: string;
+                        }>;
+                        message: string;
+                    };
+                };
+            }>(`/acoes/${acaoId}/funcionarios`, data)
+            .then(r => r.data),
+
+    regenerateFuncionarioTrips: (acaoId: string, employeeId: string) =>
+        api
+            .post<{
+                tripsGenerated: number;
+                tripsWarning?: string;
+                perClass?: Array<{
+                    classId: string;
+                    classIdentifier?: string;
+                    generated: number;
+                    message: string;
+                }>;
+                message: string;
+            }>(`/acoes/${acaoId}/funcionarios/${employeeId}/regenerate-trips`)
+            .then(r => r.data),
 
     updateFuncionarioDias: (acaoId: string, employeeId: string, diasTrabalhados: number) =>
         api.patch(`/acoes/${acaoId}/funcionarios/${employeeId}/dias`, { diasTrabalhados }).then(r => r.data),

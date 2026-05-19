@@ -1,7 +1,7 @@
-import { IsString, IsOptional, IsBoolean, IsDateString, IsNumber, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsDateString, IsNumber, IsEnum, IsArray, IsInt, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AcaoStatus } from '@prisma/client';
+import { AcaoStatus, ClassWeekendPolicy, Period } from '@prisma/client';
 
 export class CreateAcaoDto {
     @ApiProperty({ example: 'Ação Qualifica Imperatriz 2025' })
@@ -38,6 +38,43 @@ export class CreateAcaoDto {
     @ApiProperty({ example: '2025-06-30T00:00:00Z' })
     @IsDateString()
     dataFim: string;
+
+    @ApiPropertyOptional({ description: 'Curso de referência do motor letivo' })
+    @IsOptional()
+    @IsString()
+    motorCourseId?: string;
+
+    @ApiPropertyOptional({ enum: Period, default: Period.MORNING })
+    @IsOptional()
+    @IsEnum(Period)
+    period?: Period;
+
+    @ApiPropertyOptional({ example: '07:00' })
+    @IsOptional()
+    @IsString()
+    startTime?: string;
+
+    @ApiPropertyOptional({ example: '12:00' })
+    @IsOptional()
+    @IsString()
+    endTime?: string;
+
+    @ApiPropertyOptional({ enum: ClassWeekendPolicy, default: ClassWeekendPolicy.WEEKDAYS_ONLY })
+    @IsOptional()
+    @IsEnum(ClassWeekendPolicy)
+    weekendPolicy?: ClassWeekendPolicy;
+
+    @ApiPropertyOptional({ type: [String], description: 'Datas ISO com aula em fim de semana (SELECT_WEEKENDS)' })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    weekendExtraDates?: string[];
+
+    @ApiPropertyOptional({ description: 'Override de dias letivos do motor' })
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    teachingDaysOverride?: number;
 
     @ApiPropertyOptional({ example: 'Ginásio Municipal' })
     @IsOptional()

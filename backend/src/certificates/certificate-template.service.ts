@@ -173,7 +173,7 @@ export class CertificateTemplateService {
             await this.promotePublishedVersion(version.id, user.id);
         }
 
-        return version;
+        return { ...version, templateId: template.id };
     }
 
     async submitForApproval(versionId: string) {

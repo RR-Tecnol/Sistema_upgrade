@@ -2,26 +2,37 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
 
 @Injectable()
 export class GroupsService {
     constructor(private prisma: PrismaService) { }
 
-    async findAll() {
-        return this.prisma.group.findMany({
-            orderBy: [
-                { state: 'asc' },
-                { name: 'asc' },
-            ],
-            include: {
-                _count: {
-                    select: {
-                        trucks: true,
-                        classes: true,
-                    },
+    async findAll(opts?: { page?: number; limit?: number; search?: string }) {
+        const where: any = {};
+        if (opts?.search?.trim()) {
+            where.name = { contains: opts.search.trim(), mode: 'insensitive' };
+        }
+        const { skip, page, limit } = resolvePagination(opts?.page, opts?.limit, 12);
+        const include = {
+            _count: {
+                select: {
+                    trucks: true,
+                    classes: true,
                 },
             },
-        });
+        };
+        const [data, total] = await Promise.all([
+            this.prisma.group.findMany({
+                where,
+                orderBy: [{ state: 'asc' }, { name: 'asc' }],
+                include,
+                skip,
+                take: limit,
+            }),
+            this.prisma.group.count({ where }),
+        ]);
+        return paginatedResult(data, total, page, limit);
     }
 
     async findOne(id: string) {

@@ -10,6 +10,19 @@ import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { evaluateCertificateEligibilityForEnrollment } from '../common/certificate-enrollment-evaluation.helper';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
+import { resolveTeacherOrThrow } from '../common/resolve-teacher.util';
+import {
+    ensureClassTeacherLink,
+    syncCourseTeachersToClass,
+    syncTeacherToClass,
+} from '../common/teacher-academic-link.util';
+import {
+    previewClassEndDate,
+    resolveClassEndDateIso,
+} from '../common/class-teaching-end-date.helper';
+import { PreviewClassEndDateDto } from './dto/preview-class-end-date.dto';
+import { ClassWeekendPolicy } from '@prisma/client';
 
 @Injectable()
 export class ClassesService {
@@ -96,6 +109,9 @@ export class ClassesService {
         cityId?: string;
         truckId?: string;
         teacherUserId?: string;
+        search?: string;
+        page?: number;
+        limit?: number;
     }) {
         const where: any = {};
 
@@ -121,39 +137,57 @@ export class ClassesService {
                 },
             };
         }
+        if (filters?.search?.trim()) {
+            const q = filters.search.trim();
+            where.OR = [
+                { classIdentifier: { contains: q, mode: 'insensitive' } },
+                { course: { name: { contains: q, mode: 'insensitive' } } },
+                { city: { name: { contains: q, mode: 'insensitive' } } },
+            ];
+        }
 
-        return this.prisma.class.findMany({
-            where,
-            orderBy: { startDate: 'desc' },
-            include: {
-                course: true,
-                group: true,
-                city: true,
-                truck: true,
-                teachers: {
-                    include: {
-                        teacher: {
-                            include: {
-                                user: {
-                                    select: {
-                                        id: true,
-                                        name: true,
-                                        email: true,
-                                    },
+        const { skip, page, limit } = resolvePagination(filters?.page, filters?.limit, 12);
+        const include = {
+            course: true,
+            group: true,
+            city: true,
+            truck: true,
+            teachers: {
+                include: {
+                    teacher: {
+                        include: {
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true,
                                 },
                             },
                         },
                     },
                 },
-                _count: {
-                    select: {
-                        enrollments: true,
-                        attendances: true,
-                        schedules: true,
-                    },
+            },
+            _count: {
+                select: {
+                    enrollments: true,
+                    attendances: true,
+                    schedules: true,
                 },
             },
-        });
+        };
+
+        const [data, total] = await Promise.all([
+            this.prisma.class.findMany({
+                where,
+                orderBy: { startDate: 'desc' },
+                include,
+                skip,
+                take: limit,
+            }),
+            this.prisma.class.count({ where }),
+        ]);
+
+        return paginatedResult(data, total, page, limit);
     }
 
     async findOne(id: string) {
@@ -237,13 +271,75 @@ export class ClassesService {
         return classData;
     }
 
+    async previewEndDate(dto: PreviewClassEndDateDto) {
+        const course = await this.coursesService.findOne(dto.courseId);
+        return previewClassEndDate(this.prisma, {
+            startDate: dto.startDate,
+            courseId: dto.courseId,
+            groupId: dto.groupId,
+            cityId: dto.cityId,
+            weekendPolicy: dto.weekendPolicy,
+            teachingDaysCount: dto.teachingDaysCount,
+            weekendExtraDates: dto.weekendExtraDates,
+            scheduleDays: dto.scheduleDays,
+            manualEndDate: dto.manualEndDate,
+            classId: dto.classId,
+            startTime: dto.startTime,
+            endTime: dto.endTime,
+            stateConfig: (course as { stateConfig?: Record<string, { available: boolean; durationDays: number; workloadHours?: number }> }).stateConfig,
+        });
+    }
+
     async create(data: CreateClassDto) {
+        const { acaoId, ...createData } = data;
+        let acaoMotor: {
+            dataInicio: Date;
+            dataFim: Date;
+            period: string;
+            startTime: string;
+            endTime: string;
+            weekendPolicy: ClassWeekendPolicy;
+            weekendExtraDates: unknown;
+            carretaId: string | null;
+            grupoId: string;
+            cidadeId: string | null;
+            localExecucao: string | null;
+            localEndereco: string | null;
+            localReferencia: string | null;
+            localLatitude: number | null;
+            localLongitude: number | null;
+        } | null = null;
+
+        if (acaoId) {
+            const acao = await this.prisma.acao.findUnique({ where: { id: acaoId } });
+            if (!acao) throw new NotFoundException('Período de curso não encontrado');
+            acaoMotor = acao;
+            createData.groupId = acao.grupoId;
+            if (acao.cidadeId) createData.cityId = acao.cidadeId;
+            createData.startDate = acao.dataInicio.toISOString().slice(0, 10);
+            createData.endDate = acao.dataFim.toISOString().slice(0, 10);
+            createData.period = acao.period as CreateClassDto['period'];
+            createData.startTime = acao.startTime;
+            createData.endTime = acao.endTime;
+            createData.weekendPolicy = acao.weekendPolicy;
+            createData.weekendExtraDates = Array.isArray(acao.weekendExtraDates)
+                ? (acao.weekendExtraDates as string[])
+                : undefined;
+            createData.useAutoEndDate = false;
+            if (acao.carretaId) createData.truckId = acao.carretaId;
+            if (acao.localExecucao) createData.locationName = acao.localExecucao;
+            if (acao.localEndereco) createData.locationAddress = acao.localEndereco;
+            if (acao.localReferencia) createData.locationReference = acao.localReferencia;
+            if (acao.localLatitude != null) createData.locationLatitude = acao.localLatitude;
+            if (acao.localLongitude != null) createData.locationLongitude = acao.localLongitude;
+        }
+
         // Verify course exists
-        await this.coursesService.findOne(data.courseId);
+        await this.coursesService.findOne(createData.courseId);
 
         // Verify group exists
         const group = await this.prisma.group.findUnique({
-            where: { id: data.groupId },
+            where: { id: createData.groupId },
         });
         if (!group) {
             throw new NotFoundException('Group not found');
@@ -251,18 +347,39 @@ export class ClassesService {
 
         // Verify city exists
         const city = await this.prisma.city.findUnique({
-            where: { id: data.cityId },
+            where: { id: createData.cityId },
         });
         if (!city) {
             throw new NotFoundException('City not found');
         }
 
-        // Verify truck availability if provided
-        if (data.truckId) {
+        const { weekendExtraDates, teachingDaysCount, useAutoEndDate, ...classRest } =
+            createData as CreateClassDto & { weekendExtraDates?: string[] };
+
+        const courseForState = await this.coursesService.findOne(createData.courseId);
+        const endDateIso = acaoMotor
+            ? createData.endDate
+            : await resolveClassEndDateIso(this.prisma, {
+                  startDate: createData.startDate,
+                  endDate: createData.endDate,
+                  courseId: createData.courseId,
+                  groupId: createData.groupId,
+                  cityId: createData.cityId,
+                  weekendPolicy: createData.weekendPolicy ?? ClassWeekendPolicy.WEEKDAYS_ONLY,
+                  teachingDaysCount,
+                  weekendExtraDates,
+                  useAutoEndDate,
+                  startTime: createData.startTime,
+                  endTime: createData.endTime,
+                  stateConfig: (courseForState as { stateConfig?: Record<string, { available: boolean; durationDays: number; workloadHours?: number }> }).stateConfig,
+              });
+
+        // Período já reservou a carreta — turma vinculada herda sem revalidar conflito operacional
+        if (createData.truckId && !acaoId) {
             const availability = await this.trucksService.checkAvailability(
-                data.truckId,
-                new Date(data.startDate),
-                new Date(data.endDate),
+                createData.truckId,
+                new Date(createData.startDate),
+                new Date(endDateIso),
             );
 
             if (!availability.available) {
@@ -273,7 +390,7 @@ export class ClassesService {
         // Check for duplicate class identifier
         const existing = await this.prisma.class.findFirst({
             where: {
-                classIdentifier: data.classIdentifier,
+                classIdentifier: createData.classIdentifier,
             },
         });
 
@@ -281,16 +398,14 @@ export class ClassesService {
             throw new ConflictException('Class identifier already exists');
         }
 
-        const { weekendExtraDates, ...classRest } = data as CreateClassDto & { weekendExtraDates?: string[] };
-
         // Create class
         const newClass = await this.prisma.class.create({
             data: {
                 ...classRest,
-                startDate: new Date(data.startDate),
-                endDate: new Date(data.endDate),
-                enrollmentOpenDate: data.enrollmentOpenDate ? new Date(data.enrollmentOpenDate) : null,
-                enrollmentCloseDate: data.enrollmentCloseDate ? new Date(data.enrollmentCloseDate) : null,
+                startDate: new Date(createData.startDate),
+                endDate: new Date(endDateIso),
+                enrollmentOpenDate: createData.enrollmentOpenDate ? new Date(createData.enrollmentOpenDate) : null,
+                enrollmentCloseDate: createData.enrollmentCloseDate ? new Date(createData.enrollmentCloseDate) : null,
                 weekendExtraDates: Array.isArray(weekendExtraDates) && weekendExtraDates.length
                     ? weekendExtraDates.filter(x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x))
                     : undefined,
@@ -304,30 +419,78 @@ export class ClassesService {
         });
 
         // Update truck status if assigned
-        if (data.truckId) {
-            await this.trucksService.updateStatus(data.truckId, 'IN_USE');
+        if (createData.truckId) {
+            await this.trucksService.updateStatus(createData.truckId, 'IN_USE');
         }
 
-        return newClass;
+        const inherited = await syncCourseTeachersToClass(this.prisma, newClass.id);
+
+        if (acaoId) {
+            const { syncTurmaLinkedToAcao } = await import('../common/academic-ecosystem-sync.util');
+            try {
+                await this.prisma.acaoTurma.create({ data: { acaoId, turmaId: newClass.id } });
+            } catch {
+                /* já vinculada */
+            }
+            await syncTurmaLinkedToAcao(this.prisma, acaoId, newClass.id);
+        }
+
+        return { ...newClass, inheritedClassTeachers: inherited.classLinks, acaoId: acaoId ?? undefined };
     }
 
     async update(id: string, data: UpdateClassDto) {
-        await this.findOne(id);
+        const existingClass = await this.findOne(id);
+
+        const { weekendExtraDates, teachingDaysCount, useAutoEndDate, ...restUpdate } =
+            data as UpdateClassDto & {
+                weekendExtraDates?: string[];
+                teachingDaysCount?: number;
+                useAutoEndDate?: boolean;
+            };
+
+        const startIso =
+            data.startDate ??
+            (existingClass.startDate instanceof Date
+                ? existingClass.startDate.toISOString().slice(0, 10)
+                : String(existingClass.startDate).slice(0, 10));
+        const endIsoInput =
+            data.endDate ??
+            (existingClass.endDate instanceof Date
+                ? existingClass.endDate.toISOString().slice(0, 10)
+                : String(existingClass.endDate).slice(0, 10));
+
+        const shouldRecalcEnd =
+            useAutoEndDate !== false &&
+            (data.startDate != null ||
+                data.weekendPolicy != null ||
+                weekendExtraDates !== undefined ||
+                teachingDaysCount != null ||
+                useAutoEndDate === true);
+
+        const endDateIso = shouldRecalcEnd
+            ? await resolveClassEndDateIso(this.prisma, {
+                  startDate: startIso,
+                  endDate: endIsoInput,
+                  courseId: existingClass.courseId,
+                  groupId: existingClass.groupId,
+                  cityId: existingClass.cityId,
+                  weekendPolicy:
+                      data.weekendPolicy ??
+                      existingClass.weekendPolicy ??
+                      ClassWeekendPolicy.WEEKDAYS_ONLY,
+                  teachingDaysCount,
+                  weekendExtraDates: weekendExtraDates as string[] | undefined,
+                  useAutoEndDate: true,
+                  classId: id,
+              })
+            : endIsoInput;
 
         // Verify truck availability if being changed
         if (data.truckId) {
-            const classData = await this.prisma.class.findUnique({
-                where: { id },
-            });
-
-            if (!classData) {
-                throw new NotFoundException('Class not found');
-            }
-
             const availability = await this.trucksService.checkAvailability(
                 data.truckId,
-                data.startDate ? new Date(data.startDate) : classData.startDate,
-                data.endDate ? new Date(data.endDate) : classData.endDate,
+                new Date(startIso),
+                new Date(endDateIso),
             );
 
             if (!availability.available) {
@@ -349,10 +512,9 @@ export class ClassesService {
             }
         }
 
-        const { weekendExtraDates, ...restUpdate } = data as UpdateClassDto & { weekendExtraDates?: string[] };
         const updateData: any = { ...restUpdate };
-        if (data.startDate) updateData.startDate = new Date(data.startDate);
-        if (data.endDate) updateData.endDate = new Date(data.endDate);
+        if (data.startDate) updateData.startDate = new Date(startIso);
+        updateData.endDate = new Date(endDateIso);
         if (data.enrollmentOpenDate) updateData.enrollmentOpenDate = new Date(data.enrollmentOpenDate);
         if (data.enrollmentCloseDate) updateData.enrollmentCloseDate = new Date(data.enrollmentCloseDate);
         if (weekendExtraDates !== undefined) {
@@ -402,17 +564,11 @@ export class ClassesService {
     }
 
     // Teacher Management
-    async assignTeacher(classId: string, teacherId: string, isSubstitute: boolean = false) {
+    async assignTeacher(classId: string, teacherIdOrUserId: string, isSubstitute: boolean = false) {
         await this.findOne(classId);
 
-        // Verify teacher exists
-        const teacher = await this.prisma.teacher.findUnique({
-            where: { id: teacherId },
-        });
-
-        if (!teacher) {
-            throw new NotFoundException('Teacher not found');
-        }
+        const teacher = await resolveTeacherOrThrow(this.prisma, teacherIdOrUserId);
+        const teacherId = teacher.id;
 
         // Check if already assigned
         const existing = await this.prisma.classTeacher.findFirst({
@@ -426,12 +582,13 @@ export class ClassesService {
             throw new ConflictException('Teacher already assigned to this class');
         }
 
-        return this.prisma.classTeacher.create({
-            data: {
-                classId,
-                teacherId,
-                isSubstitute,
-            },
+        const sync = await syncTeacherToClass(this.prisma, classId, teacherIdOrUserId, isSubstitute);
+        if (sync.classLinks === 0) {
+            await ensureClassTeacherLink(this.prisma, classId, teacher.id, isSubstitute);
+        }
+
+        const assignment = await this.prisma.classTeacher.findFirst({
+            where: { classId, teacherId: teacher.id },
             include: {
                 teacher: {
                     include: {
@@ -446,13 +603,21 @@ export class ClassesService {
                 },
             },
         });
+
+        return {
+            ...assignment,
+            syncedToCourse: sync.courseLinks > 0,
+            academicSync: sync,
+        };
     }
 
-    async removeTeacher(classId: string, teacherId: string) {
+    async removeTeacher(classId: string, teacherIdOrUserId: string) {
+        const teacher = await resolveTeacherOrThrow(this.prisma, teacherIdOrUserId);
+
         const assignment = await this.prisma.classTeacher.findFirst({
             where: {
                 classId,
-                teacherId,
+                teacherId: teacher.id,
             },
         });
 
@@ -917,10 +1082,19 @@ export class ClassesService {
         today.setHours(0, 0, 0, 0);
         const todayStr = today.toISOString().slice(0, 10);
 
-        // 1. Turmas ativas do professor
+        /** Visíveis no portal (como aluno): planejadas em cinza + em andamento; exclui canceladas. */
+        const TEACHER_VISIBLE_CLASS_STATUSES = [
+            'PLANNED',
+            'ENROLLMENT_OPEN',
+            'ENROLLMENT_CLOSED',
+            'IN_PROGRESS',
+            'COMPLETED',
+        ] as const;
+
+        // 1. Todas as turmas vinculadas ao professor (não só IN_PROGRESS)
         const turmas = await this.prisma.class.findMany({
             where: {
-                status: 'IN_PROGRESS',
+                status: { in: [...TEACHER_VISIBLE_CLASS_STATUSES] },
                 teachers: { some: { teacher: { userId: teacherUserId } } },
             },
             include: {
@@ -1024,10 +1198,13 @@ export class ClassesService {
                 Math.ceil((fim - agora) / 86400000)
             );
 
+            const podeLancarFrequencia = c.status === 'IN_PROGRESS';
+
             return {
                 id: c.id,
                 classIdentifier: c.classIdentifier,
                 status: c.status,
+                podeLancarFrequencia,
                 curso: c.course.name,
                 cargaHoraria: c.course.workloadHours,
                 cidade: c.city?.name ?? '—',
@@ -1049,6 +1226,22 @@ export class ClassesService {
             };
         });
 
+        const statusSortOrder: Record<string, number> = {
+            IN_PROGRESS: 0,
+            ENROLLMENT_OPEN: 1,
+            ENROLLMENT_CLOSED: 2,
+            PLANNED: 3,
+            COMPLETED: 4,
+        };
+        turmasProcessadas.sort(
+            (a, b) =>
+                (statusSortOrder[a.status] ?? 9) - (statusSortOrder[b.status] ?? 9) ||
+                new Date(a.endDate).getTime() - new Date(b.endDate).getTime(),
+        );
+
+        const turmasEmAndamento = turmasProcessadas.filter(t => t.status === 'IN_PROGRESS');
+        const turmasPlanejadas = turmasProcessadas.filter(t => t.status === 'PLANNED');
+
         // 3. Reembolsos pendentes
         const reembolsos = await this.prisma.reimbursement.findMany({
             where: { requestedBy: teacherUserId },
@@ -1058,10 +1251,16 @@ export class ClassesService {
         const valorPendente = reembolsosPendentes
             .reduce((acc, r) => acc + Number(r.amount), 0);
 
-        // 4. Checkin de hoje
-        const checkinHoje = await this.prisma.teacherCheckin.findFirst({
-            where: { userId: teacherUserId, date: todayStr },
-        });
+        // 4. Checkin de hoje (select explícito — compatível se migration checkoutAt ainda não aplicada)
+        let checkinHoje: { id: string } | null = null;
+        try {
+            checkinHoje = await this.prisma.teacherCheckin.findFirst({
+                where: { userId: teacherUserId, date: todayStr },
+                select: { id: true },
+            });
+        } catch {
+            checkinHoje = null;
+        }
 
         const employee = await this.prisma.employee.findFirst({
             where: { userId: teacherUserId },
@@ -1095,20 +1294,20 @@ export class ClassesService {
             },
         });
 
-        // 6. KPIs globais
-        const totalAlunosEmRisco = turmasProcessadas.reduce(
+        // 6. KPIs globais (risco só em turmas em andamento)
+        const totalAlunosEmRisco = turmasEmAndamento.reduce(
             (acc, t) => acc + t.alunosEmRisco, 0
         );
 
         // 7. Agregar todos os alunos em risco (lista raiz, sem duplicatas studentId+classId)
-        const alunosEmRiscoDetalhe = turmasProcessadas.flatMap(t => t.alunosEmRiscoDetalhe ?? []);
-        // 8. Alertas automáticos
+        const alunosEmRiscoDetalhe = turmasEmAndamento.flatMap(t => t.alunosEmRiscoDetalhe ?? []);
+        // 8. Alertas automáticos (frequência / encerramento só para turmas em andamento)
         const alertas: {
             tipo: string; turmaId?: string;
             turmaIdentifier?: string; mensagem: string; urgente: boolean;
         }[] = [];
 
-        turmasProcessadas
+        turmasEmAndamento
             .filter(t => !t.freqHojeRegistrada && t.totalAlunos > 0)
             .forEach(t => alertas.push({
                 tipo: 'freq_pendente', turmaId: t.id, turmaIdentifier: t.classIdentifier,
@@ -1116,7 +1315,7 @@ export class ClassesService {
                 urgente: true,
             }));
 
-        turmasProcessadas
+        turmasEmAndamento
             .filter(t => t.alunosEmRisco > 0)
             .forEach(t => alertas.push({
                 tipo: 'aluno_risco', turmaId: t.id, turmaIdentifier: t.classIdentifier,
@@ -1124,7 +1323,7 @@ export class ClassesService {
                 urgente: t.alunosEmRisco >= 3,
             }));
 
-        turmasProcessadas
+        turmasEmAndamento
             .filter(t => t.diasRestantes > 0 && t.diasRestantes <= 7)
             .forEach(t => alertas.push({
                 tipo: 'encerrando', turmaId: t.id, turmaIdentifier: t.classIdentifier,
@@ -1137,7 +1336,9 @@ export class ClassesService {
         }
 
         return {
-            turmasAtivas: turmasProcessadas.length,
+            turmasAtivas: turmasEmAndamento.length,
+            turmasPlanejadas: turmasPlanejadas.length,
+            turmasTotal: turmasProcessadas.length,
             totalAlunosEmRisco,
             certElegiveis,
             reembolsosPendentes: reembolsosPendentes.length,

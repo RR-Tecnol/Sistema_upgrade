@@ -750,25 +750,33 @@ export function NovoInsumoWizard({ isModal, onModalClose, onModalSuccess }: { is
                                             ? (!form.customCategoryId && form.categoria === c.defaultEnum)
                                             : form.customCategoryId === c.id;
                                         const color = c.color;
+                                        const selectCategory = () => {
+                                            if (c.isDefault) {
+                                                setForm(f => ({
+                                                    ...f,
+                                                    categoria: (c.defaultEnum ?? 'OUTRO') as StockItemCategory,
+                                                    customCategoryId: undefined,
+                                                }));
+                                            } else {
+                                                setForm(f => ({
+                                                    ...f,
+                                                    categoria: 'OUTRO',
+                                                    customCategoryId: c.id,
+                                                }));
+                                            }
+                                            setErrors(e => { const n = { ...e }; delete n.categoria; return n; });
+                                        };
                                         return (
-                                            <button
+                                            <div
                                                 key={c.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    if (c.isDefault) {
-                                                        setForm(f => ({
-                                                            ...f,
-                                                            categoria: (c.defaultEnum ?? 'OUTRO') as StockItemCategory,
-                                                            customCategoryId: undefined,
-                                                        }));
-                                                    } else {
-                                                        setForm(f => ({
-                                                            ...f,
-                                                            categoria: 'OUTRO',
-                                                            customCategoryId: c.id,
-                                                        }));
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={selectCategory}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        selectCategory();
                                                     }
-                                                    setErrors(e => { const n = { ...e }; delete n.categoria; return n; });
                                                 }}
                                                 title={c.description ?? undefined}
                                                 style={{
@@ -831,7 +839,7 @@ export function NovoInsumoWizard({ isModal, onModalClose, onModalSuccess }: { is
                                                 {isSelected && (
                                                     <CheckCircleIcon style={{ width: 14, height: 14, color: color, marginLeft: c.isDefault ? 'auto' : 2 }} />
                                                 )}
-                                            </button>
+                                            </div>
                                         );
                                     })}
 

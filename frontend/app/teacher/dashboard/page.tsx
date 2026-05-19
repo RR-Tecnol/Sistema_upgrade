@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import api from '@/lib/api/client';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { toast } from '@/components/ui/Toast';
@@ -18,8 +19,18 @@ import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 
 // ── Tipagem ──────────────────────────────────────────────────────────────────
+const CLASS_STATUS_UI: Record<string, { bg: string; color: string; label: string }> = {
+    PLANNED: { bg: '#F3F4F6', color: '#6B7280', label: 'Planejada' },
+    ENROLLMENT_OPEN: { bg: '#DCFCE7', color: '#059669', label: 'Matrículas abertas' },
+    ENROLLMENT_CLOSED: { bg: '#E0E7FF', color: '#4F46E5', label: 'Matrículas fechadas' },
+    IN_PROGRESS: { bg: '#FFFDE7', color: '#B89B00', label: 'Em andamento' },
+    COMPLETED: { bg: '#F5F3FF', color: '#7C3AED', label: 'Concluída' },
+    CANCELLED: { bg: '#FEF2F2', color: '#DC2626', label: 'Cancelada' },
+};
+
 interface TurmaStats {
     id: string; classIdentifier: string; status: string;
+    podeLancarFrequencia?: boolean;
     curso: string; cargaHoraria: number;
     cidade: string; estado: string;
     startDate: string; endDate: string;
@@ -44,7 +55,8 @@ interface AlunoEmRisco {
 }
 
 interface DashboardData {
-    turmasAtivas: number; totalAlunosEmRisco: number;
+    turmasAtivas: number; turmasPlanejadas?: number; turmasTotal?: number;
+    totalAlunosEmRisco: number;
     certElegiveis: number; reembolsosPendentes: number;
     valorPendente: string; checkinHoje: boolean;
     checkinEditado?: boolean; checkinMotivo?: string;
@@ -120,10 +132,14 @@ function KpiCard({
 
 // ── Dashboard Principal ───────────────────────────────────────────────────────
 export default function TeacherDashboard() {
+    const router = useRouter();
     const { user } = useAuthStore();
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [checkingIn, setCheckingIn] = useState(false);
+    const [checkingOut, setCheckingOut] = useState(false);       // MEL-07
+    const [checkoutDone, setCheckoutDone] = useState(false);     // MEL-07
+    const [checkinTime, setCheckinTime] = useState<string | null>(null); // MEL-07
 
     // Estados do painel de alunos em risco
     const [showRiscoPanel, setShowRiscoPanel] = useState(false);
@@ -136,7 +152,12 @@ export default function TeacherDashboard() {
     useEffect(() => {
         api.get('/classes/teacher/dashboard')
             .then(r => setData(r.data))
-            .catch(() => {})
+            .catch((e: any) => {
+                const msg = e?.response?.data?.message;
+                toast.error(
+                    typeof msg === 'string' ? msg : 'Não foi possível carregar o dashboard. Tente novamente.',
+                );
+            })
             .finally(() => setLoading(false));
     }, []);
 
@@ -144,9 +165,11 @@ export default function TeacherDashboard() {
         if (!data || data.checkinHoje || checkingIn) return;
         setCheckingIn(true);
         try {
-            // Mesmo contrato que /teacher/historico (TeachersController → UsersService)
             const res = await api.post('/teachers/me/checkin');
             const already = res.data?.alreadyRegistered === true;
+            // MEL-07: guarda hora de entrada
+            const hora = new Date(res.data?.checkedAt || Date.now()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            setCheckinTime(hora);
             setData(d =>
                 d
                     ? {
@@ -162,6 +185,23 @@ export default function TeacherDashboard() {
             toast.error(typeof msg === 'string' ? msg : 'Não foi possível registrar o ponto. Tente novamente.');
         } finally {
             setCheckingIn(false);
+        }
+    };
+
+    // MEL-07: registrar saída
+    const handleCheckout = async () => {
+        if (!data?.checkinHoje || checkingOut || checkoutDone) return;
+        setCheckingOut(true);
+        try {
+            const res = await api.post('/teachers/me/checkout');
+            const already = res.data?.alreadyRegistered === true;
+            setCheckoutDone(true);
+            toast.success(already ? 'Saída já estava registrada.' : 'Saída registrada com sucesso!');
+        } catch (e: any) {
+            const msg = e?.response?.data?.message;
+            toast.error(typeof msg === 'string' ? msg : 'Não foi possível registrar a saída.');
+        } finally {
+            setCheckingOut(false);
         }
     };
 
@@ -188,8 +228,14 @@ export default function TeacherDashboard() {
                 badge="PERFIL PROFESSOR"
                 rightSlot={!loading && data ? (
                     <div style={{ padding: '0.45rem 0.8rem', borderRadius: 10, background: 'rgba(255,214,0,0.12)', border: '1px solid rgba(255,214,0,0.35)', textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.62rem', color: '#FFD600', fontWeight: 700, letterSpacing: '0.08em' }}>TURMAS ATIVAS</div>
-                        <div style={{ fontFamily: 'Orbitron', fontSize: '1.6rem', fontWeight: 900, color: '#FFD600', lineHeight: 1 }}>{data.turmasAtivas}</div>
+                        <div style={{ fontSize: '0.62rem', color: '#FFD600', fontWeight: 700, letterSpacing: '0.08em' }}>MINHAS TURMAS</div>
+                        <div style={{ fontFamily: 'Orbitron', fontSize: '1.6rem', fontWeight: 900, color: '#FFD600', lineHeight: 1 }}>
+                            {data.turmasTotal ?? data.turmas.length}
+                        </div>
+                        <div style={{ fontSize: '0.62rem', color: 'rgba(255,214,0,0.85)', marginTop: 4 }}>
+                            {data.turmasAtivas} em andamento
+                            {(data.turmasPlanejadas ?? 0) > 0 ? ` · ${data.turmasPlanejadas} planejada(s)` : ''}
+                        </div>
                     </div>
                 ) : undefined}
             />
@@ -211,7 +257,13 @@ export default function TeacherDashboard() {
                         <AnimatedKpiCard
                             label="Turmas Ativas"
                             value={data.turmasAtivas}
-                            sub={data.turmas[0] ? `próx. encerra em ${data.turmas[0].diasRestantes}d` : 'nenhuma ativa'}
+                            sub={
+                                (data.turmasPlanejadas ?? 0) > 0
+                                    ? `${data.turmasPlanejadas} planejada(s) visível(is) no painel`
+                                    : data.turmas.find(t => t.podeLancarFrequencia)
+                                      ? `próx. encerra em ${data.turmas.find(t => t.podeLancarFrequencia)!.diasRestantes}d`
+                                      : 'nenhuma em andamento'
+                            }
                             color="#10B981"
                             bg="#F0FDF4"
                             border="#BBF7D0"
@@ -250,7 +302,9 @@ export default function TeacherDashboard() {
                             label="Ponto Hoje"
                             value={0}
                             displayValue={checkingIn ? '⏳' : data.checkinHoje ? '✓' : '⚠'}
-                            sub={data.checkinHoje ? 'check-in registrado' : 'clique para registrar'}
+                            sub={data.checkinHoje
+                                ? (checkoutDone ? 'entrada + saída registradas' : checkinTime ? `entrada: ${checkinTime}` : 'check-in registrado')
+                                : 'clique para registrar'}
                             color={data.checkinHoje ? '#10B981' : '#F59E0B'}
                             bg={data.checkinHoje ? '#F0FDF4' : '#FFFBEB'}
                             border={data.checkinHoje ? '#BBF7D0' : '#FDE68A'}
@@ -258,6 +312,36 @@ export default function TeacherDashboard() {
                             onClick={data.checkinHoje || checkingIn ? undefined : handleCheckin}
                         />
                     </div>
+
+                    {/* MEL-07: Botão de saída — aparece quando check-in feito e saída ainda não registrada */}
+                    {data.checkinHoje && !checkoutDone && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            gap: '1rem', padding: '0.75rem 1rem', borderRadius: 12,
+                            background: '#FFF7ED', border: '1px solid rgba(245,158,11,0.35)',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <span style={{ fontSize: '1.1rem' }}>🚪</span>
+                                <div>
+                                    <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.82rem' }}>Registrar Saída</div>
+                                    <div style={{ fontSize: '0.68rem', color: '#B45309' }}>Entrada registrada{checkinTime ? ` às ${checkinTime}` : ''}. Clique ao encerrar o expediente.</div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleCheckout}
+                                disabled={checkingOut}
+                                style={{
+                                    padding: '0.5rem 1.1rem', borderRadius: 9,
+                                    background: checkingOut ? '#E5E7EB' : 'linear-gradient(135deg,#F59E0B,#D97706)',
+                                    border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.82rem',
+                                    cursor: checkingOut ? 'not-allowed' : 'pointer',
+                                    whiteSpace: 'nowrap', flexShrink: 0,
+                                }}
+                            >
+                                {checkingOut ? 'Registrando…' : '🕒 Bater Saída'}
+                            </button>
+                        </div>
+                    )}
 
                     {data.checkinEditado && (
                         <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg flex gap-3 animate-fade-in mt-4">
@@ -457,7 +541,8 @@ export default function TeacherDashboard() {
                     {data.turmas.length === 0 ? (
                         <div className="glass-card" style={{ textAlign: 'center', padding: '3rem' }}>
                             <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🎓</div>
-                            <p style={{ fontFamily: 'Orbitron', fontSize: '0.75rem', letterSpacing: '0.15em', color: 'var(--text-muted)' }}>NENHUMA TURMA ATIVA</p>
+                            <p style={{ fontFamily: 'Orbitron', fontSize: '0.75rem', letterSpacing: '0.15em', color: 'var(--text-muted)' }}>NENHUMA TURMA VINCULADA</p>
+                            <p style={{ fontSize: '0.8rem', color: '#9CA3AF', marginTop: 8 }}>Peça à coordenação para vinculá-lo a um período de curso.</p>
                         </div>
                     ) : (
                         <>
@@ -472,20 +557,33 @@ export default function TeacherDashboard() {
                                     const diasLabel = turma.diasRestantes === 0 ? 'Encerra hoje!'
                                         : turma.diasRestantes === 1 ? 'Encerra amanhã'
                                         : `Encerra em ${turma.diasRestantes} dias`;
+                                    const statusCfg = CLASS_STATUS_UI[turma.status] || CLASS_STATUS_UI.PLANNED;
+                                    const isPlanejada = turma.podeLancarFrequencia === false;
 
                                     return (
-                                        <div key={turma.id}
+                                        <Link
+                                            key={turma.id}
+                                            href={`/teacher/frequencia/${turma.id}`}
+                                            style={{ textDecoration: 'none', display: 'block' }}
+                                        >
+                                        <div
                                             className="animate-scale-in"
                                             style={{
                                                 animationDelay: `${i * 60}ms`,
-                                                background: '#fff', borderRadius: 16,
-                                                border: turma.freqHojeRegistrada
-                                                    ? '1.5px solid rgba(16,185,129,0.2)'
-                                                    : '1.5px solid rgba(255,214,0,0.3)',
+                                                background: isPlanejada
+                                                    ? 'linear-gradient(180deg, #F9FAFB 0%, #F3F4F6 100%)'
+                                                    : '#fff',
+                                                borderRadius: 16,
+                                                border: isPlanejada
+                                                    ? '1px solid #D1D5DB'
+                                                    : turma.freqHojeRegistrada
+                                                      ? '1.5px solid rgba(16,185,129,0.2)'
+                                                      : '1.5px solid rgba(255,214,0,0.3)',
                                                 padding: '1.25rem', display: 'flex',
                                                 flexDirection: 'column', gap: '1rem',
-                                                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                                                boxShadow: isPlanejada ? '0 1px 4px rgba(0,0,0,0.04)' : '0 2px 8px rgba(0,0,0,0.04)',
                                                 transition: 'all 0.2s',
+                                                cursor: 'pointer',
                                             }}
                                             onMouseEnter={e => {
                                                 (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 28px rgba(0,0,0,0.08)';
@@ -499,11 +597,11 @@ export default function TeacherDashboard() {
                                             {/* Header do card */}
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                                    <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.92rem', marginBottom: 4 }}>
+                                                    <div style={{ fontWeight: 700, color: isPlanejada ? '#4B5563' : '#111827', fontSize: '0.92rem', marginBottom: 4 }}>
                                                         {turma.curso}
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                                                        <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.62rem', color: '#9CA3AF', background: '#F9FAFB', padding: '2px 7px', borderRadius: 5, border: '1px solid #E5E7EB' }}>
+                                                        <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.62rem', color: isPlanejada ? '#6B7280' : '#9CA3AF', background: isPlanejada ? '#E5E7EB' : '#F9FAFB', padding: '2px 7px', borderRadius: 5, border: '1px solid #E5E7EB' }}>
                                                             {turma.classIdentifier}
                                                         </span>
                                                         {turma.startTime && (
@@ -514,7 +612,11 @@ export default function TeacherDashboard() {
                                                     </div>
                                                 </div>
                                                 <div style={{ flexShrink: 0, marginLeft: '0.5rem' }}>
-                                                    {turma.freqHojeRegistrada ? (
+                                                    {isPlanejada ? (
+                                                        <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '3px 8px', borderRadius: 20, background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.color}33` }}>
+                                                            {statusCfg.label}
+                                                        </span>
+                                                    ) : turma.freqHojeRegistrada ? (
                                                         <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '3px 8px', borderRadius: 20, background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
                                                             ✓ Freq. hoje
                                                         </span>
@@ -522,7 +624,11 @@ export default function TeacherDashboard() {
                                                         <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '3px 8px', borderRadius: 20, background: 'rgba(245,158,11,0.1)', color: '#D97706', border: '1px solid rgba(245,158,11,0.25)' }}>
                                                             ⚠ Pendente
                                                         </span>
-                                                    ) : null}
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '3px 8px', borderRadius: 20, background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.color}33` }}>
+                                                            {statusCfg.label}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -535,6 +641,12 @@ export default function TeacherDashboard() {
                                                     </span>
                                                 )}
                                             </div>
+
+                                            {isPlanejada && (
+                                                <div style={{ fontSize: '0.72rem', color: '#6B7280', lineHeight: 1.45, padding: '0.5rem 0.65rem', borderRadius: 8, background: '#E5E7EB', border: '1px solid #D1D5DB' }}>
+                                                    Turma ainda não iniciada. Clique para consultar alunos, calendário e demais informações. O lançamento de frequência libera quando a turma estiver <strong>em andamento</strong>.
+                                                </div>
+                                            )}
 
                                             {/* Barra de progresso */}
                                             <div>
@@ -556,7 +668,7 @@ export default function TeacherDashboard() {
                                             </div>
 
                                             {/* Frequência média */}
-                                            {turma.freqMedia !== null && (
+                                            {!isPlanejada && turma.freqMedia !== null && (
                                                 <div>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                                                         <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Frequência Média</span>
@@ -564,7 +676,8 @@ export default function TeacherDashboard() {
                                                             {turma.freqMedia}%
                                                             {turma.alunosEmRisco > 0 && (
                                                                 <button
-                                                                    onClick={() => setShowRiscoPanel(true)}
+                                                                    type="button"
+                                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowRiscoPanel(true); }}
                                                                     style={{ marginLeft: 6, fontSize: '0.6rem', color: '#EF4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700 }}
                                                                 >
                                                                     ⚠ {turma.alunosEmRisco} em risco
@@ -582,30 +695,34 @@ export default function TeacherDashboard() {
                                             )}
 
                                             {/* Ações do card */}
-                                            <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #F3F4F6', marginTop: 'auto' }}>
-                                                <Link href={`/teacher/frequencia/${turma.id}`} style={{ flex: 1, textDecoration: 'none' }}>
-                                                    <button style={{
-                                                        width: '100%', padding: '0.5rem', borderRadius: 9,
-                                                        fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
-                                                        transition: 'all 0.15s', border: 'none',
-                                                        background: turma.freqHojeRegistrada ? '#F0FDF4' : 'linear-gradient(135deg,#FFD600,#F59E0B)',
-                                                        color: turma.freqHojeRegistrada ? '#059669' : '#0F172A',
-                                                    }}>
-                                                        {turma.freqHojeRegistrada ? '✓ Ver Frequência' : '📋 Lançar Frequência'}
-                                                    </button>
-                                                </Link>
-                                                <Link href="/teacher/certificados" style={{ textDecoration: 'none' }}>
-                                                    <button style={{ padding: '0.5rem 0.85rem', borderRadius: 9, background: '#F9FAFB', border: '1px solid #E5E7EB', color: '#6B7280', fontWeight: 600, fontSize: '0.72rem', cursor: 'pointer' }}>
-                                                        🎓
-                                                    </button>
-                                                </Link>
-                                                <Link href="/teacher/historico" style={{ textDecoration: 'none' }}>
-                                                    <button style={{ padding: '0.5rem 0.85rem', borderRadius: 9, background: '#F9FAFB', border: '1px solid #E5E7EB', color: '#6B7280', fontWeight: 600, fontSize: '0.72rem', cursor: 'pointer' }}>
-                                                        📊
-                                                    </button>
-                                                </Link>
+                                            <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.5rem', borderTop: isPlanejada ? '1px solid #D1D5DB' : '1px solid #F3F4F6', marginTop: 'auto' }}>
+                                                <span style={{
+                                                    flex: 1, display: 'block', textAlign: 'center', padding: '0.5rem', borderRadius: 9,
+                                                    fontWeight: 700, fontSize: '0.75rem',
+                                                    background: isPlanejada ? '#E5E7EB' : turma.freqHojeRegistrada ? '#F0FDF4' : 'linear-gradient(135deg,#FFD600,#F59E0B)',
+                                                    color: isPlanejada ? '#4B5563' : turma.freqHojeRegistrada ? '#059669' : '#0F172A',
+                                                }}>
+                                                    {isPlanejada ? '👁 Ver turma e informações' : turma.freqHojeRegistrada ? '✓ Ver Frequência' : '📋 Lançar Frequência'}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push('/teacher/certificados'); }}
+                                                    style={{ padding: '0.5rem 0.85rem', borderRadius: 9, background: '#F9FAFB', border: '1px solid #E5E7EB', color: '#6B7280', fontWeight: 600, fontSize: '0.72rem', cursor: 'pointer' }}
+                                                    title="Certificados"
+                                                >
+                                                    🎓
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push('/teacher/historico'); }}
+                                                    style={{ padding: '0.5rem 0.85rem', borderRadius: 9, background: '#F9FAFB', border: '1px solid #E5E7EB', color: '#6B7280', fontWeight: 600, fontSize: '0.72rem', cursor: 'pointer' }}
+                                                    title="Histórico"
+                                                >
+                                                    📊
+                                                </button>
                                             </div>
                                         </div>
+                                        </Link>
                                     );
                                 })}
                             </div>
@@ -613,7 +730,7 @@ export default function TeacherDashboard() {
                     )}
 
                     {/* ── ZONA 4: CTA Frequência rápida ── */}
-                    {data.turmas.some(t => !t.freqHojeRegistrada) ? (
+                    {data.turmas.some(t => t.podeLancarFrequencia && !t.freqHojeRegistrada) ? (
                         <Link href="/teacher/frequencia" style={{ textDecoration: 'none', display: 'block' }}>
                             <div style={{
                                 background: 'linear-gradient(135deg, #FFD600, #F59E0B)',
@@ -631,7 +748,7 @@ export default function TeacherDashboard() {
                                             REGISTRAR FREQUÊNCIA
                                         </div>
                                         <div style={{ fontSize: '0.78rem', color: '#1E293B' }}>
-                                            {data.turmas.filter(t => !t.freqHojeRegistrada).length} turma(s) com lançamento pendente hoje
+                                            {data.turmas.filter(t => t.podeLancarFrequencia && !t.freqHojeRegistrada).length} turma(s) com lançamento pendente hoje
                                         </div>
                                     </div>
                                 </div>

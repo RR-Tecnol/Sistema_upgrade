@@ -11,6 +11,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { PreloadStateHolidaysDto } from './dto/preload-state-holidays.dto';
+import { RegisterAcaoHolidaysDto } from './dto/register-acao-holidays.dto';
+import { PreloadNationalCatalogDto } from './dto/preload-national-catalog.dto';
 
 export class RegisterHolidayDto {
   @ApiProperty({ example: '2025-04-21', description: 'Data do feriado/imprevisto (YYYY-MM-DD)' })
@@ -51,6 +53,25 @@ export class HolidayController {
       classId,
       dto.date,
       dto.reason,
+      req.user.id,
+      req.user.role,
+    );
+  }
+
+  @Post('acao/:acaoId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'COORDINATOR')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Registrar dia(s) sem aula no período (motor N, sync turma/período)' })
+  @ApiParam({ name: 'acaoId', description: 'ID do período de curso' })
+  registerAcaoHolidays(
+    @Param('acaoId') acaoId: string,
+    @Body() dto: RegisterAcaoHolidaysDto,
+    @Request() req: any,
+  ) {
+    return this.holidayService.registerAcaoHolidays(
+      acaoId,
+      dto,
       req.user.id,
       req.user.role,
     );
@@ -109,20 +130,52 @@ export class HolidayController {
     return this.holidayService.getStateHolidaysForYear(uf, y);
   }
 
+  /** BUG-15: catálogo global (lista sem turma). */
+  @Get('catalog')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'COORDINATOR')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Listar feriados do catálogo global do sistema' })
+  listCatalog(@Request() req: any) {
+    return this.holidayService.listCatalog(req.user.id, req.user.role);
+  }
+
+  @Post('preload-national-catalog')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'COORDINATOR')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Pré-carregar feriados nacionais no catálogo global (não exige turma ativa)' })
+  preloadNationalCatalog(@Body() dto: PreloadNationalCatalogDto, @Request() req: any) {
+    return this.holidayService.preloadNationalCatalog(req.user.id, req.user.role, dto);
+  }
+
+  @Post('preload-state-catalog')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'COORDINATOR')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Pré-carregar feriados estaduais no catálogo global por UF' })
+  preloadStateCatalog(@Body() dto: PreloadStateHolidaysDto, @Request() req: any) {
+    return this.holidayService.preloadStateCatalog(req.user.id, req.user.role, dto);
+  }
+
+  @Delete('catalog/:holidayId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'COORDINATOR')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remover feriado do catálogo global (soft delete)' })
+  removeCatalogHoliday(@Param('holidayId') holidayId: string, @Request() req: any) {
+    return this.holidayService.removeCatalogHoliday(holidayId, req.user.role);
+  }
+
   /**
-   * Pré-carrega feriados estaduais para todas as turmas em andamento,
-   * conforme o estado cadastrado na cidade de cada turma.
+   * Pré-carrega feriados estaduais no catálogo e, se `applyToActiveClasses`, nas turmas IN_PROGRESS.
    */
   @Post('preload-state-holidays')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Pré-carregar feriados estaduais (fixos) nas turmas IN_PROGRESS por UF da cidade' })
+  @ApiOperation({ summary: 'Pré-carregar feriados estaduais (catálogo + opcional turmas IN_PROGRESS)' })
   preloadStateHolidays(@Body() dto: PreloadStateHolidaysDto, @Request() req: any) {
-    return this.holidayService.preloadStateHolidaysForActiveClasses(
-      req.user.id,
-      req.user.role,
-      dto?.years,
-    );
+    return this.holidayService.preloadStateCatalog(req.user.id, req.user.role, dto);
   }
 }

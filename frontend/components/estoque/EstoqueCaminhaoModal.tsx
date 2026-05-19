@@ -331,6 +331,7 @@ export function EstoqueCaminhaoModal({ open, onClose, truckId, truckName, userRo
                                                                         }}
                                                                     />
                                                                     <button
+                                                                        type="button"
                                                                         onClick={() => saveMinimo(item)}
                                                                         disabled={savingId === item.id}
                                                                         title="Salvar"
@@ -349,6 +350,7 @@ export function EstoqueCaminhaoModal({ open, onClose, truckId, truckName, userRo
                                                                         <CheckIcon width={14} height={14} />
                                                                     </button>
                                                                     <button
+                                                                        type="button"
                                                                         onClick={cancelEdit}
                                                                         title="Cancelar"
                                                                         style={{
@@ -372,6 +374,7 @@ export function EstoqueCaminhaoModal({ open, onClose, truckId, truckName, userRo
                                                                     </span>
                                                                     {canEdit && (
                                                                         <button
+                                                                            type="button"
                                                                             onClick={() => startEdit(item)}
                                                                             title="Editar mínimo"
                                                                             style={{

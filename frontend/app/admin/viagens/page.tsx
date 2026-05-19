@@ -3,6 +3,8 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import api from '@/lib/api/client';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { ViagensSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
@@ -236,6 +238,9 @@ function odometerDeltaKm(t: Trip): number | null {
 
 export default function AdminViagensPage() {
     const [trips, setTrips] = useState<Trip[]>([]);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
     const [drivers, setDrivers] = useState<any[]>([]);
     const [trucks, setTrucks] = useState<any[]>([]);
     const [cities, setCities] = useState<any[]>([]);
@@ -351,13 +356,15 @@ export default function AdminViagensPage() {
         setLoading(true);
         try {
             const [t, d, tr, c] = await Promise.all([
-                api.get('/admin/trips'),
+                api.get('/admin/trips', { params: { page, limit: ADMIN_PAGE_SIZE_TABLE } }),
                 api.get('/users', { params: { role: 'DRIVER' } }),
                 api.get('/trucks'),
                 api.get('/cities').catch(() => ({ data: [] })),
             ]);
-            const tripRows = Array.isArray(t.data) ? t.data : [];
-            setTrips(tripRows.map(normalizeTrip));
+            const norm = normalizePaginated<any>(t.data, ADMIN_PAGE_SIZE_TABLE);
+            setTrips(norm.data.map(normalizeTrip));
+            setTotal(norm.total);
+            setTotalPages(norm.totalPages);
             setDrivers(Array.isArray(d.data) ? d.data : []);
             setTrucks(Array.isArray(tr.data) ? tr.data : []);
             const cityRows = Array.isArray(c.data) ? c.data : (c.data?.data ?? []);
@@ -367,7 +374,7 @@ export default function AdminViagensPage() {
         }
     };
 
-    useEffect(() => { load(); }, []);
+    useEffect(() => { load(); }, [page]);
 
     const kpis = useMemo(() => ({
         planned: trips.filter(t => t.status === 'PLANNED').length,
@@ -875,7 +882,7 @@ export default function AdminViagensPage() {
 
             <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                    <span style={{ fontFamily: 'Orbitron', fontSize: '.68rem', fontWeight: 800, letterSpacing: '.12em', color: '#475569' }}>LISTAGEM DE VIAGENS ({loading ? '…' : trips.length})</span>
+                    <span style={{ fontFamily: 'Orbitron', fontSize: '.68rem', fontWeight: 800, letterSpacing: '.12em', color: '#475569' }}>LISTAGEM DE VIAGENS ({loading ? '…' : total})</span>
                     <AdminViewModeToggle mode={tripsViewMode} onChange={setTripsViewMode} />
                 </div>
                 {!loading && tripsViewMode === 'table' ? (
@@ -1045,6 +1052,15 @@ export default function AdminViagensPage() {
             </div>
                 )}
             </div>
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="viagem(ns)"
+            />
 
             {assignModal && (
                 <ModalPortal>

@@ -40,4 +40,16 @@ export class TeachersController {
     async getCheckins(@Request() req: any) {
         return this.usersService.getCheckins(req.user.id);
     }
+
+    /**
+     * POST /api/teachers/me/checkout
+     * MEL-07: Registra saída do professor autenticado
+     */
+    @Post('me/checkout')
+    @Roles('TEACHER', 'ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Registrar saída (checkout) do professor' })
+    @ApiResponse({ status: 200, description: 'Saída registrada com sucesso' })
+    async checkout(@Request() req: any) {
+        return this.usersService.registerCheckout(req.user.id);
+    }
 }

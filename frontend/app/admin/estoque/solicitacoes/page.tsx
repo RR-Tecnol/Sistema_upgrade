@@ -13,7 +13,6 @@ import {
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { EstoqueSolicitacoesSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import { toast } from '@/components/ui/Toast';
-import { EstoqueQuickActionsBar } from '@/components/estoque/EstoqueQuickActionsBar';
 import {
     EstoqueSection,
     EstoqueSectionHeader,
@@ -24,12 +23,12 @@ import {
 import { roleLabel } from '@/lib/i18n';
 
 const STATUS_TABS: { value: StockPurchaseRequestStatus | 'all'; label: string; emoji: string }[] = [
-    { value: 'PENDENTE',  label: 'Pendentes',  emoji: '⏳' },
-    { value: 'APROVADA',  label: 'Em trânsito', emoji: '📦' },
-    { value: 'RECEBIDA',  label: 'Recebidas',  emoji: '✅' },
+    { value: 'PENDENTE', label: 'Pendentes', emoji: '⏳' },
+    { value: 'APROVADA', label: 'Em trânsito', emoji: '📦' },
+    { value: 'RECEBIDA', label: 'Recebidas', emoji: '✅' },
     { value: 'REJEITADA', label: 'Rejeitadas', emoji: '❌' },
     { value: 'CANCELADA', label: 'Canceladas', emoji: '🚫' },
-    { value: 'all',       label: 'Todas',      emoji: '📋' },
+    { value: 'all', label: 'Todas', emoji: '📋' },
 ];
 
 const CONTA_PAGAR_STATUS_LABEL: Record<string, string> = {
@@ -313,7 +312,6 @@ export default function SolicitacoesPage() {
                 </div>,
                 document.body,
             )}
-            <EstoqueQuickActionsBar currentArea="solicitacoes" />
         </div>
     );
 }

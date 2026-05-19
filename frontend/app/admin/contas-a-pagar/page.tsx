@@ -15,6 +15,17 @@ import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { ContasAPagarSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import { ContaPagarDetailModal } from '@/components/admin/ContaPagarDetailModal';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
+import {
+    getContaTipoDisplayLabel,
+    parseReimbursementMeta,
+    type ReimbursementMeta,
+    REIMBURSEMENT_CATEGORY_LABELS,
+    STATUS_CFG,
+    fmtCur,
+    fmtDate,
+} from '@/lib/contasPagarHelpers';
 import {
     TIPOS_ESTRADA,
     TIPOS_HABITUAL,
@@ -195,53 +206,6 @@ const CSS = `
 .cp-input { width:100%; padding:.68rem 1rem; border-radius:9px; border:1.5px solid #E5E7EB; background:#F9FAFB; font-size:.88rem; outline:none; transition:border-color .18s,box-shadow .18s; box-sizing:border-box; }
 .cp-input:focus { border-color:#2563EB; background:#fff; box-shadow:0 0 0 3px rgba(37,99,235,.12); }
 `;
-
-const REIMBURSEMENT_CATEGORY_LABELS: Record<string, string> = {
-    CLASSROOM_MATERIAL: 'Material de Aula',
-    CLEANING_MATERIAL: 'Material de Limpeza',
-    EMERGENCY_REPAIR: 'Reparo Emergencial',
-    FOOD: 'Alimentação',
-    OTHER: 'Outro',
-};
-
-type ReimbursementMeta = { isReimbursement: boolean; reimbursementId?: string; category?: string; reason?: string };
-
-function parseReimbursementMeta(conta: ContaPagar): ReimbursementMeta {
-    const raw = conta.observacoes || '';
-    const markerMatch = raw.match(/reimbursementId:([a-f0-9-]{8,})/i);
-    const normalizedIdMatch = raw.match(/reimbursementId=([a-f0-9-]{8,})/i);
-    const reimbursementId = markerMatch?.[1] || normalizedIdMatch?.[1];
-    const legacy = raw.match(/Categoria:\s*([^|]+)\s*\|\s*Motivo:\s*([^|]+)\s*\|\s*reimbursementId:([a-f0-9-]+)/i);
-    if (legacy) {
-        return {
-            isReimbursement: true,
-            category: legacy[1]?.trim(),
-            reason: legacy[2]?.trim(),
-            reimbursementId: legacy[3]?.trim(),
-        };
-    }
-    const looksLikeReimbursement = /origem\s*=\s*reembolso/i.test(raw) || /Reembolso de Despesas/i.test(conta.descricao) || !!reimbursementId;
-    if (!looksLikeReimbursement) return { isReimbursement: false };
-    const categoryMatch = raw.match(/categoria\s*=\s*([^|]+)/i);
-    const reasonMatch = raw.match(/motivo\s*=\s*([^|]+)/i);
-    const reasonFromDescription = conta.descricao.includes(' — ') ? conta.descricao.split(' — ').slice(1).join(' — ').trim() : undefined;
-    return {
-        isReimbursement: true,
-        reimbursementId,
-        category: categoryMatch?.[1]?.trim(),
-        reason: reasonMatch?.[1]?.trim() || reasonFromDescription,
-    };
-}
-
-const STATUS_CFG = {
-    pendente: { label: 'Pendente', icon: '⏳', color: '#D97706', bg: 'rgba(251,191,36,.12)', border: 'rgba(251,191,36,.35)' },
-    paga: { label: 'Paga', icon: '✅', color: '#059669', bg: 'rgba(16,185,129,.1)', border: 'rgba(16,185,129,.35)' },
-    vencida: { label: 'Vencida', icon: '🔴', color: '#DC2626', bg: 'rgba(239,68,68,.1)', border: 'rgba(239,68,68,.35)' },
-    cancelada: { label: 'Cancelada', icon: '🚫', color: '#6B7280', bg: 'rgba(107,114,128,.1)', border: 'rgba(107,114,128,.3)' },
-};
-
-const fmtCur = (v: number | string) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 /** Mesmo padrão visual dos KPIs em `/admin/carretas` — valor monetário animado */
 function useCountUpMoney(targetCents: number, duration = 900) {
@@ -932,6 +896,10 @@ function ContasPagarPageInner() {
     // PASSO 3.9: aba excluídos
     const [showDeleted, setShowDeleted] = useState(false);
     const [deletedContas, setDeletedContas] = useState<ContaPagar[]>([]);
+    const [page, setPage] = useState(1);
+    const [deletedPage, setDeletedPage] = useState(1);
+    const [deletedTotal, setDeletedTotal] = useState(0);
+    const [deletedTotalPages, setDeletedTotalPages] = useState(1);
     const [collapseStatusCards, setCollapseStatusCards] = useState(false);
     const [collapseTipoCards, setCollapseTipoCards] = useState(false);
     const [collapseLancamentoCards, setCollapseLancamentoCards] = useState(false);
@@ -964,28 +932,38 @@ function ContasPagarPageInner() {
             const [d, del] = await Promise.all([
                 getContasPagar({
                     status: filterStatus || undefined,
+                    tipo_conta: filterTipo || undefined,
                     cidade: filterCidade || undefined,
                     data_inicio: filterDataInicio || undefined,
                     data_fim: filterDataFim || undefined,
                     search: searchTerm || undefined,
+                    page,
+                    limit: ADMIN_PAGE_SIZE_TABLE,
                 }),
-                // PASSO 3.9: buscar excluídos em paralelo
-                getContasPagar({ includeDeleted: true }),
+                getContasPagar({
+                    includeDeleted: true,
+                    page: deletedPage,
+                    limit: ADMIN_PAGE_SIZE_TABLE,
+                }),
             ]);
             setResp(d);
             setDeletedContas(del.contas || []);
+            setDeletedTotal(del.total ?? del.contas?.length ?? 0);
+            setDeletedTotalPages(del.totalPages ?? 1);
         } catch { /* silencioso — estado vazio exibido */ }
         finally { setLoading(false); }
-    }, [filterStatus, filterCidade, filterDataInicio, filterDataFim, searchTerm]);
+    }, [filterStatus, filterTipo, filterCidade, filterDataInicio, filterDataFim, searchTerm, page, deletedPage]);
+
+    useEffect(() => { setPage(1); }, [filterStatus, filterTipo, filterCidade, filterDataInicio, filterDataFim, searchTerm]);
+    useEffect(() => { setDeletedPage(1); }, [showDeleted]);
 
     useEffect(() => { load(); }, [load]);
     useAdminFinanceRefresh(load, ['contas']);
 
     const contas = resp?.contas ?? [];
-    const contasExibidas = useMemo(
-        () => (filterTipo ? contas.filter(c => c.tipo_conta === filterTipo) : contas),
-        [contas, filterTipo],
-    );
+    const contasExibidas = contas;
+    const listTotal = resp?.total ?? contas.length;
+    const listTotalPages = resp?.totalPages ?? 1;
 
     const contasForScroll = contasExibidas;
     useEffect(() => {
@@ -997,7 +975,10 @@ function ContasPagarPageInner() {
         return () => cancelAnimationFrame(id);
     }, [highlightId, loading, contasForScroll]);
     useEffect(() => {
-        api.get('/acoes').then(r => setAcoes(r.data.map((a: any) => ({ id: a.id, nome: a.nome })))).catch(() => { });
+        api.get('/acoes', { params: { limit: 500, page: 1 } }).then(r => {
+            const list = Array.isArray(r.data) ? r.data : (r.data?.data ?? []);
+            setAcoes(list.map((a: any) => ({ id: a.id, nome: a.nome })));
+        }).catch(() => { });
     }, []);
 
     const onMouse = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1024,26 +1005,68 @@ function ContasPagarPageInner() {
     const openNew = () => { setEditingConta(null); setShowModal(true); };
     const onSaved = () => { setShowModal(false); load(); };
 
-    const totalGeral = resp ? Number(resp.totaisPorStatus.pendente) + Number(resp.totaisPorStatus.paga) + Number(resp.totaisPorStatus.vencida) + Number(resp.totaisPorStatus.cancelada) : 0;
+    const totaisPorStatus = resp?.totaisPorStatus ?? { pendente: 0, paga: 0, vencida: 0, cancelada: 0 };
+    const contagemPorStatus = resp?.contagemPorStatus ?? {
+        pendente: contas.filter(c => c.status === 'pendente').length,
+        paga: contas.filter(c => c.status === 'paga').length,
+        vencida: contas.filter(c => c.status === 'vencida').length,
+        cancelada: contas.filter(c => c.status === 'cancelada').length,
+    };
+    const totalGeralValor =
+        Number(totaisPorStatus.pendente) +
+        Number(totaisPorStatus.paga) +
+        Number(totaisPorStatus.vencida) +
+        Number(totaisPorStatus.cancelada);
+    const totalGeralContagem =
+        contagemPorStatus.pendente +
+        contagemPorStatus.paga +
+        contagemPorStatus.vencida +
+        contagemPorStatus.cancelada;
+
+    const subtotalPagina = useMemo(() => {
+        const sum = (st?: ContaPagar['status']) =>
+            contasExibidas
+                .filter(c => !st || c.status === st)
+                .reduce((s, c) => s + Number(c.valor), 0);
+        return {
+            total: sum(),
+            pendente: sum('pendente'),
+            paga: sum('paga'),
+            vencida: sum('vencida'),
+            cancelada: sum('cancelada'),
+            countPend: contasExibidas.filter(c => c.status === 'pendente').length,
+            countPago: contasExibidas.filter(c => c.status === 'paga').length,
+            countVenc: contasExibidas.filter(c => c.status === 'vencida').length,
+            countCanc: contasExibidas.filter(c => c.status === 'cancelada').length,
+        };
+    }, [contasExibidas]);
 
     const agregadosPorTipo = useMemo(() => agregarContasPorTipo(contas), [contas]);
     const tiposKpiSlugs = useMemo(() => slugsCatalogoKpiCompleto(agregadosPorTipo), [agregadosPorTipo]);
 
-    const statusKpiFoot = useMemo(() => {
-        const sumVal = (xs: ContaPagar[]) => xs.reduce((s, c) => s + Number(c.valor), 0);
-        const by = (st: ContaPagar['status']) => contas.filter(c => c.status === st);
-        const pend = by('pendente');
-        const paga = by('paga');
-        const venc = by('vencida');
-        const canc = by('cancelada');
-        return {
-            pendente: { count: pend.length, vp: sumVal(pend), vpg: 0 as number },
-            paga: { count: paga.length, vp: 0, vpg: sumVal(paga) },
-            vencida: { count: venc.length, vp: sumVal(venc), vpg: 0 },
-            cancelada: { count: canc.length },
-            total: { count: contas.length, vp: sumVal([...pend, ...venc]), vpg: sumVal(paga) },
-        };
-    }, [contas]);
+    const statusKpiFoot = useMemo(() => ({
+        pendente: {
+            count: contagemPorStatus.pendente,
+            vp: Number(totaisPorStatus.pendente),
+            vpg: 0 as number,
+        },
+        paga: {
+            count: contagemPorStatus.paga,
+            vp: 0,
+            vpg: Number(totaisPorStatus.paga),
+        },
+        vencida: {
+            count: contagemPorStatus.vencida,
+            vp: Number(totaisPorStatus.vencida),
+            vpg: 0,
+        },
+        cancelada: { count: contagemPorStatus.cancelada },
+        total: {
+            count: totalGeralContagem,
+            vp: Number(totaisPorStatus.pendente) + Number(totaisPorStatus.vencida),
+            vpg: Number(totaisPorStatus.paga),
+        },
+    }), [contagemPorStatus, totaisPorStatus, totalGeralContagem]);
 
     if (loading && !resp) return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 24 }}>
@@ -1221,7 +1244,7 @@ function ContasPagarPageInner() {
                                 {collapseStatusCards ? '▸ POR STATUS' : '▾ POR STATUS'}
                             </button>
                             <span style={{ fontSize: '.72rem', color: '#9CA3AF' }}>
-                                Totais da lista actual (API) · clique para filtrar por status (mesmo efeito que os filtros / tabs abaixo)
+                                Valores em todas as páginas (respeitam busca, datas, cidade e tipo; ignoram filtro de status) · clique para filtrar a grelha
                             </span>
                             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
                                 {filterTipo ? (
@@ -1291,7 +1314,7 @@ function ContasPagarPageInner() {
                                 label="Pendente"
                                 icon="⏳"
                                 color="#D97706"
-                                valueReais={Number(resp.totaisPorStatus.pendente ?? 0)}
+                                valueReais={Number(totaisPorStatus.pendente ?? 0)}
                                 count={statusKpiFoot.pendente.count}
                                 valorPendente={statusKpiFoot.pendente.vp}
                                 valorPago={statusKpiFoot.pendente.vpg}
@@ -1304,7 +1327,7 @@ function ContasPagarPageInner() {
                                 label="Paga"
                                 icon="✅"
                                 color="#059669"
-                                valueReais={Number(resp.totaisPorStatus.paga ?? 0)}
+                                valueReais={Number(totaisPorStatus.paga ?? 0)}
                                 count={statusKpiFoot.paga.count}
                                 valorPendente={statusKpiFoot.paga.vp}
                                 valorPago={statusKpiFoot.paga.vpg}
@@ -1317,7 +1340,7 @@ function ContasPagarPageInner() {
                                 label="Vencida"
                                 icon="🔴"
                                 color="#DC2626"
-                                valueReais={Number(resp.totaisPorStatus.vencida ?? 0)}
+                                valueReais={Number(totaisPorStatus.vencida ?? 0)}
                                 count={statusKpiFoot.vencida.count}
                                 valorPendente={statusKpiFoot.vencida.vp}
                                 valorPago={statusKpiFoot.vencida.vpg}
@@ -1330,7 +1353,7 @@ function ContasPagarPageInner() {
                                 label="Cancelada"
                                 icon="🚫"
                                 color="#6B7280"
-                                valueReais={Number(resp.totaisPorStatus.cancelada ?? 0)}
+                                valueReais={Number(totaisPorStatus.cancelada ?? 0)}
                                 count={statusKpiFoot.cancelada.count}
                                 valorPendente={0}
                                 valorPago={0}
@@ -1345,7 +1368,7 @@ function ContasPagarPageInner() {
                                 icon="📊"
                                 color="#FFD600"
                                 valueColor="#111827"
-                                valueReais={totalGeral}
+                                valueReais={totalGeralValor}
                                 count={statusKpiFoot.total.count}
                                 valorPendente={statusKpiFoot.total.vp}
                                 valorPago={statusKpiFoot.total.vpg}
@@ -1527,15 +1550,15 @@ function ContasPagarPageInner() {
                     </div>
                 </div>
 
-                {/* ─── BARRA DE TOTAL DE LANÇAMENTOS ─────────────────── */}
+                {/* ─── SUBTOTAL DA PÁGINA ATUAL ─────────────────── */}
                 {contasExibidas.length > 0 && (() => {
-                    const totalGeral   = contasExibidas.reduce((s, c) => s + Number(c.valor), 0);
-                    const totalPend    = contasExibidas.filter(c => c.status === 'pendente').reduce((s, c) => s + Number(c.valor), 0);
-                    const totalPago    = contasExibidas.filter(c => c.status === 'paga').reduce((s, c) => s + Number(c.valor), 0);
-                    const totalVencido = contasExibidas.filter(c => c.status === 'vencida').reduce((s, c) => s + Number(c.valor), 0);
-                    const countPend    = contasExibidas.filter(c => c.status === 'pendente').length;
-                    const countPago    = contasExibidas.filter(c => c.status === 'paga').length;
-                    const countVenc    = contasExibidas.filter(c => c.status === 'vencida').length;
+                    const totalPagina = subtotalPagina.total;
+                    const totalPend    = subtotalPagina.pendente;
+                    const totalPago    = subtotalPagina.paga;
+                    const totalVencido = subtotalPagina.vencida;
+                    const countPend    = subtotalPagina.countPend;
+                    const countPago    = subtotalPagina.countPago;
+                    const countVenc    = subtotalPagina.countVenc;
                     return (
                         <div style={{
                             marginBottom: 8,
@@ -1557,7 +1580,8 @@ function ContasPagarPageInner() {
                                         color: '#B89B00', letterSpacing: '.12em',
                                         textTransform: 'uppercase',
                                     }}>
-                                        Total — {contasExibidas.length} lançamento{contasExibidas.length !== 1 ? 's' : ''}
+                                        Subtotal nesta página — {contasExibidas.length} de {listTotal} lançamento{listTotal !== 1 ? 's' : ''}
+                                        {listTotalPages > 1 ? ` · pág. ${page}/${listTotalPages}` : ''}
                                     </span>
                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                         {countPend > 0 && (
@@ -1590,6 +1614,16 @@ function ContasPagarPageInner() {
                                                 🔴 {countVenc} venc. · {fmtCur(totalVencido)}
                                             </span>
                                         )}
+                                        {subtotalPagina.countCanc > 0 && (
+                                            <span style={{
+                                                fontSize: '.6rem', fontWeight: 700,
+                                                background: 'rgba(107,114,128,.1)', color: '#6B7280',
+                                                border: '1px solid rgba(107,114,128,.25)',
+                                                borderRadius: 6, padding: '2px 7px',
+                                            }}>
+                                                🚫 {subtotalPagina.countCanc} canc. · {fmtCur(subtotalPagina.cancelada)}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                                 <span style={{
@@ -1599,15 +1633,16 @@ function ContasPagarPageInner() {
                                     letterSpacing: '.04em',
                                     whiteSpace: 'nowrap',
                                 }}>
-                                    {fmtCur(totalGeral)}
+                                    {fmtCur(totalPagina)}
                                 </span>
                             </div>
                             {/* Barra de proporção visual */}
-                            {totalGeral > 0 && (
+                            {totalPagina > 0 && (
                                 <div style={{ height: 3, display: 'flex', overflow: 'hidden' }}>
                                     {totalPago > 0    && <div style={{ flex: totalPago,    background: '#10B981', transition: 'flex .4s' }} />}
                                     {totalPend > 0    && <div style={{ flex: totalPend,    background: '#F59E0B', transition: 'flex .4s' }} />}
                                     {totalVencido > 0 && <div style={{ flex: totalVencido, background: '#EF4444', transition: 'flex .4s' }} />}
+                                    {subtotalPagina.cancelada > 0 && <div style={{ flex: subtotalPagina.cancelada, background: '#9CA3AF', transition: 'flex .4s' }} />}
                                 </div>
                             )}
                         </div>
@@ -1620,7 +1655,10 @@ function ContasPagarPageInner() {
                     <div style={{ borderRadius: '14px 14px 0 0', padding: '12px 18px', background: 'linear-gradient(135deg,#0a0a0f,#111118)', display: 'flex', alignItems: 'center', gap: 10 }}>
 
                         <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(255,214,0,.15)', border: '1px solid rgba(255,214,0,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.78rem' }}>📄</div>
-                        <span style={{ fontFamily: 'Orbitron', fontSize: '.62rem', fontWeight: 800, color: '#FFD600', letterSpacing: '.13em' }}>LANÇAMENTOS ({contasExibidas.length})</span>
+                        <span style={{ fontFamily: 'Orbitron', fontSize: '.62rem', fontWeight: 800, color: '#FFD600', letterSpacing: '.13em' }}>
+                            LANÇAMENTOS ({filterStatus ? listTotal : totalGeralContagem})
+                            {contasExibidas.length !== listTotal && listTotal > 0 ? ` · ${contasExibidas.length} nesta página` : ''}
+                        </span>
                         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             {!collapseLancamentoCards ? (
                                 <AdminViewModeToggle mode={lancamentosViewMode} onChange={setLancamentosViewMode} />
@@ -1642,12 +1680,12 @@ function ContasPagarPageInner() {
                         <>
                             <div style={{ background: '#fff', borderLeft: '1px solid rgba(255,214,0,.15)', borderRight: '1px solid rgba(255,214,0,.15)', padding: '10px 16px', display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid #F3F4F6' }}>
                                 {[
-                                    { label: 'Todos', value: '', icon: '📋', count: contasExibidas.length },
-                                    { label: 'Pendentes', value: 'pendente', icon: '⏳', count: contasExibidas.filter(c => c.status === 'pendente').length },
-                                    { label: 'Pagas', value: 'paga', icon: '✅', count: contasExibidas.filter(c => c.status === 'paga').length },
-                                    { label: 'Vencidas', value: 'vencida', icon: '🔴', count: contasExibidas.filter(c => c.status === 'vencida').length },
-                                    { label: 'Canceladas', value: 'cancelada', icon: '🚫', count: contasExibidas.filter(c => c.status === 'cancelada').length },
-                                    { label: 'Excluídos', value: '__deleted__', icon: '🗑️', count: deletedContas.length },
+                                    { label: 'Todos', value: '', icon: '📋', count: totalGeralContagem },
+                                    { label: 'Pendentes', value: 'pendente', icon: '⏳', count: contagemPorStatus.pendente },
+                                    { label: 'Pagas', value: 'paga', icon: '✅', count: contagemPorStatus.paga },
+                                    { label: 'Vencidas', value: 'vencida', icon: '🔴', count: contagemPorStatus.vencida },
+                                    { label: 'Canceladas', value: 'cancelada', icon: '🚫', count: contagemPorStatus.cancelada },
+                                    { label: 'Excluídos', value: '__deleted__', icon: '🗑️', count: deletedTotal },
                                 ].map(tab => {
                                     const active = filterStatus === tab.value;
                                     return (
@@ -1689,6 +1727,7 @@ function ContasPagarPageInner() {
                                 }}>
                                     {contasExibidas.map((c, i) => {
                                         const tipo = getTipo(c.tipo_conta);
+                                        const tipoLabel = getContaTipoDisplayLabel(c) || tipo.label;
                                         const st = STATUS_CFG[c.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.pendente;
                                         const vencida = c.status === 'pendente' && new Date(c.data_vencimento) < new Date();
                                         const reimbursementMeta = parseReimbursementMeta(c);
@@ -1701,7 +1740,7 @@ function ContasPagarPageInner() {
                                                 key={c.id}
                                                 c={c}
                                                 index={i}
-                                                tipo={tipo}
+                                                tipo={{ ...tipo, label: tipoLabel }}
                                                 st={st}
                                                 vencida={vencida}
                                                 reimbursementMeta={reimbursementMeta}
@@ -1737,6 +1776,7 @@ function ContasPagarPageInner() {
                                         <tbody>
                                             {contasExibidas.map((c, i) => {
                                                 const tipo = getTipo(c.tipo_conta);
+                                        const tipoLabel = getContaTipoDisplayLabel(c) || tipo.label;
                                                 const st = STATUS_CFG[c.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.pendente;
                                                 const vencida = c.status === 'pendente' && new Date(c.data_vencimento) < new Date();
                                                 const highlighted = !!highlightId && highlightId === c.id;
@@ -1755,7 +1795,7 @@ function ContasPagarPageInner() {
                                                     >
                                                         <td style={{ padding: '8px', color: vencida ? '#DC2626' : '#374151', fontWeight: vencida ? 700 : 500 }}>{fmtDate(c.data_vencimento)}</td>
                                                         <td style={{ padding: '8px' }}><span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '.65rem', fontWeight: 700, background: st.bg, border: `1px solid ${st.border}`, color: st.color }}>{st.label}</span></td>
-                                                        <td style={{ padding: '8px', fontWeight: 600, color: tipo.color }}>{tipo.label}</td>
+                                                        <td style={{ padding: '8px', fontWeight: 600, color: tipo.color }}>{tipoLabel}</td>
                                                         <td style={{ padding: '8px', maxWidth: 220, wordBreak: 'break-word', color: '#374151' }}>{c.descricao}</td>
                                                         <td style={{ padding: '8px', color: '#64748B' }}>{c.cidade || '—'}</td>
                                                         <td style={{ padding: '8px', fontFamily: 'Orbitron, monospace', fontWeight: 900, color: c.status === 'paga' ? '#059669' : c.status === 'vencida' ? '#DC2626' : '#111827', whiteSpace: 'nowrap' }}>{fmtCur(c.valor)}</td>
@@ -1774,13 +1814,83 @@ function ContasPagarPageInner() {
                                 </div>
                             )}
 
-                            {/* Rodapé total */}
-                            {contasExibidas.length > 0 && (
-                                <div style={{ marginTop: 12, padding: '10px 18px', borderRadius: 10, background: 'linear-gradient(135deg,rgba(255,214,0,.06),rgba(255,214,0,.02))', border: '1px solid rgba(255,214,0,.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <span style={{ fontFamily: 'Orbitron', fontSize: '.62rem', fontWeight: 800, color: '#B89B00', letterSpacing: '.1em' }}>TOTAL — {contasExibidas.length} LANÇAMENTOS</span>
-                                    <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '.96rem', color: '#FFD600', filter: 'drop-shadow(0 0 8px rgba(255,214,0,.4))' }}>
-                                        {fmtCur(contasExibidas.reduce((s, c) => s + Number(c.valor), 0))}
-                                    </span>
+                            <AdminListPagination
+                                page={page}
+                                totalPages={listTotalPages}
+                                total={listTotal}
+                                loading={loading}
+                                onPageChange={setPage}
+                                itemLabel="conta(s)"
+                                style={{ marginTop: 12 }}
+                            />
+
+                            {resp && totalGeralContagem > 0 && (
+                                <div style={{
+                                    marginTop: 12,
+                                    borderRadius: 12,
+                                    border: '2px solid rgba(255,214,0,.35)',
+                                    background: 'linear-gradient(135deg, rgba(255,214,0,.12) 0%, rgba(255,214,0,.04) 100%)',
+                                    overflow: 'hidden',
+                                }}>
+                                    <div style={{
+                                        padding: '14px 20px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        gap: 12, flexWrap: 'wrap',
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                            <span style={{
+                                                fontFamily: 'Orbitron, sans-serif',
+                                                fontSize: '.65rem', fontWeight: 900,
+                                                color: '#92400E', letterSpacing: '.12em',
+                                                textTransform: 'uppercase',
+                                            }}>
+                                                Total geral — {totalGeralContagem} lançamento{totalGeralContagem !== 1 ? 's' : ''} (todas as páginas)
+                                            </span>
+                                            <span style={{ fontSize: '.58rem', color: '#6B7280', fontWeight: 600 }}>
+                                                pendentes, pagas, vencidas e canceladas
+                                            </span>
+                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                {contagemPorStatus.pendente > 0 && (
+                                                    <span style={{ fontSize: '.6rem', fontWeight: 700, background: 'rgba(217,119,6,.12)', color: '#D97706', border: '1px solid rgba(217,119,6,.3)', borderRadius: 6, padding: '2px 7px' }}>
+                                                        ⏳ {contagemPorStatus.pendente} pend. · {fmtCur(totaisPorStatus.pendente)}
+                                                    </span>
+                                                )}
+                                                {contagemPorStatus.paga > 0 && (
+                                                    <span style={{ fontSize: '.6rem', fontWeight: 700, background: 'rgba(5,150,105,.12)', color: '#059669', border: '1px solid rgba(5,150,105,.3)', borderRadius: 6, padding: '2px 7px' }}>
+                                                        ✅ {contagemPorStatus.paga} pago · {fmtCur(totaisPorStatus.paga)}
+                                                    </span>
+                                                )}
+                                                {contagemPorStatus.vencida > 0 && (
+                                                    <span style={{ fontSize: '.6rem', fontWeight: 700, background: 'rgba(220,38,38,.12)', color: '#DC2626', border: '1px solid rgba(220,38,38,.3)', borderRadius: 6, padding: '2px 7px' }}>
+                                                        🔴 {contagemPorStatus.vencida} venc. · {fmtCur(totaisPorStatus.vencida)}
+                                                    </span>
+                                                )}
+                                                {contagemPorStatus.cancelada > 0 && (
+                                                    <span style={{ fontSize: '.6rem', fontWeight: 700, background: 'rgba(107,114,128,.12)', color: '#6B7280', border: '1px solid rgba(107,114,128,.3)', borderRadius: 6, padding: '2px 7px' }}>
+                                                        🚫 {contagemPorStatus.cancelada} canc. · {fmtCur(totaisPorStatus.cancelada)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span style={{
+                                            fontFamily: 'Orbitron, sans-serif',
+                                            fontSize: '1.15rem', fontWeight: 900,
+                                            color: '#FFD600',
+                                            letterSpacing: '.04em',
+                                            whiteSpace: 'nowrap',
+                                            filter: 'drop-shadow(0 0 8px rgba(255,214,0,.4))',
+                                        }}>
+                                            {fmtCur(totalGeralValor)}
+                                        </span>
+                                    </div>
+                                    {totalGeralValor > 0 && (
+                                        <div style={{ height: 4, display: 'flex', overflow: 'hidden' }}>
+                                            {totaisPorStatus.paga > 0 && <div style={{ flex: totaisPorStatus.paga, background: '#10B981' }} />}
+                                            {totaisPorStatus.pendente > 0 && <div style={{ flex: totaisPorStatus.pendente, background: '#F59E0B' }} />}
+                                            {totaisPorStatus.vencida > 0 && <div style={{ flex: totaisPorStatus.vencida, background: '#EF4444' }} />}
+                                            {totaisPorStatus.cancelada > 0 && <div style={{ flex: totaisPorStatus.cancelada, background: '#9CA3AF' }} />}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </>
@@ -1829,6 +1939,15 @@ function ContasPagarPageInner() {
                                     >↩ Restaurar</button>
                                 </div>
                             ))}
+                            <AdminListPagination
+                                page={deletedPage}
+                                totalPages={deletedTotalPages}
+                                total={deletedTotal}
+                                loading={loading}
+                                onPageChange={setDeletedPage}
+                                itemLabel="excluída(s)"
+                                style={{ marginTop: 12 }}
+                            />
                         </div>
                     )}
                 </div>

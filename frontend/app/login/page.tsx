@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api/auth';
+import { isDevAuthBypassUi } from '@/lib/dev-auth-bypass';
 import { useAuthStore } from '@/stores/useAuthStore';
 
 export default function LoginPage() {
@@ -23,9 +24,13 @@ export default function LoginPage() {
             clearAuth();
             const response = await authApi.login(formData) as any;
 
-            // ── [DEV BYPASS — completo] AUTH_BYPASS_MFA=true: JWT imediato ─────
+            // ── [LOCALHOST] resposta com JWT direto (backend AUTH_BYPASS_MFA + dev helper) ──
+            // VPS: este ramo só corre se o servidor devolver access_token no POST /auth/login (não em prod).
             if (response.access_token && response.user) {
                 sessionStorage.setItem('token', response.access_token);
+                if (response.refresh_token) {
+                    sessionStorage.setItem('refresh_token', response.refresh_token);
+                }
                 sessionStorage.setItem('user', JSON.stringify(response.user));
                 setAuthUser(response.user, response.access_token);
                 if (response.student) sessionStorage.setItem('student', JSON.stringify(response.student));
@@ -36,7 +41,7 @@ export default function LoginPage() {
                 else router.push('/teacher/dashboard');
                 return;
             }
-            // ── [/DEV BYPASS — completo] ───────────────────────────────────────
+            // ── [/LOCALHOST] JWT direto ───────────────────────────────────────────
 
             // Alinhar com verify-email-otp: primeiro login, setup 2FA, TOTP, depois OTP por e-mail
             if (response.requiresPasswordChange && response.preAuthToken) {
@@ -144,9 +149,15 @@ export default function LoginPage() {
                         </button>
                     </form>
 
-                    <div style={{ marginTop: '1.5rem', padding: '0.85rem', background: '#FFFBEB', borderRadius: 8, border: '1px solid rgba(255,214,0,0.3)', fontSize: '0.75rem', color: '#92400E', lineHeight: 1.5 }}>
-                        🔒 <strong>Acesso seguro em duas etapas.</strong> Após validar suas credenciais, você receberá um código no seu e-mail.
-                    </div>
+                    {isDevAuthBypassUi ? (
+                        <div style={{ marginTop: '1.5rem', padding: '0.85rem', background: '#ECFDF5', borderRadius: 8, border: '1px solid #6EE7B7', fontSize: '0.75rem', color: '#065F46', lineHeight: 1.5 }}>
+                            <strong>Modo localhost:</strong> login vai direto ao dashboard (sem OTP/2FA). Na VPS, desative AUTH_BYPASS_MFA e NEXT_PUBLIC_DEV_AUTH_BYPASS — ver SPRINTS-CORRECAO-VPS.md.
+                        </div>
+                    ) : (
+                        <div style={{ marginTop: '1.5rem', padding: '0.85rem', background: '#FFFBEB', borderRadius: 8, border: '1px solid rgba(255,214,0,0.3)', fontSize: '0.75rem', color: '#92400E', lineHeight: 1.5 }}>
+                            🔒 <strong>Acesso seguro em duas etapas.</strong> Após validar suas credenciais, você receberá um código no seu e-mail.
+                        </div>
+                    )}
 
                     <div style={{ marginTop: '1rem', textAlign: 'center' }}>
                         <a href="/esqueci-senha" style={{ fontSize: '0.8rem', color: '#9CA3AF', textDecoration: 'none', fontWeight: 500 }}>Esqueci minha senha</a>

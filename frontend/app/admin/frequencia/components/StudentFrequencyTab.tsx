@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { classesApi, Class } from '@/lib/api/classes';
+import { unwrapListData } from '@/lib/api/pagination';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
 import IndividualAttendanceDetailModal from './IndividualAttendanceDetailModal';
@@ -167,8 +168,8 @@ export default function StudentFrequencyTab() {
 
     const loadActiveClasses = async () => {
         try {
-            const data = await classesApi.getAll({ status: 'IN_PROGRESS' });
-            setClasses(data);
+            const data = await classesApi.getAll({ status: 'IN_PROGRESS', limit: 500, page: 1 });
+            setClasses(unwrapListData<Class>(data));
         } catch {
             // falha silenciosa — lista fica vazia, usuário vê "Selecione uma turma"
         } finally {

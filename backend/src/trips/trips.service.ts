@@ -3,8 +3,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TripStatus } from '@prisma/client';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { MinioService } from '../reimbursement/minio.service';
+import { resolveBrowserViewUrl } from '../common/minio-browser-url.util';
+import { parseMinioPublicUrlToBucketKey } from '../reimbursement/minio-public-url.util';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
+import { dateKeyUTC, startOfUTCDay } from '../common/class-teaching-days.util';
+import { combineDateAndTime, resolveClassTripOriginCityId } from '../common/class-trip-origin.util';
 
-/** Extrai bucket + chave a partir da URL gravada no Trip (mesmo formato do presigned upload). */
 /** Include compartilhado: lista admin + retorno de validação de auditoria. */
 const TRIP_ADMIN_LIST_INCLUDE = {
     originCity: { select: { name: true, state: true } },
@@ -16,16 +20,17 @@ const TRIP_ADMIN_LIST_INCLUDE = {
 } as const;
 
 export function parseTripOdometerStoredUrl(stored: string): { bucket: string; objectKey: string } | null {
-    const s = String(stored ?? '').trim();
-    if (!s) return null;
-    try {
-        const u = new URL(s);
-        const segments = u.pathname.replace(/^\/+/, '').split('/').filter(Boolean);
-        if (segments.length < 2) return null;
-        return { bucket: segments[0], objectKey: segments.slice(1).join('/') };
-    } catch {
-        return null;
-    }
+    const parsed = parseMinioPublicUrlToBucketKey(String(stored ?? '').trim());
+    if (!parsed) return null;
+    return { bucket: parsed.bucket, objectKey: parsed.key };
+}
+
+async function resolveOdometerPhotoViewUrl(raw: string, minio: MinioService): Promise<string> {
+    const browserUrl = resolveBrowserViewUrl(raw);
+    if (browserUrl) return browserUrl;
+    const parsed = parseTripOdometerStoredUrl(raw);
+    if (!parsed) throw new BadRequestException('URL da foto armazenada é inválida');
+    return minio.presignedGetUrl(parsed.bucket, parsed.objectKey, 3600);
 }
 
 @Injectable()
@@ -42,9 +47,7 @@ export class TripsService {
         if (!trip) throw new NotFoundException('Viagem não encontrada');
         const raw = kind === 'start' ? trip.startOdometerPhotoUrl : trip.endOdometerPhotoUrl;
         if (!raw?.trim()) throw new NotFoundException('Foto não disponível para esta viagem');
-        const parsed = parseTripOdometerStoredUrl(raw);
-        if (!parsed) throw new BadRequestException('URL da foto armazenada é inválida');
-        const url = await this.minioService.presignedGetUrl(parsed.bucket, parsed.objectKey, 3600);
+        const url = await resolveOdometerPhotoViewUrl(raw, this.minioService);
         return { url };
     }
 
@@ -55,9 +58,7 @@ export class TripsService {
         if (trip.driverUserId !== driverUserId) throw new ForbiddenException('Acesso negado');
         const raw = kind === 'start' ? trip.startOdometerPhotoUrl : trip.endOdometerPhotoUrl;
         if (!raw?.trim()) throw new NotFoundException('Foto não disponível para esta viagem');
-        const parsed = parseTripOdometerStoredUrl(raw);
-        if (!parsed) throw new BadRequestException('URL da foto armazenada é inválida');
-        const url = await this.minioService.presignedGetUrl(parsed.bucket, parsed.objectKey, 3600);
+        const url = await resolveOdometerPhotoViewUrl(raw, this.minioService);
         return { url };
     }
 
@@ -73,21 +74,44 @@ export class TripsService {
                 originCity:      { select: { name: true, state: true } },
                 destinationCity: { select: { name: true, state: true } },
                 truck:           { select: { identifier: true, licensePlate: true } },
+                class: {
+                    select: {
+                        id: true,
+                        classIdentifier: true,
+                        startDate: true,
+                        endDate: true,
+                        startTime: true,
+                        endTime: true,
+                        period: true,
+                        course: { select: { id: true, name: true } },
+                    },
+                },
             },
         });
     }
 
     // ── Admin: busca todas as viagens ─────────────────────────────────────────
-    async findAllAdmin(status?: TripStatus, driverUserId?: string) {
+    async findAllAdmin(
+        status?: TripStatus,
+        driverUserId?: string,
+        opts?: { page?: number; limit?: number },
+    ) {
         const where: any = {};
         if (status) where.status = status;
         if (driverUserId) where.driverUserId = driverUserId;
 
-        return this.prisma.trip.findMany({
-            where,
-            orderBy: { departureDate: 'desc' },
-            include: TRIP_ADMIN_LIST_INCLUDE,
-        });
+        const { skip, page, limit } = resolvePagination(opts?.page, opts?.limit, 12);
+        const [data, total] = await Promise.all([
+            this.prisma.trip.findMany({
+                where,
+                orderBy: { departureDate: 'desc' },
+                include: TRIP_ADMIN_LIST_INCLUDE,
+                skip,
+                take: limit,
+            }),
+            this.prisma.trip.count({ where }),
+        ]);
+        return paginatedResult(data, total, page, limit);
     }
 
     /** Admin/coordenador confirma que analisou a viagem concluída como válida operacionalmente. */
@@ -407,29 +431,24 @@ export class TripsService {
     }
 
     /**
-     * AUTOMAÇÃO INTELIGENTE — Gera trips PLANNED para todas as datas de aula
-     * de uma turma que ainda não têm viagem correspondente.
-     *
-     * Fluxo:
-     *   1. Admin cadastra turma com Schedule (dias da semana) + Truck + Driver
-     *   2. Admin chama este endpoint — trips são geradas automaticamente
-     *   3. Driver recebe notificação e só precisa iniciar cada viagem no dia
-     *
-     * @param classId ID da turma
-     * @param driverUserId User ID do motorista responsável
+     * Gera até 2 viagens PLANNED por turma: ida (origem → cidade do curso no início) e volta (cidade do curso → origem no fim).
      */
-    async generateTripsForClass(classId: string, driverUserId: string) {
+    async generateTripsForClass(classId: string, driverUserId: string, acaoId?: string) {
         const classData = await this.prisma.class.findUnique({
             where: { id: classId },
             include: {
-                schedules: { where: { active: true }, orderBy: { weekday: 'asc' } },
-                city:      true,
-                truck:     true,
+                city: true,
+                truck: true,
+                course: { select: { name: true } },
             },
         });
         if (!classData) throw new NotFoundException('Turma não encontrada');
-        if (!classData.truck) throw new BadRequestException('Turma não tem carreta associada. Vincule uma carreta à turma primeiro.');
-        if (!classData.schedules.length) throw new BadRequestException('Turma não tem dias de aula configurados. Configure o Schedule antes de gerar viagens.');
+        if (!classData.truck) {
+            throw new BadRequestException('Turma não tem carreta associada. Vincule uma carreta à turma primeiro.');
+        }
+        if (!classData.cityId) {
+            throw new BadRequestException('Turma sem cidade do curso. Informe a cidade de destino.');
+        }
 
         const driver = await this.prisma.user.findUnique({
             where: { id: driverUserId },
@@ -438,93 +457,134 @@ export class TripsService {
         if (!driver) throw new NotFoundException('Motorista não encontrado');
         if (driver.role !== 'DRIVER') throw new BadRequestException('Usuário selecionado não é motorista');
 
-        // Cidade de origem: qualquer cidade diferente do destino da turma
-        const originCity = await this.prisma.city.findFirst({
-            where: { id: { not: classData.cityId ?? '' } },
-            orderBy: { name: 'asc' },
-        }) ?? classData.city;
+        const originCityId = await resolveClassTripOriginCityId(this.prisma, classData, acaoId);
+        const destCityId = classData.cityId;
 
-        // Gerar datas de aula baseado nos dias da semana (weekday 0=Dom, 1=Seg…6=Sáb)
-        const classWeekdays = classData.schedules.map(s => s.weekday);
-        const classDates: Date[] = [];
-        const cur = new Date(classData.startDate);
-        cur.setHours(0, 0, 0, 0);
-        const end = new Date(classData.endDate);
+        const startDay = startOfUTCDay(new Date(classData.startDate));
+        const endDay = startOfUTCDay(new Date(classData.endDate));
+        const rangeEnd = new Date(endDay);
+        rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
-        while (cur <= end) {
-            if (classWeekdays.includes(cur.getDay())) {
-                classDates.push(new Date(cur));
-            }
-            cur.setDate(cur.getDate() + 1);
-        }
+        const startKey = dateKeyUTC(startDay);
+        const endKey = dateKeyUTC(endDay);
 
-        // Verificar quais datas já têm trip para este motorista + cidade destino
-        const existingTrips = await this.prisma.trip.findMany({
+        const isCanonicalLeg = (t: { originCityId: string; destinationCityId: string; departureDate: Date }) => {
+            const dk = dateKeyUTC(startOfUTCDay(new Date(t.departureDate)));
+            const isIda =
+                t.originCityId === originCityId &&
+                t.destinationCityId === destCityId &&
+                dk === startKey;
+            const isVolta =
+                t.originCityId === destCityId &&
+                t.destinationCityId === originCityId &&
+                dk === endKey;
+            return isIda || isVolta;
+        };
+
+        const plannedInRange = await this.prisma.trip.findMany({
             where: {
+                classId,
                 driverUserId,
-                destinationCityId: classData.cityId ?? undefined,
-                departureDate: { gte: classData.startDate, lte: classData.endDate },
+                status: TripStatus.PLANNED,
+                departureDate: { gte: startDay, lt: rangeEnd },
             },
-            select: { departureDate: true },
+            select: { id: true, originCityId: true, destinationCityId: true, departureDate: true },
         });
-        const existingDates = new Set(existingTrips.map(t => t.departureDate.toISOString().slice(0, 10)));
 
-        // Criar trips para datas sem viagem
-        const newTrips: any[] = [];
-        for (const date of classDates) {
-            const dateStr = date.toISOString().slice(0, 10);
-            if (existingDates.has(dateStr)) continue;
-
-            const departure = new Date(date);
-            departure.setHours(6, 0, 0, 0);
-            const expectedArrival = new Date(departure);
-            expectedArrival.setHours(10, 0, 0, 0); // +4h estimado
-
-            newTrips.push({
-                truckId:             classData.truck!.id,
-                originCityId:        originCity?.id ?? classData.cityId,
-                destinationCityId:   classData.cityId,
-                driverUserId,
-                driverName:          driver.name,
-                departureDate:       departure,
-                expectedArrivalDate: expectedArrival,
-                status:              TripStatus.PLANNED,
-                notes:               `🤖 Gerada automaticamente — Aula da turma ${classData.classIdentifier} em ${classData.city?.name}/${classData.city?.state}`,
-            });
+        const legacyIds = plannedInRange.filter(t => !isCanonicalLeg(t)).map(t => t.id);
+        if (legacyIds.length) {
+            await this.prisma.trip.deleteMany({ where: { id: { in: legacyIds } } });
         }
 
-        if (newTrips.length === 0) {
+        const existingCanonical = plannedInRange.filter(t => !legacyIds.includes(t.id));
+        const hasIda = existingCanonical.some(
+            t =>
+                t.originCityId === originCityId &&
+                t.destinationCityId === destCityId &&
+                dateKeyUTC(startOfUTCDay(new Date(t.departureDate))) === startKey,
+        );
+        const hasVolta = existingCanonical.some(
+            t =>
+                t.originCityId === destCityId &&
+                t.destinationCityId === originCityId &&
+                dateKeyUTC(startOfUTCDay(new Date(t.departureDate))) === endKey,
+        );
+
+        const courseName = classData.course?.name || 'Curso';
+        const buildPayload = (
+            leg: 'IDA' | 'VOLTA',
+            oId: string,
+            dId: string,
+            baseDate: Date,
+            departTime: string,
+            arrivalTime: string,
+        ) => {
+            const departure = combineDateAndTime(baseDate, departTime);
+            let expectedArrival = combineDateAndTime(baseDate, arrivalTime);
+            if (expectedArrival <= departure) {
+                expectedArrival = new Date(departure.getTime() + 4 * 60 * 60 * 1000);
+            }
+            const legLabel = leg === 'IDA' ? 'Ida' : 'Volta';
             return {
-                message: 'Todas as datas de aula já têm viagem correspondente.',
+                classId,
+                truckId: classData.truck!.id,
+                originCityId: oId,
+                destinationCityId: dId,
+                driverUserId,
+                driverName: driver.name,
+                departureDate: departure,
+                expectedArrivalDate: expectedArrival,
+                status: TripStatus.PLANNED,
+                notes: `${legLabel} — turma ${classData.classIdentifier} — ${courseName}`,
+            };
+        };
+
+        const startTime = classData.startTime || '07:00';
+        const endTime = classData.endTime || '12:00';
+        const toCreate: ReturnType<typeof buildPayload>[] = [];
+
+        if (!hasIda) {
+            toCreate.push(
+                buildPayload('IDA', originCityId, destCityId, new Date(classData.startDate), startTime, endTime),
+            );
+        }
+        if (!hasVolta) {
+            toCreate.push(
+                buildPayload('VOLTA', destCityId, originCityId, new Date(classData.endDate), endTime, endTime),
+            );
+        }
+
+        const existingCount = (hasIda ? 1 : 0) + (hasVolta ? 1 : 0);
+
+        if (toCreate.length === 0) {
+            return {
+                message: 'Ida e volta já estão agendadas para esta turma.',
                 generated: 0,
-                existing: existingDates.size,
+                existing: existingCount,
             };
         }
 
-        const created = await Promise.all(
-            newTrips.map(trip => this.prisma.trip.create({ data: trip }))
-        );
+        const created = await Promise.all(toCreate.map(trip => this.prisma.trip.create({ data: trip })));
 
-        // Notificar motorista sobre a agenda
         try {
             await this.prisma.notification.create({
                 data: {
-                    userId:         driverUserId,
-                    type:           'TRIP_SCHEDULED',
-                    title:          `🚛 ${created.length} Viagens Agendadas!`,
-                    message:        `Turma ${classData.classIdentifier} — ${created.length} dias de aula adicionados à sua agenda automaticamente.`,
-                    channel:        'IN_APP',
-                    data:           { link: '/driver/viagens' },
+                    userId: driverUserId,
+                    type: 'TRIP_SCHEDULED',
+                    title: `🚛 ${created.length} viagem(ns) agendada(s)`,
+                    message: `Turma ${classData.classIdentifier}: ${created.map(t => (t.notes?.startsWith('Ida') ? 'ida' : 'volta')).join(' e ')}.`,
+                    channel: 'IN_APP',
+                    data: { link: '/driver/viagens' },
                     deliveryStatus: 'DELIVERED',
                 } as any,
             });
         } catch { /* notification optional */ }
 
         return {
-            message: `${created.length} viagens geradas automaticamente para a turma ${classData.classIdentifier}`,
+            message: `${created.length} viagem(ns) gerada(s) para ${classData.classIdentifier} (ida/volta).`,
             generated: created.length,
-            existing: existingDates.size,
-            trips: created.map(t => ({ id: t.id, departureDate: t.departureDate, status: t.status })),
+            existing: existingCount,
+            trips: created.map(t => ({ id: t.id, departureDate: t.departureDate, status: t.status, notes: t.notes })),
         };
     }
 }

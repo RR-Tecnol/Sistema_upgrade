@@ -3046,18 +3046,24 @@ export class PdfService {
           const col3X = c?.syllabusCol3X ?? 350;
           const col1W = c?.syllabusCol1W ?? 230;
           const col3W = c?.syllabusCol3W ?? 450;
-          const textSize = c?.syllabusTextSize ?? 10;
+          const globalTextSize = c?.syllabusTextSize ?? 10;
           // Limite inferior: não deixar texto encavalhar no rodapé
           const BOTTOM_LIMIT = 30;
 
           const baseY = c?.syllabusY ?? 510;
-          const lineHeight = (textSize * 1.8);
 
           for (let b = 0; b < numBlocks; b++) {
             const blockTitles = (titleBlocks[b] ?? '').split('\n');
             const blockWorkloads = (workloadBlocks[b] ?? '').split('\n');
             const blockDescs = (descBlocks[b] ?? '').split('\n');
             const maxLines = Math.max(blockTitles.length, blockWorkloads.length, blockDescs.length);
+
+            const blockSizeKey = `syllabusBlock${b}Size` as keyof typeof c;
+            const textSize =
+              c && c[blockSizeKey] != null && Number.isFinite(Number(c[blockSizeKey]))
+                ? Number(c[blockSizeKey])
+                : globalTextSize;
+            const lineHeight = textSize * 1.8;
 
             // Usa o Y arrastado pelo usuário no editor visual; senão calcula automaticamente
             const blockYKey = `syllabusBlock${b}Y` as keyof typeof c;
@@ -3098,12 +3104,21 @@ export class PdfService {
         if (p?.page2WorkloadTemplate && !isVisualEditor) {
           let wlText = p.page2WorkloadTemplate;
           wlText = wlText.replace(/{{CARGA_HORARIA}}/g, String(data.workload));
-          const p2WlX = c?.p2WorkloadX ?? 290;
+          const { width: page2W } = secondPage.getSize();
+          const p2WlW = c?.p2WorkloadW ?? 520;
+          const p2WlSize = c?.p2WorkloadSize ?? 14;
+          const p2WlX = c?.p2WorkloadX ?? Math.round((page2W - p2WlW) / 2);
           const p2WlY = c?.p2WorkloadY ?? 80;
-          const p2WlSize = c?.p2WorkloadSize ?? 12;
 
           this.drawRichText(secondPage, wlText, {
-            x: p2WlX, y: p2WlY, maxWidth: 300, size: p2WlSize, lineHeight: p2WlSize * 1.3, fontRegular, fontBold, color: rgb(0.1, 0.1, 0.1)
+            x: p2WlX,
+            y: p2WlY,
+            maxWidth: p2WlW,
+            size: p2WlSize,
+            lineHeight: p2WlSize * 1.35,
+            fontRegular,
+            fontBold,
+            color: rgb(0.1, 0.1, 0.1),
           });
         }
 

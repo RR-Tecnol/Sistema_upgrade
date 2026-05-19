@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { acoesApi, Acao } from '@/lib/api/acoes';
+import { unwrapListData } from '@/lib/api/pagination';
 import { stockApi, BaixaStatusResponse } from '@/lib/api/stock';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { EstoqueBaixaAcaoSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
-import { EstoqueQuickActionsBar } from '@/components/estoque/EstoqueQuickActionsBar';
 import {
     EstoqueSection,
     EstoqueSectionHeader,
@@ -42,7 +42,8 @@ export default function BaixaAcaoListaPage() {
         try {
             const params: any = {};
             if (filtro !== 'TODAS') params.status = filtro;
-            const rows = await acoesApi.listar(params);
+            const raw = await acoesApi.listar({ ...params, limit: 500, page: 1 });
+            const rows = unwrapListData<Acao>(raw);
             setAcoes(rows.map((a) => ({ ...a, baixa: null, loadingBaixa: false })));
             // Lazy-fetch o status de baixa para as primeiras ~20 ações
             const head = rows.slice(0, 20);
@@ -222,8 +223,6 @@ export default function BaixaAcaoListaPage() {
                     </div>
                 )}
             </EstoqueSection>
-
-            <EstoqueQuickActionsBar currentArea="baixa-acao" />
         </div>
     );
 }

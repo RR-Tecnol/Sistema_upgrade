@@ -23,15 +23,24 @@ export class CoursesController {
     @ApiQuery({ name: 'active', required: false, type: Boolean })
     @ApiQuery({ name: 'isMulticourse', required: false, type: Boolean })
     @ApiResponse({ status: 200, description: 'Courses retrieved successfully' })
+    @ApiQuery({ name: 'search', required: false })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     async findAll(
         @Query('state') state?: string,
         @Query('active') active?: string,
         @Query('isMulticourse') isMulticourse?: string,
+        @Query('search') search?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
         const filters: any = {};
         if (state) filters.state = state;
         if (active !== undefined) filters.active = active === 'true';
         if (isMulticourse !== undefined) filters.isMulticourse = isMulticourse === 'true';
+        if (search) filters.search = search;
+        if (page) filters.page = parseInt(page, 10);
+        if (limit) filters.limit = parseInt(limit, 10);
 
         return this.coursesService.findAll(filters);
     }

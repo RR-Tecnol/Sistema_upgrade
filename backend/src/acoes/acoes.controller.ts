@@ -36,13 +36,24 @@ export class AcoesController {
     @ApiQuery({ name: 'cidadeId', required: false })
     @ApiQuery({ name: 'search', required: false })
     @ApiResponse({ status: 200, description: 'Ações listadas com sucesso' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     async findAll(
         @Query('status') status?: AcaoStatus,
         @Query('grupoId') grupoId?: string,
         @Query('cidadeId') cidadeId?: string,
         @Query('search') search?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
-        return this.acoesService.findAll({ status, grupoId, cidadeId, search });
+        return this.acoesService.findAll({
+            status,
+            grupoId,
+            cidadeId,
+            search,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
     }
 
     // ── Autocomplete de cidades ───────────────────────────────────
@@ -52,6 +63,26 @@ export class AcoesController {
     @ApiQuery({ name: 'q', required: true })
     async searchCidades(@Query('q') q: string) {
         return this.acoesService.searchCidades(q || '');
+    }
+
+    @Get('turmas-by-course/:courseId')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Turmas existentes de um curso (fluxo período — evitar duplicar)' })
+    @ApiQuery({ name: 'groupId', required: false })
+    @ApiQuery({ name: 'excludeAcaoId', required: false, description: 'Exclui turmas já vinculadas a este período' })
+    async listTurmasByCourse(
+        @Param('courseId') courseId: string,
+        @Query('groupId') groupId?: string,
+        @Query('excludeAcaoId') excludeAcaoId?: string,
+    ) {
+        return this.acoesService.listTurmasByCourse(courseId, groupId, excludeAcaoId);
+    }
+
+    @Get(':id/turmas-elegiveis')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Turmas do grupo elegíveis para vincular ao período' })
+    async listTurmasElegiveis(@Param('id') id: string) {
+        return this.acoesService.listTurmasElegiveis(id);
     }
 
     // ── Detalhe ──────────────────────────────────────────────────
@@ -69,6 +100,30 @@ export class AcoesController {
     @ApiOperation({ summary: 'Resumo financeiro estimado vs real de uma ação' })
     async getResumoFinanceiro(@Param('id') id: string) {
         return this.acoesService.getResumoFinanceiro(id);
+    }
+
+    @Get(':id/calendario-resumo')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
+    @ApiOperation({ summary: 'Dias letivos vs corridos do período (política da turma vinculada)' })
+    async getCalendarioResumo(@Param('id') id: string) {
+        return this.acoesService.getCalendarioResumo(id);
+    }
+
+    @Post(':id/motor/recalcular')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({
+        summary:
+            'Recalcula data fim do período e de cada turma conforme a carga horária de cada curso vinculado',
+    })
+    async recalcularMotorPeriodo(@Param('id') id: string) {
+        return this.acoesService.recalcularMotorPeriodo(id);
+    }
+
+    @Post(':id/instructor-dias-preview')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
+    @ApiOperation({ summary: 'Sugere dias de diária do instrutor pelas turmas/cursos selecionados' })
+    async previewInstructorDias(@Param('id') id: string, @Body('classIds') classIds: string[]) {
+        return this.acoesService.previewInstructorDias(id, Array.isArray(classIds) ? classIds : []);
     }
 
     // ── CRUD ─────────────────────────────────────────────────────
@@ -118,6 +173,45 @@ export class AcoesController {
         return this.acoesService.removeTurma(id, turmaId);
     }
 
+    @Get(':id/teachers')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Listar professores do período (turmas + cursos)' })
+    async listTeachers(@Param('id') id: string) {
+        return this.acoesService.listTeachers(id);
+    }
+
+    @Post(':id/teachers/:teacherId')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Vincular professor ao período (propaga turmas e cursos)' })
+    async assignTeacher(@Param('id') id: string, @Param('teacherId') teacherId: string) {
+        return this.acoesService.assignTeacher(id, teacherId);
+    }
+
+    @Get(':id/teachers/pool')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Professores do curso base elegíveis neste período' })
+    async listTeacherPool(@Param('id') id: string) {
+        return this.acoesService.listTeacherPool(id);
+    }
+
+    @Post(':id/drivers/:driverUserId')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Vincular motorista ao período (carreta + viagens automáticas)' })
+    async assignDriver(@Param('id') id: string, @Param('driverUserId') driverUserId: string) {
+        return this.acoesService.assignDriver(id, driverUserId);
+    }
+
+    @Post(':id/turmas/:turmaId/driver/:driverUserId')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Vincular motorista a uma turma do período' })
+    async assignDriverTurma(
+        @Param('id') id: string,
+        @Param('turmaId') turmaId: string,
+        @Param('driverUserId') driverUserId: string,
+    ) {
+        return this.acoesService.assignDriverToTurma(id, turmaId, driverUserId);
+    }
+
     // ── Equipe ───────────────────────────────────────────────────
     @Post(':id/equipe')
     @Roles('ADMIN', 'COORDINATOR')
@@ -158,10 +252,41 @@ export class AcoesController {
     async removeCusto(@Param('id') id: string, @Param('custoId') custoId: string) {
         return this.acoesService.removeCusto(custoId);
     }
+    @Get(':id/funcionarios/disponiveis')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
+    @ApiOperation({ summary: 'Funcionários ativos ainda não vinculados ao período (paginado)' })
+    @ApiQuery({ name: 'search', required: false })
+    @ApiQuery({ name: 'role', required: false })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
+    async listFuncionariosDisponiveis(
+        @Param('id') id: string,
+        @Query('search') search?: string,
+        @Query('role') role?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.acoesService.listFuncionariosDisponiveis(id, {
+            search,
+            role,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
+    }
+
     @Get(':id/funcionarios')
-    @ApiOperation({ summary: 'Listar funcionários vinculados à ação' })
-    async listFuncionarios(@Param('id') id: string) {
-        return this.acoesService.listFuncionarios(id);
+    @ApiOperation({ summary: 'Listar funcionários vinculados à ação (paginado)' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
+    async listFuncionarios(
+        @Param('id') id: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.acoesService.listFuncionarios(id, {
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
     }
 
     @Post(':id/funcionarios')
@@ -169,6 +294,16 @@ export class AcoesController {
     @ApiOperation({ summary: 'Vincular funcionário à ação' })
     async addFuncionario(@Param('id') id: string, @Body() data: CreateAcaoFuncionarioDto) {
         return this.acoesService.addFuncionario(id, data);
+    }
+
+    @Post(':id/funcionarios/:employeeId/regenerate-trips')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Regenerar viagens do motorista no período (carreta + agenda)' })
+    async regenerateFuncionarioTrips(
+        @Param('id') id: string,
+        @Param('employeeId') employeeId: string,
+    ) {
+        return this.acoesService.regenerateFuncionarioTrips(id, employeeId);
     }
 
     @Patch(':id/funcionarios/:employeeId/dias')

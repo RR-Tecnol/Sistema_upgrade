@@ -43,14 +43,25 @@ export interface CreateTruckDto {
 }
 
 export const trucksApi = {
-    getAll: async (filters?: { status?: string; groupId?: string; type?: string; state?: string }) => {
+    getAll: async (filters?: {
+        status?: string;
+        groupId?: string;
+        type?: string;
+        state?: string;
+        search?: string;
+        page?: number;
+        limit?: number;
+    }) => {
         const params = new URLSearchParams();
         if (filters?.status) params.append('status', filters.status);
         if (filters?.groupId) params.append('groupId', filters.groupId);
         if (filters?.type) params.append('type', filters.type);
         if (filters?.state) params.append('state', filters.state);
+        if (filters?.search) params.append('search', filters.search);
+        if (filters?.page) params.append('page', String(filters.page));
+        if (filters?.limit) params.append('limit', String(filters.limit));
 
-        const response = await api.get<Truck[]>(`/trucks?${params.toString()}`);
+        const response = await api.get(`/trucks?${params.toString()}`);
         return response.data;
     },
 

@@ -12,6 +12,7 @@ import {
     XMarkIcon,
 } from '@heroicons/react/24/outline';
 import api from '@/lib/api/client';
+import { uploadPublicFile } from '@/lib/uploadPublicFile';
 import { toast } from '@/components/ui/Toast';
 import imageCompression from 'browser-image-compression';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
@@ -102,16 +103,7 @@ function ModalRegistrar({ onClose, onSuccess }: { onClose: () => void; onSuccess
             setLoading(true);
             let documentUrl: string | undefined;
             if (fotoFile) {
-                try {
-                    const urlRes = await api.post('/reimbursements/presigned-url', {
-                        filename: fotoFile.name, contentType: fotoFile.type,
-                    });
-                    await fetch(urlRes.data.uploadUrl, {
-                        method: 'PUT', body: fotoFile,
-                        headers: { 'Content-Type': fotoFile.type },
-                    });
-                    documentUrl = urlRes.data.fileUrl;
-                } catch { /* MinIO indisponível — continua sem URL */ }
+                documentUrl = await uploadPublicFile(fotoFile);
             }
             await api.post('/absences', {
                 ...form,
@@ -120,8 +112,9 @@ function ModalRegistrar({ onClose, onSuccess }: { onClose: () => void; onSuccess
             toast.success('Imprevisto registrado! O ADM será notificado.');
             onSuccess();
             onClose();
-        } catch {
-            toast.error('Erro ao registrar. Tente novamente.');
+        } catch (e: any) {
+            const msg = e?.response?.data?.message || e?.message;
+            toast.error(typeof msg === 'string' ? msg : 'Erro ao registrar. Verifique o anexo e tente novamente.');
         } finally {
             setLoading(false);
         }

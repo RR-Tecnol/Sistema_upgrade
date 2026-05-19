@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsPositive, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsPositive, Min, IsArray, ArrayMinSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAcaoFuncionarioDto {
@@ -16,4 +16,12 @@ export class CreateAcaoFuncionarioDto {
     @IsNumber()
     @Min(1)
     diasTrabalhados?: number;
+
+    /** INSTRUCTOR: turmas do período em que o professor atuará (define carga/diárias por curso). */
+    @ApiPropertyOptional({ type: [String], description: 'IDs das turmas (Class) do período' })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    @ArrayMinSize(1)
+    classIds?: string[];
 }

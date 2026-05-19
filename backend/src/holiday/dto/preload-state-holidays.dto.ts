@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class PreloadStateHolidaysDto {
   @ApiPropertyOptional({
@@ -12,4 +12,20 @@ export class PreloadStateHolidaysDto {
   @Min(2000, { each: true })
   @Max(2100, { each: true })
   years?: number[];
+
+  @ApiPropertyOptional({
+    example: ['RS', 'SP'],
+    description: 'UFs a incluir no catálogo (padrão: todas com feriado fixo mapeado)',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  states?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Se true, também regista nas turmas IN_PROGRESS (recalcula endDate). Padrão: false.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  applyToActiveClasses?: boolean;
 }

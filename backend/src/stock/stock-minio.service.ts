@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Minio from 'minio';
+import { buildStoredObjectUrl } from '../common/minio-browser-url.util';
+import { buildPublicReadBucketPolicy } from '../common/minio-bucket-policy.util';
 
 @Injectable()
 export class StockMinioService {
@@ -23,16 +25,10 @@ export class StockMinioService {
             const exists = await this.client.bucketExists(this.bucket);
             if (!exists) {
                 await this.client.makeBucket(this.bucket, 'us-east-1');
-                const policy = JSON.stringify({
-                    Version: '2012-10-17',
-                    Statement: [{
-                        Effect: 'Allow',
-                        Principal: { AWS: ['*'] },
-                        Action: ['s3:GetObject'],
-                        Resource: [`arn:aws:s3:::${this.bucket}/*`],
-                    }],
-                });
-                await this.client.setBucketPolicy(this.bucket, policy);
+                await this.client.setBucketPolicy(
+                    this.bucket,
+                    buildPublicReadBucketPolicy(this.bucket),
+                );
                 this.logger.log(`Bucket '${this.bucket}' criado (public read)`);
             }
         } catch (err) {
@@ -49,10 +45,6 @@ export class StockMinioService {
             'Content-Type': mimeType,
         });
 
-        const endpoint = process.env.MINIO_ENDPOINT || 'localhost';
-        const port = process.env.MINIO_PORT || '9000';
-        const useSSL = (process.env.MINIO_USE_SSL || 'false') === 'true';
-        const proto = useSSL ? 'https' : 'http';
-        return `${proto}://${endpoint}:${port}/${this.bucket}/${objectName}`;
+        return buildStoredObjectUrl(this.bucket, objectName);
     }
 }

@@ -15,6 +15,7 @@ import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 interface Checkin {
     id: string;
     checkedAt: string;
+    checkoutAt?: string | null; // MEL-07
     date: string;
     note?: string;
 }
@@ -25,9 +26,12 @@ export default function DriverFrequencia() {
     const [loading, setLoading] = useState(true);
     const [checkingIn, setCheckingIn] = useState(false);
     const [note, setNote] = useState('');
+    const [checkingOut, setCheckingOut] = useState(false); // MEL-07
 
     const today = new Date().toISOString().split('T')[0];
-    const hasCheckedInToday = checkins.some(c => c.date === today);
+    const todayCheckin = checkins.find(c => c.date === today);
+    const hasCheckedInToday = !!todayCheckin;
+    const hasCheckedOutToday = !!todayCheckin?.checkoutAt; // MEL-07
 
     useEffect(() => {
         if (user) loadCheckins();
@@ -82,6 +86,25 @@ export default function DriverFrequencia() {
         );
     };
 
+    // MEL-07: registrar saída do motorista
+    const handleCheckout = async () => {
+        if (!hasCheckedInToday || hasCheckedOutToday || checkingOut) return;
+        setCheckingOut(true);
+        try {
+            const res = await api.post('/users/me/driver-checkout');
+            if (res.data?.alreadyRegistered) {
+                toast.error('Saída já registrada hoje!');
+            } else {
+                toast.success('Saída registrada com sucesso!');
+                loadCheckins();
+            }
+        } catch (e: any) {
+            toast.error(e?.response?.data?.message || 'Erro ao registrar saída');
+        } finally {
+            setCheckingOut(false);
+        }
+    };
+
     return (
         <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
             <AdminHeaderHero
@@ -130,6 +153,19 @@ export default function DriverFrequencia() {
                             </button>
                         </div>
                     )}
+
+                    {/* MEL-07: Botão de saída — aparece quando check-in feito e saída não registrada */}
+                    {hasCheckedInToday && !hasCheckedOutToday && (
+                        <button
+                            onClick={handleCheckout}
+                            disabled={checkingOut}
+                            className="btn-secondary whitespace-nowrap justify-center"
+                            style={{ borderColor: '#F59E0B', color: '#92400E', background: '#FFF7ED' }}
+                        >
+                            <ClockIcon className="w-5 h-5 mr-1" />
+                            {checkingOut ? 'Registrando...' : '🕒 Bater Saída'}
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -144,7 +180,8 @@ export default function DriverFrequencia() {
                         <thead className="bg-gray-50">
                             <tr>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora do Check-in</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entrada</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saída</th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                             </tr>
                         </thead>
@@ -169,7 +206,12 @@ export default function DriverFrequencia() {
                                             {new Date(checkin.date + 'T12:00:00Z').toLocaleDateString('pt-BR')}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {new Date(checkin.checkedAt).toLocaleTimeString('pt-BR')}
+                                            {new Date(checkin.checkedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {checkin.checkoutAt
+                                                ? new Date(checkin.checkoutAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                                                : <span className="text-gray-400 text-xs">Não registrada</span>}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">

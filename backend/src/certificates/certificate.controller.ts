@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Post, Body, Param, Res, UseGuards, Request, Patch, Delete, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Body, Param, Query, Res, UseGuards, Request, Patch, Delete, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { IsString, IsEnum, IsOptional, IsArray, IsBoolean, IsObject } from 'class-validator';
 import { Response } from 'express';
@@ -156,14 +156,30 @@ export class CertificateController {
     @Roles('ADMIN', 'COORDINATOR', 'TEACHER')
     @Get()
     @ApiOperation({ summary: 'Lista todos os certificados emitidos' })
-    findAll() { return this.svc.findAll(); }
+    findAll(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.svc.findAll({
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
+    }
 
     @ApiBearerAuth()
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles('ADMIN', 'COORDINATOR', 'TEACHER')
     @Get('eligible')
     @ApiOperation({ summary: 'Alunos elegiveis para certificacao (freq. >=75%)' })
-    findEligible() { return this.svc.findEligible(); }
+    findEligible(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.svc.findEligible({
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
+    }
 
     @ApiBearerAuth()
     @UseGuards(JwtAuthGuard, RolesGuard)

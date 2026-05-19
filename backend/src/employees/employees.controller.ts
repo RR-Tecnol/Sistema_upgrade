@@ -59,8 +59,14 @@ export class EmployeesController {
 
     @Get('registration-requests')
     @ApiOperation({ summary: 'Lista solicitações de cadastro pendentes' })
-    getRegistrationRequests() {
-        return this.service.getRegistrationRequests();
+    getRegistrationRequests(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.service.getRegistrationRequests({
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
     }
 
     @Post('registration-requests/:id/approve')
@@ -80,8 +86,17 @@ export class EmployeesController {
         @Query('department') department?: string,
         @Query('active') active?: string,
         @Query('search') search?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
-        return this.service.findAll({ role, department, active, search });
+        return this.service.findAll({
+            role,
+            department,
+            active,
+            search,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
     }
 
     // PASSO 3.2: Frequencia de funcionarios

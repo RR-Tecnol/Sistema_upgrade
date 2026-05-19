@@ -79,11 +79,18 @@ export class AdminAbsencesController {
     @ApiOperation({ summary: '[Admin] Lista todos os imprevistos com filtros' })
     @ApiQuery({ name: 'status', required: false })
     @ApiQuery({ name: 'userId', required: false })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     async findAll(
         @Query('status') status?: string,
         @Query('userId') userId?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
-        return this.absencesService.findAll(status, userId);
+        return this.absencesService.findAll(status, userId, {
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
     }
 
     @Get(':id/student-penalty-preview')

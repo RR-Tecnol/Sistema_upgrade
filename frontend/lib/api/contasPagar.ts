@@ -53,12 +53,19 @@ export interface ContaPagar {
     } | null;
     createdAt: string;
     updatedAt: string;
+    /** BUG-14 — perfil do solicitante (Motorista, Professor, …) */
+    origemPerfil?: string;
+    origemPerfilLabel?: string;
 }
 
 export interface ContasPagarResponse {
     contas: ContaPagar[];
     total: number;
+    page?: number;
+    limit?: number;
+    totalPages?: number;
     totaisPorStatus: { pendente: number; paga: number; vencida: number; cancelada: number };
+    contagemPorStatus?: { pendente: number; paga: number; vencida: number; cancelada: number };
 }
 
 export interface CreateContaPagarData {
@@ -82,6 +89,8 @@ export async function getContasPagar(filters?: {
     data_fim?: string;
     search?: string;
     includeDeleted?: boolean; // PASSO 3.9: buscar contas excluídas
+    page?: number;
+    limit?: number;
 }): Promise<ContasPagarResponse> {
     const params = new URLSearchParams();
     if (filters?.tipo_conta) params.set('tipo_conta', filters.tipo_conta);
@@ -91,6 +100,8 @@ export async function getContasPagar(filters?: {
     if (filters?.data_fim) params.set('data_fim', filters.data_fim);
     if (filters?.search) params.set('search', filters.search);
     if (filters?.includeDeleted) params.set('includeDeleted', 'true');
+    if (filters?.page) params.set('page', String(filters.page));
+    if (filters?.limit) params.set('limit', String(filters.limit));
     const { data } = await api.get(`/contas-pagar?${params.toString()}`);
     return data;
 }

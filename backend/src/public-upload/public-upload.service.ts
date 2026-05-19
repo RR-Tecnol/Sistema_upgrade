@@ -1,6 +1,7 @@
 import { Injectable, Logger, ServiceUnavailableException, BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as Minio from 'minio';
+import { buildStoredObjectUrl } from '../common/minio-browser-url.util';
 
 const BUCKET = 'public-uploads';
 
@@ -67,25 +68,11 @@ export class PublicUploadService {
                 'Armazenamento de ficheiros indisponível. Verifique se o MinIO está a correr.',
             );
         }
-        // URL para o browser: deve coincidir com o proxy Next (`/storage/*` → MINIO_PUBLIC_BROWSER_URL).
-        // No docker-compose local o mapeamento é 9010:9000; URLs com :9000 ou hostname `minio` quebram no browser.
-        const url = this.buildBrowserObjectUrl(BUCKET, filename);
+        const url = buildStoredObjectUrl(BUCKET, filename);
         return { url, filename };
     }
 
     allowedMime(mime: string): boolean {
         return mime in MIME_EXT;
-    }
-
-    /** URL absoluta que o painel (Next) consegue reescrever para `/storage/...` ou abrir directamente. */
-    private buildBrowserObjectUrl(bucket: string, objectKey: string): string {
-        const publicBase = (process.env.MINIO_PUBLIC_BROWSER_URL || '').trim().replace(/\/$/, '');
-        if (publicBase) {
-            return `${publicBase}/${bucket}/${objectKey}`;
-        }
-        const host = process.env.MINIO_PUBLIC_HOST || process.env.MINIO_BROWSER_HOST || 'localhost';
-        const port = process.env.MINIO_PUBLIC_PORT || process.env.MINIO_BROWSER_PORT || '9010';
-        const proto = (process.env.MINIO_USE_SSL || '').toLowerCase() === 'true' ? 'https' : 'http';
-        return `${proto}://${host}:${port}/${bucket}/${objectKey}`;
     }
 }

@@ -1,0 +1,115 @@
+{
+  "dd25654c-60bd-49ac-b70f-93d0eed7de3e": {
+    "MA": {
+      "available": true,
+      "durationDays": 30
+    },
+    "PI": {
+      "available": true,
+      "durationDays": 30
+    },
+    "AC": {
+      "available": false,
+      "durationDays": 30
+    }
+  },
+  "4bca0327-b2e1-4b07-8a78-bb6c41c05fb3": {
+    "MA": {
+      "available": true,
+      "durationDays": 30,
+      "workloadHours": 60
+    },
+    "PI": {
+      "available": true,
+      "durationDays": 30,
+      "workloadHours": 60
+    },
+    "AC": {
+      "available": false,
+      "durationDays": 30
+    }
+  },
+  "91e23452-3de1-4649-a40d-3fba180f72fe": {
+    "MA": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "PI": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "AC": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    }
+  },
+  "7bb1aebf-8e13-4125-8ed4-015ec826a555": {
+    "MA": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "PI": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "AC": {
+      "available": false,
+      "durationDays": 1
+    }
+  },
+  "cb8adaa7-1336-46ff-afa0-6c51f3424daf": {
+    "MA": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "PI": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "AC": {
+      "available": false,
+      "durationDays": 1
+    }
+  },
+  "3ddf40ea-e375-43ef-8192-f9062c408dad": {
+    "MA": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "PI": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "AC": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    }
+  },
+  "2525db98-0a17-417e-820a-04e4a4a20c79": {
+    "MA": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "PI": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    },
+    "AC": {
+      "available": true,
+      "durationDays": 1,
+      "workloadHours": 60
+    }
+  }
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, type ReactNode } from 'react';
 import api from '@/lib/api/client';
 import dynamic from 'next/dynamic';
 import Draggable from 'react-draggable';
@@ -13,6 +13,10 @@ import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import { formatCertificateIssueError } from '@/lib/certificate-issue-error';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, unwrapListData, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
+import { getTemplateBadge } from '@/lib/certificates/templateLabels';
+import { toast } from '@/components/ui/Toast';
 
 const QRCodeSVG = dynamic(() => import('qrcode.react').then(m => m.QRCodeSVG), { ssr: false });
 
@@ -135,6 +139,7 @@ const COORDINATE_FIELD_KEYS: { key: string; label: string; hint?: string }[] = [
     { key: 'p2WorkloadX', label: 'Pág.2 Carga Hor. — X' },
     { key: 'p2WorkloadY', label: 'Pág.2 Carga Hor. — Y' },
     { key: 'p2WorkloadSize', label: 'Pág.2 Carga Hor. — tamanho' },
+    { key: 'p2WorkloadW', label: 'Pág.2 Carga Hor. — largura' },
     { key: 'p2QrX', label: 'QR Pág.2 — X' },
     { key: 'p2QrY', label: 'QR Pág.2 — Y' },
     { key: 'p2QrSize', label: 'QR Pág.2 — lado' },
@@ -188,7 +193,7 @@ const MASTER_PRESETS: Record<string, {
             p2CourseBoxX: '421', p2CourseBoxY: '548', p2CourseBoxW: '350', p2CourseBoxH: '44', p2CourseTextSize: '13',
             syllabusY: '490', syllabusCol1X: '40', syllabusCol2X: '290', syllabusCol3X: '350',
             syllabusTextSize: '9', syllabusCol1W: '240', syllabusCol3W: '420',
-            p2WorkloadX: '330', p2WorkloadY: '65', p2WorkloadSize: '13',
+            p2WorkloadX: '330', p2WorkloadY: '65', p2WorkloadSize: '14', p2WorkloadW: '520',
         },
         texts: {
             paragraph: 'Certificamos que **{{ALUNO_NOME}}** participou e concluiu o curso de **{{CURSO}}**, com carga horária de **{{CARGA_HORARIA}} horas**, promovido pela SEDUC/MA.',
@@ -215,7 +220,7 @@ const MASTER_PRESETS: Record<string, {
             p2CourseBoxX: '421', p2CourseBoxY: '548', p2CourseBoxW: '350', p2CourseBoxH: '44', p2CourseTextSize: '13',
             syllabusY: '490', syllabusCol1X: '40', syllabusCol2X: '290', syllabusCol3X: '350',
             syllabusTextSize: '9', syllabusCol1W: '240', syllabusCol3W: '420',
-            p2WorkloadX: '330', p2WorkloadY: '65', p2WorkloadSize: '13',
+            p2WorkloadX: '330', p2WorkloadY: '65', p2WorkloadSize: '14', p2WorkloadW: '520',
         },
         texts: {
             paragraph: 'Certificamos que **{{ALUNO_NOME}}** concluiu com êxito o curso de **{{CURSO}}**, com carga horária de **{{CARGA_HORARIA}} horas**, ofertado pela SETRE/PI.',
@@ -299,6 +304,66 @@ function deserializeSyllabusBlocks(title: string, workload: string, desc: string
         cargas: workloads[i] ?? '',
         descricoes: descs[i] ?? '',
     }));
+}
+
+/** Chaves dinâmicas por bloco de ementa (Y e tamanho de fonte). */
+function isSyllabusBlockCoordKey(key: string): boolean {
+    return /^syllabusBlock\d+(Y|Size)$/.test(key);
+}
+
+/** Restaura todas as chaves numéricas (incl. syllabusBlock0Y, syllabusBlock1Y, …). */
+function coordinateOverridesToForm(co: unknown): Record<string, string> {
+    const next: Record<string, string> = {};
+    if (!co || typeof co !== 'object' || Array.isArray(co)) return next;
+    for (const [key, v] of Object.entries(co as Record<string, unknown>)) {
+        if (typeof v === 'number' && Number.isFinite(v)) {
+            next[key] = String(v);
+        }
+    }
+    return next;
+}
+
+/** Botões − / + para ajustar tamanho de fonte (pt) no editor de coordenadas. */
+function CoordFontStepper({
+    coordKey,
+    value,
+    onChange,
+    min = 6,
+    max = 40,
+    step = 1,
+}: {
+    coordKey: string;
+    value: string;
+    onChange: (key: string, next: string) => void;
+    min?: number;
+    max?: number;
+    step?: number;
+}) {
+    const bump = (delta: number) => {
+        const cur = Number(value);
+        const base = Number.isFinite(cur) ? cur : 12;
+        const next = Math.min(max, Math.max(min, base + delta));
+        onChange(coordKey, String(next));
+    };
+    const btnStyle: CSSProperties = {
+        width: 26,
+        height: 26,
+        borderRadius: 6,
+        border: '1px solid #D4D4D8',
+        background: '#fff',
+        color: '#374151',
+        fontWeight: 800,
+        fontSize: '0.9rem',
+        cursor: 'pointer',
+        lineHeight: 1,
+        padding: 0,
+    };
+    return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`Ajustar ${coordKey}`}>
+            <button type="button" style={btnStyle} onClick={() => bump(-step)} aria-label="Diminuir fonte">−</button>
+            <button type="button" style={btnStyle} onClick={() => bump(step)} aria-label="Aumentar fonte">+</button>
+        </span>
+    );
 }
 
 interface OverlayProps {
@@ -533,18 +598,27 @@ function CertificateDraggableOverlay({
                     {(() => {
                         const sub = applyPdfTemplateSubstitutions(pdfPage2WorkloadTemplate, previewSample);
                         if (!sub.trim()) return null;
+                        const p2WlW = Number(coordForm.p2WorkloadW ?? 520);
+                        const p2WlSize = Number(coordForm.p2WorkloadSize ?? 14);
+                        const p2WlX = Number(coordForm.p2WorkloadX ?? Math.round((PDF_WIDTH - p2WlW) / 2));
+                        const p2WlY = Number(coordForm.p2WorkloadY ?? 80);
                         return renderDraggable(
                             sub,
                             'p2WorkloadX',
                             'p2WorkloadY',
-                            290,
-                            80,
-                            Number(coordForm.p2WorkloadSize ?? 12),
-                            true,
+                            p2WlX,
+                            p2WlY,
+                            p2WlSize,
+                            false,
                             false,
                             false,
                             'left',
-                            { richChildren: <>{renderMarkdownBoldSegments(sub)}</>, verticalAnchor: 'pdfBaselineTop' },
+                            {
+                                richChildren: <>{renderMarkdownBoldSegments(sub)}</>,
+                                verticalAnchor: 'pdfBaselineTop',
+                                wrap: true,
+                                maxWidthPx: p2WlW * scale,
+                            },
                         );
                     })()}
                     {syllabusBlocks.flatMap((block, i) => {
@@ -552,8 +626,10 @@ function CertificateDraggableOverlay({
                         const lineHeight = Number(coordForm['syllabusTextSize'] ?? 10) * 1.8;
                         const defaultBlockY = Math.round(baseY - i * lineHeight * 3);
                         const blockYKey = `syllabusBlock${i}Y`;
+                        const blockSizeKey = `syllabusBlock${i}Size`;
                         const blockY = Number(coordForm[blockYKey] ?? defaultBlockY);
-                        const textSize = Number(coordForm.syllabusTextSize ?? 10);
+                        const globalSylSize = Number(coordForm.syllabusTextSize ?? 10);
+                        const textSize = Number(coordForm[blockSizeKey] ?? globalSylSize);
 
                         const previewTitle = block.titulos.split('\n')[0]?.trim() || null;
                         const previewWorkload = block.cargas.split('\n')[0]?.trim() || null;
@@ -860,6 +936,12 @@ export default function CertificadosPage() {
     const [issuedViewMode, setIssuedViewMode] = usePersistedAdminViewMode('admin:certificados:issued', 'table');
     const [certificates, setCertificates] = useState<Certificate[]>([]);
     const [eligible, setEligible] = useState<EligibleStudent[]>([]);
+    const [issuedPage, setIssuedPage] = useState(1);
+    const [eligiblePage, setEligiblePage] = useState(1);
+    const [issuedTotal, setIssuedTotal] = useState(0);
+    const [eligibleTotal, setEligibleTotal] = useState(0);
+    const [issuedTotalPages, setIssuedTotalPages] = useState(1);
+    const [eligibleTotalPages, setEligibleTotalPages] = useState(1);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<Certificate | null>(null);
     const [issuing, setIssuing] = useState<string | null>(null);
@@ -913,6 +995,15 @@ export default function CertificadosPage() {
     const [pdfModalUrl, setPdfModalUrl] = useState<string | null>(null);
     const [pdfModalLoading, setPdfModalLoading] = useState(false);
     const lastModalPdfUrl = useRef<string | null>(null);
+    // MEL-08: Modais de Duplicar e Vincular (substituem window.prompt e select inline)
+    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [duplicateTitleInput, setDuplicateTitleInput] = useState('');
+    const [duplicatingModal, setDuplicatingModal] = useState(false);
+    const [showVinculoCursoModal, setShowVinculoCursoModal] = useState(false);
+    const [vinculoCursoInput, setVinculoCursoInput] = useState('');
+    const [autoFillLoading, setAutoFillLoading] = useState(false);
+    const [savingTemplate, setSavingTemplate] = useState(false);
+    const [userRole, setUserRole] = useState('');
     const templatePreviewUrl =
         `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3012/api').replace(/\/api$/, '')}/api/certificates/template/model`;
 
@@ -929,6 +1020,30 @@ export default function CertificadosPage() {
     );
 
     useEffect(() => { fetchData(); fetchTemplates(); fetchCourses(); fetchAvailablePdfs(); }, []);
+
+    useEffect(() => {
+        const u = sessionStorage.getItem('user') || localStorage.getItem('user');
+        if (!u) return;
+        try {
+            setUserRole(JSON.parse(u).role || '');
+        } catch {
+            setUserRole('');
+        }
+    }, []);
+
+    const isAdmin = userRole === 'ADMIN' || userRole === 'IT_ADMIN';
+
+    useEffect(() => {
+        if (tab !== 'issued') return;
+        setLoading(true);
+        fetchIssued(issuedPage).finally(() => setLoading(false));
+    }, [issuedPage, tab]);
+
+    useEffect(() => {
+        if (tab !== 'eligible') return;
+        setLoading(true);
+        fetchEligible(eligiblePage).finally(() => setLoading(false));
+    }, [eligiblePage, tab]);
 
     useEffect(() => {
         const t = setTimeout(() => setDebouncedCoordForm(coordForm), 500);
@@ -1006,29 +1121,52 @@ export default function CertificadosPage() {
         [],
     );
 
-    const fetchData = async () => {
-        setLoading(true);
+    const fetchIssued = async (page = issuedPage) => {
         try {
-            const [certRes, eligRes] = await Promise.allSettled([
-                api.get('/certificates'),
-                api.get('/certificates/eligible'),
-            ]);
+            const certRes = await api.get('/certificates', { params: { page, limit: ADMIN_PAGE_SIZE_TABLE } });
+            const norm = normalizePaginated<Certificate>(certRes.data, ADMIN_PAGE_SIZE_TABLE);
+            setCertificates(norm.data);
+            setIssuedTotal(norm.total);
+            setIssuedTotalPages(norm.totalPages);
+        } catch {
+            setCertificates([]);
+            setIssuedTotal(0);
+            setIssuedTotalPages(1);
+        }
+    };
 
-            if (certRes.status === 'fulfilled') {
-                setCertificates(certRes.value.data || []);
-            }
-            if (eligRes.status === 'fulfilled' && eligRes.value.data?.length > 0) {
-                setEligible(eligRes.value.data);
-            } else {
-                // Mock eligible students if endpoint not ready or empty
+    const fetchEligible = async (page = eligiblePage) => {
+        try {
+            const eligRes = await api.get('/certificates/eligible', { params: { page, limit: ADMIN_PAGE_SIZE_TABLE } });
+            const norm = normalizePaginated<EligibleStudent>(eligRes.data, ADMIN_PAGE_SIZE_TABLE);
+            if (norm.data.length > 0) {
+                setEligible(norm.data);
+                setEligibleTotal(norm.total);
+                setEligibleTotalPages(norm.totalPages);
+            } else if (page === 1) {
                 setEligible([
                     { id: '1', name: 'Ana Silva', cpf: '123.456.789-01', enrollmentId: 'enr1', classId: 'cls1', courseName: 'Informática Básica', classIdentifier: 'INF-001/MA', attendanceRate: 92 },
                     { id: '2', name: 'Carlos Sousa', cpf: '987.654.321-00', enrollmentId: 'enr2', classId: 'cls1', courseName: 'Informática Básica', classIdentifier: 'INF-001/MA', attendanceRate: 88 },
                     { id: '3', name: 'Maria Oliveira', cpf: '111.222.333-44', enrollmentId: 'enr3', classId: 'cls2', courseName: 'Costura Industrial', classIdentifier: 'COS-002/PI', attendanceRate: 81 },
                 ]);
+                setEligibleTotal(3);
+                setEligibleTotalPages(1);
+            } else {
+                setEligible([]);
+                setEligibleTotal(0);
+                setEligibleTotalPages(1);
             }
         } catch {
-            /* silencioso — estado vazio exibido */
+            setEligible([]);
+            setEligibleTotal(0);
+            setEligibleTotalPages(1);
+        }
+    };
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            await Promise.all([fetchIssued(issuedPage), fetchEligible(eligiblePage)]);
         } finally {
             setLoading(false);
         }
@@ -1072,73 +1210,74 @@ export default function CertificadosPage() {
         }
     };
 
-    const loadTemplateDetail = async (templateId: string) => {
+    const applyVersionToEditor = (version: CertificateTemplateVersion) => {
+        setTemplateTitle(version.title || 'Modelo certificado');
+        setTemplateType(version.templateType === 'HTML' ? 'HTML' : 'PDF_BASE');
+        setTemplatePdfPath(version.pdfPath || '');
+        const po = version.pdfTextOverrides;
+        if (po && typeof po === 'object') {
+            setPdfParagraphTemplate(typeof po.paragraphTemplate === 'string' ? po.paragraphTemplate : '');
+            setPdfDateTemplate(typeof po.dateTemplate === 'string' ? po.dateTemplate : '');
+            setPdfPage2WorkloadTemplate(typeof po.page2WorkloadTemplate === 'string' ? po.page2WorkloadTemplate : '');
+            const rawTitle = typeof po.syllabusTitleContent === 'string' ? po.syllabusTitleContent : '';
+            const rawWorkload = typeof po.syllabusWorkloadContent === 'string' ? po.syllabusWorkloadContent : '';
+            const rawDesc = typeof po.syllabusDescContent === 'string' ? po.syllabusDescContent : '';
+            setPdfSyllabusTitleContent(rawTitle);
+            setPdfSyllabusWorkloadContent(rawWorkload);
+            setPdfSyllabusDescContent(rawDesc);
+            setSyllabusBlocks(deserializeSyllabusBlocks(rawTitle, rawWorkload, rawDesc));
+            setQrPages({
+                page1: po.qrPage1 !== false,
+                page2: po.qrPage2 === true,
+            });
+            setPdfUseBodyWhiteMask(po.useBodyWhiteMask === true);
+            setPdfUseP2TitleWhiteMask(po.usePage2TitleWhiteMask === true);
+            setPdfDrawHeader(po.drawHeaderNameAndDetails === true);
+            setPdfSignatureMode(
+                po.signatureMode === 'IMAGE' || po.signatureMode === 'PADES' || po.signatureMode === 'BOTH' || po.signatureMode === 'NONE'
+                    ? po.signatureMode
+                    : 'AUTO',
+            );
+            setPdfSignatureImagePath(typeof po.signatureImagePath === 'string' ? po.signatureImagePath : '');
+        } else {
+            setPdfParagraphTemplate('');
+            setPdfDateTemplate('');
+            setPdfPage2WorkloadTemplate('');
+            setPdfSyllabusTitleContent('');
+            setPdfSyllabusWorkloadContent('');
+            setPdfSyllabusDescContent('');
+            setSyllabusBlocks([{ id: '0', titulos: '', cargas: '', descricoes: '' }]);
+            setQrPages({ page1: true, page2: false });
+            setPdfUseBodyWhiteMask(false);
+            setPdfUseP2TitleWhiteMask(false);
+            setPdfDrawHeader(false);
+            setPdfSignatureMode('AUTO');
+            setPdfSignatureImagePath('');
+        }
+        const nextCoords = coordinateOverridesToForm(version.coordinateOverrides);
+        setCoordForm(nextCoords);
+        setDebouncedCoordForm(nextCoords);
+    };
+
+    const loadTemplateDetail = async (templateId: string, versionIdToApply?: string) => {
         try {
             const res = await api.get(`/certificates/templates/${templateId}`);
             const tpl: CertificateTemplate = res.data;
-            setSelectedTemplateDetail(tpl);
             setSelectedTemplateId(templateId);
-            if (tpl.currentVersion) {
-                setTemplateTitle(tpl.currentVersion.title || 'Modelo certificado');
-                setTemplateType('PDF_BASE');
-                setTemplatePdfPath(tpl.currentVersion.pdfPath || '');
-                const po = tpl.currentVersion.pdfTextOverrides;
-                if (po && typeof po === 'object') {
-                    setPdfParagraphTemplate(typeof po.paragraphTemplate === 'string' ? po.paragraphTemplate : '');
-                    setPdfDateTemplate(typeof po.dateTemplate === 'string' ? po.dateTemplate : '');
-                    setPdfPage2WorkloadTemplate(typeof po.page2WorkloadTemplate === 'string' ? po.page2WorkloadTemplate : '');
-                    const rawTitle = typeof po.syllabusTitleContent === 'string' ? po.syllabusTitleContent : '';
-                    const rawWorkload = typeof po.syllabusWorkloadContent === 'string' ? po.syllabusWorkloadContent : '';
-                    const rawDesc = typeof po.syllabusDescContent === 'string' ? po.syllabusDescContent : '';
-                    // mantém os estados legados sincronizados (usados pelo overlay visual)
-                    setPdfSyllabusTitleContent(rawTitle);
-                    setPdfSyllabusWorkloadContent(rawWorkload);
-                    setPdfSyllabusDescContent(rawDesc);
-                    setSyllabusBlocks(deserializeSyllabusBlocks(rawTitle, rawWorkload, rawDesc));
-                    setQrPages({
-                        page1: po.qrPage1 !== false,   // default true
-                        page2: po.qrPage2 === true,    // default false
-                    });
-                    setPdfUseBodyWhiteMask(po.useBodyWhiteMask === true);
-                    setPdfUseP2TitleWhiteMask(po.usePage2TitleWhiteMask === true);
-                    setPdfDrawHeader(po.drawHeaderNameAndDetails === true);
-                    setPdfSignatureMode(
-                        po.signatureMode === 'IMAGE' || po.signatureMode === 'PADES' || po.signatureMode === 'BOTH' || po.signatureMode === 'NONE'
-                            ? po.signatureMode
-                            : 'AUTO',
-                    );
-                    setPdfSignatureImagePath(typeof po.signatureImagePath === 'string' ? po.signatureImagePath : '');
-                } else {
-                    // Modelo sem dados salvos — começa limpo
-                    setPdfParagraphTemplate('');
-                    setPdfDateTemplate('');
-                    setPdfPage2WorkloadTemplate('');
-                    setPdfSyllabusTitleContent('');
-                    setPdfSyllabusWorkloadContent('');
-                    setPdfSyllabusDescContent('');
-                    setSyllabusBlocks([{ id: '0', titulos: '', cargas: '', descricoes: '' }]);
-                    setQrPages({ page1: true, page2: false });
-                    setPdfUseBodyWhiteMask(false);
-                    setPdfUseP2TitleWhiteMask(false);
-                    setPdfDrawHeader(false);
-                    setPdfSignatureMode('AUTO');
-                    setPdfSignatureImagePath('');
-                }
-                const co = tpl.currentVersion?.coordinateOverrides;
-                if (co && typeof co === 'object' && !Array.isArray(co)) {
-                    const next: Record<string, string> = {};
-                    for (const { key } of COORDINATE_FIELD_KEYS) {
-                        const v = (co as Record<string, unknown>)[key];
-                        if (typeof v === 'number' && Number.isFinite(v)) {
-                            next[key] = String(v);
-                        }
-                    }
-                    setCoordForm(next);
-                    setDebouncedCoordForm(next);
-                } else {
-                    setCoordForm({});
-                    setDebouncedCoordForm({});
-                }
+
+            let versionToApply: CertificateTemplateVersion | null | undefined = tpl.currentVersion;
+            if (versionIdToApply && tpl.versions?.length) {
+                versionToApply = tpl.versions.find((v) => v.id === versionIdToApply) ?? versionToApply;
+            }
+
+            setSelectedTemplateDetail(
+                versionToApply
+                    ? { ...tpl, currentVersion: versionToApply }
+                    : tpl,
+            );
+
+            if (versionToApply) {
+                applyVersionToEditor(versionToApply);
             }
             setTemplateScope(tpl.scope);
             if (tpl.state) setTemplateState(String(tpl.state).trim().toUpperCase());
@@ -1150,17 +1289,20 @@ export default function CertificadosPage() {
 
     const fetchCourses = async () => {
         try {
-            const res = await api.get('/courses');
-            const rows = Array.isArray(res.data) ? res.data : [];
+            const res = await api.get('/courses', { params: { page: 1, limit: 500, active: true } });
+            const rows = unwrapListData<{ id: string; name: string; workloadHours?: number }>(res.data);
             setCourses(
-                rows.map((c: any) => ({
-                    id: c.id,
-                    name: c.name,
-                    workloadHours: typeof c.workloadHours === 'number' ? c.workloadHours : undefined,
-                })),
+                rows
+                    .map((c) => ({
+                        id: c.id,
+                        name: c.name,
+                        workloadHours: typeof c.workloadHours === 'number' ? c.workloadHours : undefined,
+                    }))
+                    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
             );
         } catch {
             setCourses([]);
+            toast.error('Não foi possível carregar a lista de cursos.');
         }
     };
 
@@ -1394,12 +1536,11 @@ export default function CertificadosPage() {
             if (Number.isFinite(n)) o[key] = n;
         }
         for (const key of Object.keys(coordForm)) {
-            if (key.startsWith('syllabusBlock') && key.endsWith('Y')) {
-                const s = coordForm[key]?.trim();
-                if (s !== undefined && s !== '') {
-                    const n = Number(s);
-                    if (Number.isFinite(n)) o[key] = n;
-                }
+            if (!isSyllabusBlockCoordKey(key)) continue;
+            const s = coordForm[key]?.trim();
+            if (s !== undefined && s !== '') {
+                const n = Number(s);
+                if (Number.isFinite(n)) o[key] = n;
             }
         }
         if (Object.keys(o).length > 0) return o;
@@ -1424,12 +1565,11 @@ export default function CertificadosPage() {
             if (Number.isFinite(n)) o[key] = n;
         }
         for (const key of Object.keys(form)) {
-            if (key.startsWith('syllabusBlock') && key.endsWith('Y')) {
-                const s = form[key]?.trim();
-                if (s !== undefined && s !== '') {
-                    const n = Number(s);
-                    if (Number.isFinite(n)) o[key] = n;
-                }
+            if (!isSyllabusBlockCoordKey(key)) continue;
+            const s = form[key]?.trim();
+            if (s !== undefined && s !== '') {
+                const n = Number(s);
+                if (Number.isFinite(n)) o[key] = n;
             }
         }
         return Object.keys(o).length > 0 ? o : undefined;
@@ -1514,83 +1654,217 @@ export default function CertificadosPage() {
 
     // Removed debounced useEffect that called runPdfBasePreview.
 
-    const createTemplateVersion = async (autoPublish: boolean) => {
-        setTemplateMessage(null);
+    const validateTemplateForm = (): string | null => {
         const normalizedUf = templateState.trim().toUpperCase();
-        // Validação: curso obrigatório
         if (!templateCourseId) {
-            setTemplateMessage('? Selecione um CURSO vinculado antes de salvar. O template precisa saber de qual curso puxar dados na emissão.');
-            return;
+            return 'Selecione um curso vinculado antes de salvar. O modelo precisa saber de qual curso puxar dados na emissão.';
         }
         if (
-            (templateScope === 'STATE' || templateScope === 'COURSE_STATE' || templateScope === 'PUBLIC_FILE')
+            (templateScope === 'STATE' || templateScope === 'COURSE_STATE')
             && !/^[A-Z]{2}$/.test(normalizedUf)
         ) {
-            setTemplateMessage('Informe uma UF válida com 2 letras (ex.: MA, PI, AC).');
-            return;
+            return 'Informe uma UF válida com 2 letras (ex.: MA, PI, AC).';
         }
-        try {
-            const res = await api.post('/certificates/templates', {
-                scope: templateScope,
-                courseId: templateScope === 'COURSE' || templateScope === 'COURSE_STATE' || templateScope === 'PUBLIC_FILE'
-                    ? templateCourseId || undefined
-                    : undefined,
-                state: templateScope === 'STATE' || templateScope === 'COURSE_STATE' || templateScope === 'PUBLIC_FILE'
-                    ? normalizedUf
-                    : undefined,
-                title: templateTitle,
-                templateType,
-                htmlContent: undefined,
-                cssContent: undefined,
-                pdfPath: templateType === 'PDF_BASE' ? templatePdfPath || undefined : undefined,
-                pdfTextOverrides: buildPdfTextOverridesPayload(),
-                coordinateOverrides: buildCoordinateOverridesPayload(),
-                keyOverride: selectedTemplateDetail?.scope === 'PUBLIC_FILE' ? selectedTemplateDetail.key : undefined,
-                placeholders: ['ALUNO_NOME', 'CURSO_NOME', 'CARGA_HORARIA', 'CIDADE', 'ESTADO', 'DATA_EMISSAO', 'CODIGO_VERIFICACAO', 'QR_CODE_DATA_URL', 'TURMA', 'EMISSOR'],
-                autoPublish,
-            });
-            setTemplateMessage(`Versão ${res.data?.version ?? ''} criada com sucesso.`);
-            await fetchTemplates();
-        } catch (error: any) {
-            const msg = error?.response?.data?.message || 'Erro ao salvar versão de modelo.';
-            setTemplateMessage(Array.isArray(msg) ? msg.join(' | ') : msg);
+        if (templateScope === 'COURSE_STATE' || templateScope === 'COURSE') {
+            // ok
+        } else if (templateScope === 'STATE') {
+            // curso usado só para preview/ementa
         }
+        return null;
     };
 
-    const publishVersion = async (versionId: string) => {
+    const buildTemplatePayload = (autoPublish: boolean) => {
+        const normalizedUf = templateState.trim().toUpperCase();
+        return {
+            scope: templateScope,
+            courseId: templateScope === 'COURSE' || templateScope === 'COURSE_STATE'
+                ? templateCourseId || undefined
+                : undefined,
+            state: templateScope === 'STATE' || templateScope === 'COURSE_STATE'
+                ? normalizedUf
+                : undefined,
+            title: templateTitle,
+            templateType,
+            htmlContent: undefined,
+            cssContent: undefined,
+            pdfPath: templateType === 'PDF_BASE' ? templatePdfPath || undefined : undefined,
+            pdfTextOverrides: buildPdfTextOverridesPayload(),
+            coordinateOverrides: parseCoordFormToPayload(coordForm),
+            keyOverride: selectedTemplateDetail?.scope === 'PUBLIC_FILE' ? selectedTemplateDetail.key : undefined,
+            placeholders: ['ALUNO_NOME', 'CURSO_NOME', 'CARGA_HORARIA', 'CIDADE', 'ESTADO', 'DATA_EMISSAO', 'CODIGO_VERIFICACAO', 'QR_CODE_DATA_URL', 'TURMA', 'EMISSOR'],
+            autoPublish,
+        };
+    };
+
+    const persistTemplateVersion = async (autoPublish: boolean): Promise<{ templateId: string; version: number; status: string } | null> => {
+        const validationError = validateTemplateForm();
+        if (validationError) {
+            setTemplateMessage(validationError);
+            return null;
+        }
+        setSavingTemplate(true);
         setTemplateMessage(null);
         try {
-            await api.post(`/certificates/templates/versions/${versionId}/publish`);
-            setTemplateMessage('Versão publicada com sucesso.');
+            const res = await api.post('/certificates/templates', buildTemplatePayload(autoPublish));
+            let savedVersion = res.data as CertificateTemplateVersion & { templateId?: string };
+            const templateId = savedVersion?.templateId;
+            const versionId = savedVersion?.id;
+
+            if (versionId && savedVersion?.status !== 'PUBLISHED' && autoPublish && isAdmin) {
+                await api.post(`/certificates/templates/versions/${versionId}/publish`);
+                savedVersion = { ...savedVersion, status: 'PUBLISHED' };
+            }
+
+            if (templateId && savedVersion?.id) {
+                setSelectedTemplateId(templateId);
+                applyVersionToEditor(savedVersion);
+                try {
+                    const detailRes = await api.get(`/certificates/templates/${templateId}`);
+                    const tpl: CertificateTemplate = detailRes.data;
+                    setSelectedTemplateDetail({
+                        ...tpl,
+                        currentVersion: savedVersion,
+                    });
+                } catch {
+                    setSelectedTemplateDetail((prev) =>
+                        prev ? { ...prev, id: templateId, currentVersion: savedVersion } : prev,
+                    );
+                }
+            }
+
             await fetchTemplates();
-        } catch {
-            setTemplateMessage('Não foi possível publicar a versão.');
+
+            return {
+                templateId: templateId ?? '',
+                version: savedVersion?.version ?? 0,
+                status: savedVersion?.status ?? (autoPublish && isAdmin ? 'PUBLISHED' : 'DRAFT'),
+            };
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { message?: string | string[] } } };
+            const msg = err?.response?.data?.message || 'Erro ao salvar versão de modelo.';
+            setTemplateMessage(Array.isArray(msg) ? msg.join(' | ') : msg);
+            return null;
+        } finally {
+            setSavingTemplate(false);
         }
     };
 
-    const duplicateCurrentVersion = async () => {
+    const saveModelToLibrary = async () => {
+        const result = await persistTemplateVersion(false);
+        if (result) {
+            setTemplateMessage(`Salvo na biblioteca (rascunho v${result.version}). A emissão continua usando o modelo oficial até você publicar.`);
+        }
+    };
+
+    const findConflictingOfficialTemplate = () => {
+        const normalizedUf = templateState.trim().toUpperCase();
+        return templates.find((t) => {
+            if (t.currentVersion?.status !== 'PUBLISHED') return false;
+            if (templateScope === 'COURSE_STATE') {
+                return t.scope === 'COURSE_STATE' && t.courseId === templateCourseId && t.state === normalizedUf;
+            }
+            if (templateScope === 'COURSE') {
+                return t.scope === 'COURSE' && t.courseId === templateCourseId;
+            }
+            return false;
+        });
+    };
+
+    const makeModelOfficialForCourse = async () => {
+        if (!isAdmin) {
+            setTemplateMessage('Somente administrador pode tornar o modelo oficial na emissão.');
+            return;
+        }
+        const validationError = validateTemplateForm();
+        if (validationError) {
+            setTemplateMessage(validationError);
+            return;
+        }
+        if (templateScope !== 'COURSE' && templateScope !== 'COURSE_STATE') {
+            setTemplateMessage('Para tornar oficial do curso, use o âmbito "Curso" ou "Curso + UF".');
+            return;
+        }
+        const conflicting = findConflictingOfficialTemplate();
+        if (conflicting && conflicting.id !== selectedTemplateId) {
+            const courseName = courses.find((c) => c.id === templateCourseId)?.name || 'este curso';
+            const ok = await customConfirm({
+                title: 'Substituir modelo oficial?',
+                message: `Já existe um modelo oficial publicado para ${courseName}${templateScope === 'COURSE_STATE' ? ` (${templateState})` : ''}. Ao continuar, a nova versão passará a ser usada na emissão.`,
+                confirmLabel: 'Tornar oficial',
+                variant: 'warning',
+            });
+            if (!ok) return;
+        }
+        const result = await persistTemplateVersion(true);
+        if (result?.status === 'PUBLISHED') {
+            setTemplateMessage(`Modelo oficial do curso atualizado (v${result.version} publicada na emissão).`);
+        } else if (result) {
+            setTemplateMessage(`Versão v${result.version} criada; verifique permissões de publicação.`);
+        }
+    };
+
+    // MEL-08: abre modal de duplicação (substitui window.prompt nativo)
+    const openDuplicateModal = () => {
         const templateId = selectedTemplateDetail?.id;
         if (!templateId) {
             setTemplateMessage('Selecione um modelo com versão atual para duplicar.');
             return;
         }
-        const title = window.prompt(
-            'Título da versão duplicada:',
-            `${selectedTemplateDetail?.currentVersion?.title || 'Modelo'} (cópia)`,
-        );
-        if (title === null) return;
+        setDuplicateTitleInput(`${selectedTemplateDetail?.currentVersion?.title || 'Modelo'} (cópia)`);
+        setShowDuplicateModal(true);
+    };
+
+    const confirmDuplicate = async () => {
+        const templateId = selectedTemplateDetail?.id;
+        if (!templateId) return;
+        setDuplicatingModal(true);
         setTemplateMessage(null);
         try {
             const res = await api.post(`/certificates/admin/templates/${templateId}/duplicate`, {
-                title: title.trim() || undefined,
+                title: duplicateTitleInput.trim() || undefined,
             });
             setTemplateMessage(`Modelo duplicado criado: ${res.data?.title ?? 'cópia'}`);
+            setShowDuplicateModal(false);
             await fetchTemplates();
             if (res.data?.templateId) {
                 await loadTemplateDetail(res.data.templateId);
             }
         } catch {
             setTemplateMessage('Não foi possível duplicar a versão.');
+        } finally {
+            setDuplicatingModal(false);
+        }
+    };
+
+    // MEL-08: autopreenchimento dos blocos do syllabus a partir do curso
+    const handleAutoFillFromCourse = async (courseId: string) => {
+        if (!courseId) return;
+        setAutoFillLoading(true);
+        try {
+            const res = await api.get(`/courses/${courseId}`);
+            const course = res.data;
+            // Preenche carga horária
+            if (course?.workloadHours) {
+                setPdfPage2WorkloadTemplate(`Carga Horária Total: ${course.workloadHours}h`);
+            }
+            // Preenche blocos do syllabus a partir dos módulos do curso
+            const mods: any[] = Array.isArray(course?.modules) ? course.modules : [];
+            if (mods.length > 0) {
+                const newBlocks: SyllabusBlock[] = mods.map((m: any, idx: number) => ({
+                    id: String(idx),
+                    titulos: m.moduleName || m.name || `Módulo ${idx + 1}`,
+                    cargas: m.workloadHours ? `${m.workloadHours}h` : '',
+                    descricoes: m.description || '',
+                }));
+                setSyllabusBlocks(newBlocks);
+                setTemplateMessage(`✅ ${mods.length} módulo(s) do curso preenchidos automaticamente.`);
+            } else {
+                setTemplateMessage('Curso sem módulos cadastrados — preencha a ementa manualmente.');
+            }
+        } catch {
+            setTemplateMessage('Não foi possível carregar dados do curso para autopreenchimento.');
+        } finally {
+            setAutoFillLoading(false);
         }
     };
 
@@ -1754,8 +2028,8 @@ export default function CertificadosPage() {
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.85rem' }}>
-                    <AnimatedKpiCard label="Certificados Emitidos" value={certificates.length} color="#059669" bg="#F0FDF4" border="#BBF7D0" />
-                    <AnimatedKpiCard label="Alunos Elegíveis" value={eligible.length} color="#D97706" bg="#FFFBEB" border="#FDE68A" delayMs={60} />
+                    <AnimatedKpiCard label="Certificados Emitidos" value={issuedTotal} color="#059669" bg="#F0FDF4" border="#BBF7D0" />
+                    <AnimatedKpiCard label="Alunos Elegíveis" value={eligibleTotal} color="#D97706" bg="#FFFBEB" border="#FDE68A" delayMs={60} />
                     <AnimatedKpiCard label="Modelos Disponíveis" value={templates.length} color="#2563EB" bg="#EFF6FF" border="#BFDBFE" delayMs={120} />
                 </div>
 
@@ -1763,8 +2037,8 @@ export default function CertificadosPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', gap: '0.4rem', padding: '0.3rem', background: '#F3F4F6', borderRadius: 12, width: 'fit-content' }}>
                     {[
-                        { key: 'eligible', label: '🎓 Elegíveis para Certificação', count: eligible.length },
-                        { key: 'issued', label: '✅ Certificados Emitidos', count: certificates.length },
+                        { key: 'eligible', label: '🎓 Elegíveis para Certificação', count: eligibleTotal },
+                        { key: 'issued', label: '✅ Certificados Emitidos', count: issuedTotal },
                         { key: 'templates', label: '🎨 Modelos de Documento', count: templates.length },
                     ].map(t => (
                         <button key={t.key} onClick={() => setTab(t.key as any)}
@@ -1808,8 +2082,9 @@ export default function CertificadosPage() {
                         <p style={{ fontFamily: 'Orbitron', fontSize: '0.7rem', letterSpacing: '0.15em', color: 'var(--text-muted)' }}>CARREGANDO...</p>
                     </div>
                 ) : tab === 'eligible' ? (
-                    /* -- ELIGIBLE STUDENTS -- */
-                    eligible.length === 0 ? (
+                    <>
+                    {/* -- ELIGIBLE STUDENTS -- */}
+                    {eligible.length === 0 ? (
                         <div className="glass-card" style={{ textAlign: 'center', padding: '4rem' }}>
                             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏆</div>
                             <p style={{ fontFamily: 'Orbitron', fontSize: '0.75rem', letterSpacing: '0.15em', color: 'var(--text-muted)' }}>NENHUM ALUNO ELEGÍVEL NO MOMENTO</p>
@@ -1942,7 +2217,16 @@ export default function CertificadosPage() {
                                 </div>
                             ))}
                         </div>
-                    )
+                    )}
+                    <AdminListPagination
+                        page={eligiblePage}
+                        totalPages={eligibleTotalPages}
+                        total={eligibleTotal}
+                        loading={loading}
+                        onPageChange={setEligiblePage}
+                        itemLabel="elegível(is)"
+                    />
+                    </>
                 ) : tab === 'templates' ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                         <CertificateTutorial />
@@ -2083,6 +2367,30 @@ export default function CertificadosPage() {
                                         }}
                                     >
                                         <div style={{ paddingRight: '2rem' }}>
+                                            {(() => {
+                                                const badge = getTemplateBadge(
+                                                    tpl.scope,
+                                                    tpl.currentVersion?.status,
+                                                    tpl.courseId,
+                                                );
+                                                return badge ? (
+                                                    <span style={{
+                                                        display: 'inline-block',
+                                                        fontSize: '0.58rem',
+                                                        fontWeight: 800,
+                                                        textTransform: 'uppercase',
+                                                        letterSpacing: '0.06em',
+                                                        padding: '2px 6px',
+                                                        borderRadius: 6,
+                                                        marginBottom: 6,
+                                                        background: badge.background,
+                                                        color: badge.color,
+                                                        border: badge.border,
+                                                    }}>
+                                                        {badge.label}
+                                                    </span>
+                                                ) : null;
+                                            })()}
                                             <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#111827', lineHeight: 1.35 }}>{tpl.currentVersion?.title || tpl.key}</div>
                                             <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 4 }}>
                                                 {tpl.scope}
@@ -2145,14 +2453,13 @@ export default function CertificadosPage() {
                                             <label style={{ fontSize: '0.65rem', color: '#9CA3AF', display: 'block', marginBottom: 4 }}>Âmbito</label>
                                             <select
                                                 value={templateScope}
-                                                onChange={(e) => setTemplateScope(e.target.value as 'GLOBAL' | 'COURSE' | 'STATE' | 'COURSE_STATE' | 'PUBLIC_FILE')}
+                                                onChange={(e) => setTemplateScope(e.target.value as 'GLOBAL' | 'COURSE' | 'STATE' | 'COURSE_STATE')}
                                                 style={{ width: '100%', padding: '0.55rem', borderRadius: 8, border: '1px solid #E5E7EB', fontSize: '0.8rem' }}
                                             >
                                                 <option value="GLOBAL">Global</option>
                                                 <option value="COURSE">Curso</option>
                                                 <option value="STATE">Estado</option>
                                                 <option value="COURSE_STATE">Curso + UF</option>
-                                                <option value="PUBLIC_FILE">PUBLIC_FILE (import · 1 ficheiro)</option>
                                             </select>
                                         </div>
                                         <div>
@@ -2329,6 +2636,7 @@ export default function CertificadosPage() {
                                                                 <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                     Tamanho:
                                                                     <input type="number" value={coordForm['nameSize'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, nameSize: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="24" />
+                                                                    <CoordFontStepper coordKey="nameSize" value={coordForm.nameSize ?? ''} onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))} />
                                                                 </label>
                                                             </div>
                                                         </div>
@@ -2341,6 +2649,13 @@ export default function CertificadosPage() {
                                                         placeholder="Ex: Certificamos que {{ALUNO_NOME}} concluiu o curso de **{{CURSO}}**, com carga horária de {{CARGA_HORARIA}}h."
                                                         style={{ width: '100%', marginTop: 3, padding: '0.55rem', borderRadius: 6, border: '1px solid #FCD34D', fontSize: '0.78rem', resize: 'vertical' }}
                                                     />
+                                                    <div style={{ display: 'flex', gap: 10, marginTop: 6, alignItems: 'center' }}>
+                                                        <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                            Tamanho do parágrafo:
+                                                            <input type="number" value={coordForm['bodyTextSize'] ?? ''} onChange={(e) => setCoordForm((prev) => ({ ...prev, bodyTextSize: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="17" />
+                                                            <CoordFontStepper coordKey="bodyTextSize" value={coordForm.bodyTextSize ?? ''} onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))} />
+                                                        </label>
+                                                    </div>
                                                     <div style={{ marginTop: '0.75rem', paddingTop: '0.7rem', borderTop: '1px dashed #FCD34D' }}>
                                                         <label style={{ fontSize: '0.65rem', color: '#78716C' }}>Formato da Data (Ex: {`{{CIDADE}} - {{UF}}, {{DATA_EXTENSO}}`})</label>
                                                         <input
@@ -2361,6 +2676,7 @@ export default function CertificadosPage() {
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                 Tamanho:
                                                                 <input type="number" value={coordForm['dateSize'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, dateSize: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="12" />
+                                                                <CoordFontStepper coordKey="dateSize" value={coordForm.dateSize ?? ''} onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))} />
                                                             </label>
                                                         </div>
                                                         <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
@@ -2375,6 +2691,7 @@ export default function CertificadosPage() {
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                 Tamanho:
                                                                 <input type="number" value={coordForm['p2CourseTextSize'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, p2CourseTextSize: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="15" />
+                                                                <CoordFontStepper coordKey="p2CourseTextSize" value={coordForm.p2CourseTextSize ?? ''} onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))} />
                                                             </label>
                                                         </div>
                                                     </div>
@@ -2397,7 +2714,12 @@ export default function CertificadosPage() {
                                                             </label>
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                 Tamanho:
-                                                                <input type="number" value={coordForm['p2WorkloadSize'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, p2WorkloadSize: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="12" />
+                                                                <input type="number" value={coordForm['p2WorkloadSize'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, p2WorkloadSize: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="14" />
+                                                                <CoordFontStepper coordKey="p2WorkloadSize" value={coordForm.p2WorkloadSize ?? ''} onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))} />
+                                                            </label>
+                                                            <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                                Largura:
+                                                                <input type="number" value={coordForm['p2WorkloadW'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, p2WorkloadW: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="520" />
                                                             </label>
                                                         </div>
                                                     </div>
@@ -2410,6 +2732,7 @@ export default function CertificadosPage() {
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                 Tamanho:
                                                                 <input type="number" value={coordForm['syllabusTextSize'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, syllabusTextSize: e.target.value }))} style={{ width: 50, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="10" />
+                                                                <CoordFontStepper coordKey="syllabusTextSize" value={coordForm.syllabusTextSize ?? ''} onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))} />
                                                             </label>
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                 Col1 X:
@@ -2498,6 +2821,33 @@ export default function CertificadosPage() {
                                                                                     ✕
                                                                                 </button>
                                                                             )}
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 6, alignItems: 'center' }}>
+                                                                            <label style={{ fontSize: '0.60rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                                                Posição Y:
+                                                                                <input
+                                                                                    type="number"
+                                                                                    value={coordForm[`syllabusBlock${idx}Y`] ?? ''}
+                                                                                    onChange={(e) => setCoordForm((prev) => ({ ...prev, [`syllabusBlock${idx}Y`]: e.target.value }))}
+                                                                                    style={{ width: 52, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.72rem' }}
+                                                                                    placeholder="auto"
+                                                                                />
+                                                                            </label>
+                                                                            <label style={{ fontSize: '0.60rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                                                Tamanho:
+                                                                                <input
+                                                                                    type="number"
+                                                                                    value={coordForm[`syllabusBlock${idx}Size`] ?? ''}
+                                                                                    onChange={(e) => setCoordForm((prev) => ({ ...prev, [`syllabusBlock${idx}Size`]: e.target.value }))}
+                                                                                    style={{ width: 52, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.72rem' }}
+                                                                                    placeholder={coordForm.syllabusTextSize ?? '10'}
+                                                                                />
+                                                                                <CoordFontStepper
+                                                                                    coordKey={`syllabusBlock${idx}Size`}
+                                                                                    value={coordForm[`syllabusBlock${idx}Size`] ?? coordForm.syllabusTextSize ?? ''}
+                                                                                    onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))}
+                                                                                />
+                                                                            </label>
                                                                         </div>
                                                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                                                                             <div>
@@ -2615,21 +2965,30 @@ export default function CertificadosPage() {
                                                             >
                                                                 {label}
                                                             </label>
-                                                            <input
-                                                                value={coordForm[key] ?? ''}
-                                                                onChange={(e) => setCoordForm((prev) => ({ ...prev, [key]: e.target.value }))}
-                                                                inputMode="decimal"
-                                                                placeholder="—"
-                                                                style={{
-                                                                    width: '100%',
-                                                                    marginTop: 2,
-                                                                    padding: '0.4rem 0.5rem',
-                                                                    borderRadius: 7,
-                                                                    border: '1px solid #D4D4D8',
-                                                                    fontSize: '0.78rem',
-                                                                    fontFamily: 'JetBrains Mono,monospace',
-                                                                }}
-                                                            />
+                                                            <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 2 }}>
+                                                                <input
+                                                                    value={coordForm[key] ?? ''}
+                                                                    onChange={(e) => setCoordForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                                                                    inputMode="decimal"
+                                                                    placeholder="—"
+                                                                    style={{
+                                                                        flex: 1,
+                                                                        minWidth: 0,
+                                                                        padding: '0.4rem 0.5rem',
+                                                                        borderRadius: 7,
+                                                                        border: '1px solid #D4D4D8',
+                                                                        fontSize: '0.78rem',
+                                                                        fontFamily: 'JetBrains Mono,monospace',
+                                                                    }}
+                                                                />
+                                                                {key.endsWith('Size') && (
+                                                                    <CoordFontStepper
+                                                                        coordKey={key}
+                                                                        value={coordForm[key] ?? ''}
+                                                                        onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))}
+                                                                    />
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -2669,39 +3028,194 @@ export default function CertificadosPage() {
                                         <span style={{ fontWeight: 700, color: '#0F172A' }}>Variáveis: </span>
                                         {'{{ALUNO_NOME}}'} · {'{{CURSO_NOME}}'} · {'{{CARGA_HORARIA}}'} · {'{{CIDADE}}'} · {'{{ESTADO}}'} · {'{{DATA_EMISSAO}}'} · {'{{CODIGO_VERIFICACAO}}'} · {'{{QR_CODE_DATA_URL}}'} · {'{{TURMA}}'} · {'{{EMISSOR}}'}
                                     </div>
-                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                        <button className="btn-secondary" type="button" onClick={() => createTemplateVersion(false)}>Rascunho</button>
-                                        <button className="btn-primary" type="button" onClick={() => createTemplateVersion(true)}>Gravar e publicar</button>
-                                    </div>
-                                    {selectedTemplateId && (
-                                        <div style={{ display: 'grid', gap: '0.4rem' }}>
+                                    {/* MEL-08: 5 botões com semântica clara conforme definição do Ronaldo */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                        <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6B7280' }}>Salvar modelo</div>
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            {/* 1. Rascunho */}
                                             <button
-                                                type="button"
                                                 className="btn-secondary"
-                                                onClick={duplicateCurrentVersion}
+                                                type="button"
+                                                title="Grava textos, coordenadas e ementa na biblioteca (rascunho — não altera a emissão)"
+                                                disabled={savingTemplate}
+                                                onClick={() => void saveModelToLibrary()}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                                             >
-                                                Duplicar este modelo
+                                                {savingTemplate ? 'Salvando…' : '💾 Salvar na biblioteca de modelos'}
                                             </button>
+                                            {/* 2. Publicar este modelo (salva + publica + abre prévia) */}
                                             <button
+                                                className="btn-primary"
                                                 type="button"
-                                                className="btn-secondary"
-                                                onClick={() => {
-                                                    const tpl = templates.find(t => t.id === selectedTemplateId);
-                                                    const versionId = tpl?.currentVersion?.id;
-                                                    if (versionId) publishVersion(versionId);
+                                                title={isAdmin
+                                                    ? 'Publica e vincula como modelo oficial usado na emissão deste curso/UF'
+                                                    : 'Somente administrador pode tornar o modelo oficial na emissão'}
+                                                disabled={savingTemplate || !isAdmin}
+                                                onClick={() => void makeModelOfficialForCourse()}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                    opacity: isAdmin ? 1 : 0.55,
+                                                    cursor: isAdmin ? 'pointer' : 'not-allowed',
                                                 }}
                                             >
-                                                Publicar versão atual
+                                                {savingTemplate ? 'Publicando…' : '⭐ Tornar oficial do curso'}
                                             </button>
-                                            <div style={{ maxHeight: 140, overflow: 'auto', border: '1px solid #E5E7EB', borderRadius: 8, padding: '0.5rem', background: '#fff' }}>
-                                                {(selectedTemplateDetail?.versions || []).map((v) => (
-                                                    <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.72rem', padding: '0.2rem 0' }}>
-                                                        <span style={{ color: '#111827' }}>v{v.version} · {v.title}</span>
-                                                        <span style={{ color: '#6B7280' }}>{v.status}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
                                         </div>
+                                        {!isAdmin && (
+                                            <p style={{ margin: 0, fontSize: '0.68rem', color: '#6B7280', lineHeight: 1.45 }}>
+                                                Coordenadores podem salvar rascunhos. Apenas administrador torna o modelo oficial na emissão.
+                                            </p>
+                                        )}
+
+                                        {selectedTemplateId && (
+                                            <>
+                                                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6B7280', marginTop: 4 }}>Outras ações</div>
+                                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                    <button
+                                                        type="button"
+                                                        className="btn-secondary"
+                                                        title="Cria uma cópia deste modelo para editar ou adicionar ao set"
+                                                        onClick={openDuplicateModal}
+                                                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                                                    >
+                                                        📋 Duplicar este modelo
+                                                    </button>
+                                                </div>
+
+                                                {/* Histórico de versões */}
+                                                <div style={{ maxHeight: 120, overflow: 'auto', border: '1px solid #E5E7EB', borderRadius: 8, padding: '0.5rem', background: '#fff' }}>
+                                                    {(selectedTemplateDetail?.versions || []).map((v) => (
+                                                        <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.72rem', padding: '0.2rem 0' }}>
+                                                            <span style={{ color: '#111827' }}>v{v.version} · {v.title}</span>
+                                                            <span style={{ color: '#6B7280' }}>{v.status}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* 5. Vincular ao Curso — ação separada */}
+                                        <div style={{ borderTop: '1px solid #F3F4F6', paddingTop: '0.6rem', marginTop: 4 }}>
+                                            <button
+                                                type="button"
+                                                title="Define a qual curso este certificado pertence e preenche dados automaticamente"
+                                                onClick={() => {
+                                                    setVinculoCursoInput(templateCourseId);
+                                                    setShowVinculoCursoModal(true);
+                                                }}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: 6,
+                                                    padding: '0.5rem 1rem', borderRadius: 9,
+                                                    background: templateCourseId ? 'rgba(5,150,105,0.08)' : 'rgba(37,99,235,0.08)',
+                                                    border: `1px solid ${templateCourseId ? 'rgba(5,150,105,0.35)' : 'rgba(37,99,235,0.35)'}`,
+                                                    color: templateCourseId ? '#065F46' : '#1E40AF',
+                                                    fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
+                                                }}
+                                            >
+                                                🔗 {templateCourseId
+                                                    ? `Curso: ${courses.find(c => c.id === templateCourseId)?.name || '…'}`
+                                                    : 'Vincular certificado ao curso'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Modal Duplicar — padrão da casa com createPortal */}
+                                    {showDuplicateModal && (
+                                        <ModalPortal>
+                                            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(5px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                                                <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', animation: 'fadeIn 0.2s' }}>
+                                                    <div style={{ padding: '20px 24px 14px', background: 'linear-gradient(135deg,#1E3A8A,#2563EB)', borderRadius: '18px 18px 0 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                        <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>📋</div>
+                                                        <div>
+                                                            <div style={{ fontFamily: 'Orbitron', fontSize: '0.85rem', fontWeight: 900, color: '#fff', letterSpacing: '0.06em' }}>DUPLICAR MODELO</div>
+                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>Uma cópia será criada e selecionada automaticamente</div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                                        <div>
+                                                            <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280', marginBottom: 6 }}>
+                                                                Título da cópia
+                                                            </label>
+                                                            <input
+                                                                autoFocus
+                                                                type="text"
+                                                                value={duplicateTitleInput}
+                                                                onChange={e => setDuplicateTitleInput(e.target.value)}
+                                                                onKeyDown={e => { if (e.key === 'Enter') void confirmDuplicate(); if (e.key === 'Escape') setShowDuplicateModal(false); }}
+                                                                style={{ width: '100%', padding: '0.65rem 0.9rem', borderRadius: 9, border: '1.5px solid #E5E7EB', background: '#F9FAFB', fontSize: '0.9rem', color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                                                            <button type="button" onClick={() => setShowDuplicateModal(false)} disabled={duplicatingModal}
+                                                                style={{ padding: '0.55rem 1.1rem', borderRadius: 9, background: 'transparent', border: '1px solid #E5E7EB', color: '#6B7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                                Cancelar
+                                                            </button>
+                                                            <button type="button" onClick={() => void confirmDuplicate()} disabled={duplicatingModal || !duplicateTitleInput.trim()}
+                                                                style={{ padding: '0.55rem 1.25rem', borderRadius: 9, background: duplicatingModal ? '#E5E7EB' : 'linear-gradient(135deg,#1E3A8A,#2563EB)', border: 'none', color: '#fff', fontWeight: 700, cursor: duplicatingModal ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}>
+                                                                {duplicatingModal ? 'Duplicando…' : '📋 Duplicar'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </ModalPortal>
+                                    )}
+
+                                    {/* Modal Vincular ao Curso — createPortal com autopreenchimento */}
+                                    {showVinculoCursoModal && (
+                                        <ModalPortal>
+                                            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(5px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                                                <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', animation: 'fadeIn 0.2s' }}>
+                                                    <div style={{ padding: '20px 24px 14px', background: 'linear-gradient(135deg,#059669,#047857)', borderRadius: '18px 18px 0 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                        <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>🔗</div>
+                                                        <div>
+                                                            <div style={{ fontFamily: 'Orbitron', fontSize: '0.85rem', fontWeight: 900, color: '#fff', letterSpacing: '0.06em' }}>VINCULAR AO CURSO</div>
+                                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>Os dados do curso preencherão a ementa automaticamente</div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                                        <div>
+                                                            <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280', marginBottom: 6 }}>
+                                                                Curso *
+                                                            </label>
+                                                            <select
+                                                                value={vinculoCursoInput}
+                                                                onChange={e => setVinculoCursoInput(e.target.value)}
+                                                                style={{ width: '100%', padding: '0.65rem 0.9rem', borderRadius: 9, border: '1.5px solid #E5E7EB', background: '#F9FAFB', fontSize: '0.85rem', color: '#111827', outline: 'none', cursor: 'pointer' }}
+                                                            >
+                                                                <option value="">Selecione o curso…</option>
+                                                                {courses.map(c => (
+                                                                    <option key={c.id} value={c.id}>{c.name}{c.workloadHours ? ` — ${c.workloadHours}h` : ''}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div style={{ padding: '10px 12px', borderRadius: 9, background: '#F0FDF4', border: '1px solid #A7F3D0', fontSize: '0.78rem', color: '#065F46', lineHeight: 1.5 }}>
+                                                            💡 <strong>Autopreenchimento:</strong> ao vincular, a ementa e a carga horária serão preenchidas automaticamente com os módulos cadastrados no curso.
+                                                            O vínculo com o curso só é persistido ao usar <strong>Salvar na biblioteca</strong> ou <strong>Tornar oficial do curso</strong>.
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                                                            <button type="button" onClick={() => setShowVinculoCursoModal(false)}
+                                                                style={{ padding: '0.55rem 1.1rem', borderRadius: 9, background: 'transparent', border: '1px solid #E5E7EB', color: '#6B7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                                Cancelar
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={!vinculoCursoInput || autoFillLoading}
+                                                                onClick={async () => {
+                                                                    setTemplateCourseId(vinculoCursoInput);
+                                                                    setShowVinculoCursoModal(false);
+                                                                    await handleAutoFillFromCourse(vinculoCursoInput);
+                                                                }}
+                                                                style={{ padding: '0.55rem 1.25rem', borderRadius: 9, background: (!vinculoCursoInput || autoFillLoading) ? '#E5E7EB' : 'linear-gradient(135deg,#059669,#047857)', border: 'none', color: '#fff', fontWeight: 700, cursor: (!vinculoCursoInput || autoFillLoading) ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}>
+                                                                {autoFillLoading ? 'Carregando…' : '🔗 Vincular e preencher'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </ModalPortal>
                                     )}
                                 </div>
                             </div>
@@ -2843,7 +3357,8 @@ export default function CertificadosPage() {
                         )}
                     </div>
                 ) : (
-                    /* -- ISSUED CERTIFICATES -- */
+                    <>
+                    {/* -- ISSUED CERTIFICATES -- */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
                             <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', maxWidth: 640, lineHeight: 1.5 }}>
@@ -3004,6 +3519,15 @@ export default function CertificadosPage() {
                             </div>
                         )}
                     </div>
+                    <AdminListPagination
+                        page={issuedPage}
+                        totalPages={issuedTotalPages}
+                        total={issuedTotal}
+                        loading={loading}
+                        onPageChange={setIssuedPage}
+                        itemLabel="certificado(s)"
+                    />
+                    </>
                 )}
 
                 {/* QR Code Modal */}

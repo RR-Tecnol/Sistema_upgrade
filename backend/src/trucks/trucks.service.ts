@@ -4,6 +4,7 @@ import { CreateTruckDto } from './dto/create-truck.dto';
 import { UpdateTruckDto } from './dto/update-truck.dto';
 import { TruckStatus } from '@prisma/client';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
 
 @Injectable()
 export class TrucksService {
@@ -12,7 +13,15 @@ export class TrucksService {
         private notificationsSender: NotificationsSenderService,
     ) { }
 
-    async findAll(filters?: { status?: TruckStatus; groupId?: string; type?: string; state?: string }) {
+    async findAll(filters?: {
+        status?: TruckStatus;
+        groupId?: string;
+        type?: string;
+        state?: string;
+        search?: string;
+        page?: number;
+        limit?: number;
+    }) {
         const where: any = {};
 
         if (filters?.status) {
@@ -30,21 +39,38 @@ export class TrucksService {
         if (filters?.state) {
             where.state = filters.state;
         }
+        if (filters?.search?.trim()) {
+            const q = filters.search.trim();
+            where.OR = [
+                { identifier: { contains: q, mode: 'insensitive' } },
+                { licensePlate: { contains: q, mode: 'insensitive' } },
+            ];
+        }
 
-        return this.prisma.truck.findMany({
-            where,
-            orderBy: { identifier: 'asc' },
-            include: {
-                group: true,
-                _count: {
-                    select: {
-                        classes: true,
-                        trips: true,
-                        expenses: true,
-                    },
+        const { skip, page, limit } = resolvePagination(filters?.page, filters?.limit, 12);
+        const include = {
+            group: true,
+            _count: {
+                select: {
+                    classes: true,
+                    trips: true,
+                    expenses: true,
                 },
             },
-        });
+        };
+
+        const [data, total] = await Promise.all([
+            this.prisma.truck.findMany({
+                where,
+                orderBy: { identifier: 'asc' },
+                include,
+                skip,
+                take: limit,
+            }),
+            this.prisma.truck.count({ where }),
+        ]);
+
+        return paginatedResult(data, total, page, limit);
     }
 
     async findOne(id: string) {

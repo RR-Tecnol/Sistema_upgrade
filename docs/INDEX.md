@@ -35,7 +35,18 @@ Ordem sugerida: ficheiros `01` … `10` dentro dessa pasta.
 
 ---
 
-## 4. Documentação de produto na raiz do repositório
+## 4. Auditoria VPS (bugs de produção mapeados ao código)
+
+Relatórios Word + documentação técnica com **21 itens** (BUG-01 … BUG-21), APIs e passos de correção:
+
+**[`AUDITORIA/SPRINTS-CORRECAO-VPS.md`](./AUDITORIA/SPRINTS-CORRECAO-VPS.md)** → sprints + checklists de teste manual  
+**[`AUDITORIA/README.md`](./AUDITORIA/README.md)** → índice  
+**[`AUDITORIA/MAPA-COMPLETO-VPS.md`](./AUDITORIA/MAPA-COMPLETO-VPS.md)** → mapa detalhado  
+**[`AUDITORIA/ARQUITETURA-API-E-FLUXOS.md`](./AUDITORIA/ARQUITETURA-API-E-FLUXOS.md)** → FE/BE/MinIO/nginx
+
+---
+
+## 5. Documentação de produto na raiz do repositório
 
 O [`README.md`](../README.md) na raiz contém visão geral, quick start e tabela de módulos orientada a utilizador.
 

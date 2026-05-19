@@ -215,7 +215,7 @@ export function EstoqueKpiSidebar({
                 } else if (kpi === 'emTransito') {
                     // Itens com quantidadeEmTransito > 0
                     const all = await stockApi.items.getAll();
-                    const filtered = all.filter(i => Number(i.quantidadeEmTransito ?? 0) > 0);
+                    const filtered = all.filter((i: StockItem) => Number(i.quantidadeEmTransito ?? 0) > 0);
                     if (!cancelled) setPayload({ items: filtered });
                 } else if (kpi === 'movimentacoesMes') {
                     const movements = await stockApi.movements.list({ limit: 12 });

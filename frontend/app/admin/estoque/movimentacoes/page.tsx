@@ -14,8 +14,8 @@ import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { EstoqueMovimentacoesSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import { toast } from '@/components/ui/Toast';
 import { MovimentacaoModal } from '@/components/estoque/MovimentacaoModal';
-import { EstoqueQuickActionsBar } from '@/components/estoque/EstoqueQuickActionsBar';
 import { acoesApi, Acao } from '@/lib/api/acoes';
+import { unwrapListData } from '@/lib/api/pagination';
 import {
     EstoqueSection,
     EstoqueSectionHeader,
@@ -46,7 +46,10 @@ export default function MovimentacoesPage() {
     const [movOpen, setMovOpen] = useState(false);
 
     useEffect(() => {
-        acoesApi.listar().then(setAcoes).catch(() => {});
+        acoesApi
+            .listar({ limit: 500, page: 1 })
+            .then((raw) => setAcoes(unwrapListData<Acao>(raw)))
+            .catch(() => {});
     }, []);
 
     const load = useCallback(async () => {
@@ -274,7 +277,6 @@ export default function MovimentacoesPage() {
                 onClose={() => setMovOpen(false)}
                 onSuccess={() => { load(); }}
             />
-            <EstoqueQuickActionsBar currentArea="movimentacoes" />
         </div>
     );
 }

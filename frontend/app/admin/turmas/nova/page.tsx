@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, type CSSProperties } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { toast } from '@/components/ui/Toast';
 import { classesApi, CreateClassDto } from '@/lib/api/classes';
 import { coursesApi, Course } from '@/lib/api/courses';
-import { groupsApi, Group } from '@/lib/api/groups';
+import { formatCourseHoursBadge, getCourseContractForState } from '@/lib/course-contract';
+import { unwrapListData } from '@/lib/api/pagination';
+import { acoesApi, type Acao } from '@/lib/api/acoes';
+import { groupsApi } from '@/lib/api/groups';
 import { citiesApi, City } from '@/lib/api/cities';
 import { trucksApi, Truck } from '@/lib/api/trucks';
 import { AdminCreationSuccessScreen } from '@/components/admin/AdminCreationSuccessScreen';
@@ -14,19 +18,36 @@ import { RouteTypeSelector, RouteType } from '@/components/admin/RouteTypeSelect
 import {
     AcademicCapIcon,
     MapPinIcon,
-    ClockIcon,
     ClipboardDocumentCheckIcon,
     ChevronLeftIcon,
     CheckCircleIcon,
     TruckIcon,
     UserGroupIcon,
-    CalendarDaysIcon,
     InformationCircleIcon,
     BuildingOfficeIcon,
 } from '@heroicons/react/24/outline';
+import type { Group } from '@/lib/api/groups';
+
+/** Horas do curso por UF (cadastro em Cursos) — não depende do grupo na etapa 1. */
+function formatContratoHorasUf(course: Course, group: Group | null): string {
+    if (group) {
+        return `${getCourseContractForState(course, group.state).workloadHours}h`;
+    }
+    const cfg = course.stateConfig;
+    if (course.availableInMA && course.availableInPI) {
+        const ma = cfg?.MA?.workloadHours;
+        const pi = cfg?.PI?.workloadHours;
+        if (ma && pi) return ma === pi ? `${ma}h/UF` : `MA ${ma}h · PI ${pi}h`;
+        if (ma) return `${ma}h (MA)`;
+        if (pi) return `${pi}h (PI)`;
+    }
+    if (course.availableInMA && cfg?.MA?.workloadHours) return `${cfg.MA.workloadHours}h (MA)`;
+    if (course.availableInPI && cfg?.PI?.workloadHours) return `${cfg.PI.workloadHours}h (PI)`;
+    return `${course.workloadHours}h`;
+}
 
 /* ──────────────── TYPES ──────────────── */
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3;
 
 interface FormState extends CreateClassDto {
     enrollmentOpenDate: string;
@@ -36,22 +57,17 @@ interface FormState extends CreateClassDto {
     originNeighborhood?: string;
     destinationNeighborhood?: string;
     weekendPolicy: 'FOLLOW_SCHEDULE' | 'WEEKDAYS_ONLY' | 'ALL_WEEKENDS' | 'SELECT_WEEKENDS';
-    /** Texto livre: uma data YYYY-MM-DD por linha ou separadas por vírgula (fins de semana específicos). */
-    weekendExtraDatesRaw: string;
+    /** SELECT_WEEKENDS: datas ISO (aula em sáb/dom específico). */
+    weekendExtraDates: string[];
+    /** Override opcional da duração em dias letivos. */
+    teachingDaysCountOverride: string;
 }
 
 /* ──────────────── CONSTANTS ──────────────── */
 const STEPS = [
     { n: 1 as Step, label: 'Curso', icon: AcademicCapIcon },
-    { n: 2 as Step, label: 'Localização', icon: MapPinIcon },
-    { n: 3 as Step, label: 'Horários', icon: ClockIcon },
-    { n: 4 as Step, label: 'Revisão', icon: ClipboardDocumentCheckIcon },
-];
-
-const PERIODS = [
-    { value: 'MORNING', label: 'Manhã', timeRange: '07:00 – 12:00', icon: '🌅', color: '#F59E0B', bg: '#FFFBEB', border: '#FDE68A' },
-    { value: 'AFTERNOON', label: 'Tarde', timeRange: '13:00 – 18:00', icon: '☀️', color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
-    { value: 'EVENING', label: 'Noite', timeRange: '19:00 – 22:00', icon: '🌙', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+    { n: 2 as Step, label: 'Acadêmico', icon: MapPinIcon },
+    { n: 3 as Step, label: 'Revisão', icon: ClipboardDocumentCheckIcon },
 ];
 
 const STATUS_OPTIONS = [
@@ -129,6 +145,10 @@ function InfoPill({ icon, label, value, color = '#B89B00', bg = '#FFFDE7' }: { i
 /* ──────────────── MAIN PAGE ──────────────── */
 export default function NovaTurmaPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const acaoIdParam = searchParams.get('acaoId') || '';
+    const [periodo, setPeriodo] = useState<Acao | null>(null);
+    const [loadingPeriodo, setLoadingPeriodo] = useState(!!acaoIdParam);
     const [step, setStep] = useState<Step>(1);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -142,6 +162,7 @@ export default function NovaTurmaPage() {
     const [trucks, setTrucks] = useState<Truck[]>([]);
     const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
     const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+    const modoAvulso = !acaoIdParam;
 
     const [form, setForm] = useState<FormState>({
         courseId: '', groupId: '', cityId: '', classIdentifier: '',
@@ -155,7 +176,8 @@ export default function NovaTurmaPage() {
         originNeighborhood: undefined,
         destinationNeighborhood: undefined,
         weekendPolicy: 'WEEKDAYS_ONLY',
-        weekendExtraDatesRaw: '',
+        weekendExtraDates: [],
+        teachingDaysCountOverride: '',
     });
 
     // Local físico onde a turma ocorre — usado pelo motorista para navegação GPS
@@ -167,17 +189,55 @@ export default function NovaTurmaPage() {
     /* load data */
     useEffect(() => {
         Promise.all([
-            coursesApi.getAll({ active: true }),
-            groupsApi.getAll(),
+            coursesApi.getAll({ active: true, limit: 500, page: 1 }),
+            groupsApi.getAll({ limit: 500, page: 1 }),
             citiesApi.getAll(),
-            trucksApi.getAll({ status: 'AVAILABLE' }),
+            trucksApi.getAll({ status: 'AVAILABLE', limit: 500, page: 1 }),
         ]).then(([c, g, ci, t]) => {
-            setCourses(c);
-            setGroups(g);
+            setCourses(unwrapListData(c));
+            setGroups(unwrapListData(g));
             setCities(ci);
-            setTrucks(t);
+            setTrucks(unwrapListData(t));
         }).catch(() => { });
     }, []);
+
+    useEffect(() => {
+        if (!acaoIdParam) {
+            setLoadingPeriodo(false);
+            return;
+        }
+        setLoadingPeriodo(true);
+        acoesApi
+            .buscar(acaoIdParam)
+            .then(a => {
+                setPeriodo(a);
+                setForm(f => ({
+                    ...f,
+                    groupId: a.grupoId,
+                    courseId: a.motorCourseId || f.courseId,
+                    cityId: a.cidadeId || f.cityId,
+                    truckId: a.carretaId || f.truckId,
+                    startDate: a.dataInicio?.slice(0, 10) || f.startDate,
+                    endDate: a.dataFim?.slice(0, 10) || f.endDate,
+                    period: (a as { period?: string }).period as FormState['period'] || f.period,
+                    startTime: (a as { startTime?: string }).startTime || f.startTime,
+                    endTime: (a as { endTime?: string }).endTime || f.endTime,
+                    weekendPolicy: ((a as { weekendPolicy?: string }).weekendPolicy as FormState['weekendPolicy']) || f.weekendPolicy,
+                }));
+                if (a.grupo) setSelectedGroup(a.grupo as Group);
+                if (a.localExecucao || a.localEndereco) {
+                    setLocation({
+                        name: a.localExecucao || null,
+                        address: a.localEndereco || null,
+                        reference: a.localReferencia || null,
+                        latitude: a.localLatitude ?? null,
+                        longitude: a.localLongitude ?? null,
+                    });
+                }
+            })
+            .catch(() => toast.error('Período de curso não encontrado'))
+            .finally(() => setLoadingPeriodo(false));
+    }, [acaoIdParam]);
 
     /* filter cities by group state */
     const filteredCities = selectedGroup ? cities.filter(c => c.state === selectedGroup.state) : cities;
@@ -186,14 +246,6 @@ export default function NovaTurmaPage() {
     const set = (k: keyof FormState, v: any) => {
         setForm(f => ({ ...f, [k]: v }));
         setErrors(e => { const n = { ...e }; delete n[k]; return n; });
-    };
-
-    /* auto-fill time on period select */
-    const selectPeriod = (p: typeof PERIODS[0]) => {
-        set('period', p.value as any);
-        const [s, e] = p.timeRange.replace(' ', '').split('–');
-        set('startTime', s.trim());
-        set('endTime', e.trim());
     };
 
     /* auto-generate identifier */
@@ -209,14 +261,25 @@ export default function NovaTurmaPage() {
 
     useEffect(() => { buildIdentifier(); }, [form.courseId, form.cityId, form.groupId]);
 
-    /* auto-fill end date based on course duration */
     useEffect(() => {
-        if (!form.startDate || !selectedCourse || !selectedGroup) return;
-        const days = selectedGroup.state === 'MA' ? selectedCourse.durationDaysMA : selectedCourse.durationDaysPI;
-        const d = new Date(form.startDate);
-        d.setDate(d.getDate() + days);
-        set('endDate', d.toISOString().split('T')[0]);
-    }, [form.startDate, selectedCourse, selectedGroup]);
+        if (form.courseId) {
+            const c = courses.find(x => x.id === form.courseId);
+            if (c) setSelectedCourse(c);
+        }
+    }, [form.courseId, courses]);
+
+    useEffect(() => {
+        if (form.groupId) {
+            const g = groups.find(x => x.id === form.groupId);
+            if (g) setSelectedGroup(g);
+        }
+    }, [form.groupId, groups]);
+
+    const groupForContract = selectedGroup ?? groups.find(g => g.id === form.groupId) ?? null;
+    const courseContract =
+        selectedCourse && groupForContract
+            ? getCourseContractForState(selectedCourse, groupForContract.state)
+            : null;
 
     /* validation */
     const validate = (s: Step) => {
@@ -227,6 +290,7 @@ export default function NovaTurmaPage() {
         }
         if (s === 2) {
             if (!form.groupId) e.groupId = 'Selecione o grupo';
+            if (!form.vacancies || form.vacancies < 1) e.vacancies = 'Vagas inválidas';
             if (form.routeType === 'INTERCIDADE') {
                 if (!form.originCityId) e.originCityId = 'Selecione a cidade de origem';
                 if (!form.cityId) e.cityId = 'Selecione a cidade de destino';
@@ -239,16 +303,14 @@ export default function NovaTurmaPage() {
                 if (!form.destinationNeighborhood?.trim()) e.destinationNeighborhood = 'Informe o bairro/ponto de destino';
             }
         }
-        if (s === 3) {
-            if (!form.startDate) e.startDate = 'Data de início obrigatória';
-            if (!form.endDate) e.endDate = 'Data de término obrigatória';
-            if (!form.vacancies || form.vacancies < 1) e.vacancies = 'Vagas inválidas';
-        }
         setErrors(e);
         return Object.keys(e).length === 0;
     };
 
-    const next = () => { if (validate(step)) setStep(s => (s < 4 ? s + 1 : s) as Step); };
+    const next = () => {
+        if (!validate(step)) return;
+        setStep(s => (s < 3 ? s + 1 : s) as Step);
+    };
     const back = () => setStep(s => (s > 1 ? s - 1 : s) as Step);
 
     /* submit */
@@ -256,38 +318,47 @@ export default function NovaTurmaPage() {
         setSubmitError(null);
         setSaving(true);
         try {
-            const extraDates = form.weekendExtraDatesRaw
-                .split(/[\n,;]+/)
-                .map(s => s.trim())
-                .filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s));
+            if (!validate(2)) {
+                setStep(2);
+                setSaving(false);
+                return;
+            }
+            const hoje = new Date().toISOString().slice(0, 10);
             const payload: CreateClassDto = {
-                courseId: form.courseId, groupId: form.groupId,
-                cityId: form.cityId, classIdentifier: form.classIdentifier,
-                startDate: form.startDate, endDate: form.endDate,
-                period: form.period, startTime: form.startTime, endTime: form.endTime,
+                courseId: form.courseId,
+                groupId: form.groupId,
+                cityId: form.cityId,
+                classIdentifier: form.classIdentifier,
+                startDate: periodo?.dataInicio?.slice(0, 10) || hoje,
+                endDate: periodo?.dataFim?.slice(0, 10) || hoje,
+                period: (periodo as { period?: string })?.period as CreateClassDto['period'] || form.period,
+                startTime: (periodo as { startTime?: string })?.startTime || form.startTime,
+                endTime: (periodo as { endTime?: string })?.endTime || form.endTime,
                 vacancies: Number(form.vacancies),
                 reserveSlots: Number(form.reserveSlots ?? 0),
-                truckId: form.truckId || undefined,
-                status: form.status as any,
+                truckId: periodo?.carretaId || form.truckId || undefined,
+                status: form.status as CreateClassDto['status'],
                 enrollmentOpenDate: form.enrollmentOpenDate || undefined,
                 enrollmentCloseDate: form.enrollmentCloseDate || undefined,
-                // ── Tipo de rota (REQ-ROUTE-2026) ──
                 routeType: form.routeType,
                 originCityId: form.routeType === 'INTERCIDADE' ? (form.originCityId || undefined) : undefined,
                 originNeighborhood: form.routeType === 'INTRAURBANA' ? (form.originNeighborhood || undefined) : undefined,
                 destinationNeighborhood: form.routeType === 'INTRAURBANA' ? (form.destinationNeighborhood || undefined) : undefined,
-                // ── Local físico (REQ-LOCAL-2026) ──
                 locationName: location.name || undefined,
                 locationAddress: location.address || undefined,
                 locationReference: location.reference || undefined,
                 locationLatitude: location.latitude ?? undefined,
                 locationLongitude: location.longitude ?? undefined,
-                weekendPolicy: form.weekendPolicy,
-                weekendExtraDates: form.weekendPolicy === 'SELECT_WEEKENDS' && extraDates.length ? extraDates : undefined,
+                ...(acaoIdParam
+                    ? { acaoId: acaoIdParam, useAutoEndDate: false }
+                    : { useAutoEndDate: true }),
             };
             const created = await classesApi.create(payload);
             setSuccess(true);
-            setTimeout(() => router.push(`/admin/turmas?created=1&createdClassId=${created.id}`), 2000);
+            setTimeout(
+                () => router.push(acaoIdParam ? `/admin/acoes/${acaoIdParam}?tab=turmas` : `/admin/turmas?created=1&createdClassId=${created.id}`),
+                2000,
+            );
         } catch (err: any) {
             const rawMsg = err?.response?.data?.message;
             const rawStr = Array.isArray(rawMsg) ? rawMsg.join(' · ') : (rawMsg || '');
@@ -322,7 +393,9 @@ export default function NovaTurmaPage() {
         );
     }
 
-    const activePeriod = PERIODS.find(p => p.value === form.period)!;
+    if (loadingPeriodo && acaoIdParam) {
+        return <p style={{ padding: '2rem', textAlign: 'center', color: '#6B7280' }}>Carregando período…</p>;
+    }
 
     /* ═══════════════════════════════════════ RENDER ═══════════════════════════════════════ */
     return (
@@ -340,7 +413,9 @@ export default function NovaTurmaPage() {
                 <div>
                     <h1 className="gradient-text" style={{ fontFamily: 'Orbitron', fontSize: '1.7rem', fontWeight: 900, letterSpacing: '0.08em' }}>NOVA TURMA</h1>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.15rem' }}>
-                        Programa Qualifica MA &amp; PI · Carreta-Escola itinerante
+                        {modoAvulso
+                            ? 'Turma avulsa — vincule depois em Períodos de curso → aba Turmas'
+                            : 'Vinculada ao período · motor letivo herdado'}
                     </p>
                 </div>
 
@@ -398,7 +473,7 @@ export default function NovaTurmaPage() {
                 {/* Section header */}
                 <div style={{ padding: '0.9rem 1.5rem', background: '#FFFDE7', borderBottom: '2px solid #FEF08A', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                     {(() => { const S = STEPS[step - 1]; const Icon = S.icon; return (<><Icon style={{ width: 16, height: 16, color: '#B89B00' }} /><span style={{ fontFamily: 'Orbitron', fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.08em', color: '#B89B00' }}>{S.label.toUpperCase()}</span></>); })()}
-                    <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: '#D4B402', fontWeight: 600 }}>{step} / 4</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: '#D4B402', fontWeight: 600 }}>{step} / 3</span>
                 </div>
 
                 <div style={{ padding: '1.5rem' }}>
@@ -444,7 +519,7 @@ export default function NovaTurmaPage() {
                                                         {sel && <CheckCircleIcon style={{ width: 16, height: 16, color: '#059669', marginLeft: 'auto', flexShrink: 0, marginTop: 2 }} />}
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                                                        <span style={{ fontSize: '0.62rem', padding: '0.15rem 0.5rem', borderRadius: 100, background: '#F0F9FF', color: '#0891B2', fontWeight: 700, border: '1px solid #BAE6FD' }}>{c.workloadHours}h</span>
+                                                        <span style={{ fontSize: '0.62rem', padding: '0.15rem 0.5rem', borderRadius: 100, background: '#F0F9FF', color: '#0891B2', fontWeight: 700, border: '1px solid #BAE6FD' }} title={c.availableInMA && c.availableInPI ? `${c.workloadHours}h total no cadastro` : undefined}>{formatCourseHoursBadge(c, selectedGroup?.state)}</span>
                                                         {c.availableInMA && <span style={{ fontSize: '0.62rem', padding: '0.15rem 0.5rem', borderRadius: 100, background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, border: '1px solid #BFDBFE' }}>MA</span>}
                                                         {c.availableInPI && <span style={{ fontSize: '0.62rem', padding: '0.15rem 0.5rem', borderRadius: 100, background: '#F0FDF4', color: '#059669', fontWeight: 700, border: '1px solid #BBF7D0' }}>PI</span>}
                                                         {c.isMulticourse && <span style={{ fontSize: '0.62rem', padding: '0.15rem 0.5rem', borderRadius: 100, background: '#FFF7ED', color: '#EA580C', fontWeight: 700, border: '1px solid #FED7AA' }}>Multicurso</span>}
@@ -460,12 +535,19 @@ export default function NovaTurmaPage() {
                             {/* Course detail preview */}
                             {selectedCourse && (
                                 <div className="animate-fade-in" style={{ padding: '1rem 1.25rem', borderRadius: 12, background: '#F9FAFB', border: '1px solid #F3F4F6' }}>
-                                    <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B89B00', marginBottom: '0.65rem' }}>Detalhes do Curso Selecionado</div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                                    <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B89B00', marginBottom: '0.65rem' }}>Contrato do curso</div>
+                                    <p style={{ fontSize: '0.72rem', color: '#6B7280', margin: '0 0 0.65rem', lineHeight: 1.45 }}>
+                                        {selectedCourse.availableInMA && selectedCourse.availableInPI
+                                            ? `Cadastro: ${formatCourseHoursBadge(selectedCourse)} (cada UF com a sua carga — não soma 120h).`
+                                            : `Cadastro: ${selectedCourse.workloadHours}h.`}
+                                        {groupForContract
+                                            ? ` Turma em ${groupForContract.state}: meta ${courseContract?.workloadHours ? `${courseContract.workloadHours}h` : formatContratoHorasUf(selectedCourse, groupForContract)} — turno e datas vêm do período de curso ao vincular.`
+                                            : ' Carga por UF definida no cadastro do curso (etapa 2 define o grupo).'}
+                                    </p>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
                                         {[
-                                            ['Carga Horária', `${selectedCourse.workloadHours}h`],
-                                            ['Duração MA', `${selectedCourse.durationDaysMA} dias`],
-                                            ['Duração PI', `${selectedCourse.durationDaysPI} dias`],
+                                            ['Horas na UF', formatContratoHorasUf(selectedCourse, groupForContract)],
+                                            ['Datas / turno', 'Período de curso'],
                                             ['Tipo', selectedCourse.isMulticourse ? 'Multicurso' : 'Padrão'],
                                         ].map(([k, v]) => (
                                             <div key={k} style={{ padding: '0.5rem 0.75rem', borderRadius: 8, background: '#fff', border: '1px solid #E5E7EB' }}>
@@ -530,7 +612,22 @@ export default function NovaTurmaPage() {
                             </p>
 
                             {/* Grupo */}
+                            {periodo && (
+                                <div style={{ padding: '0.75rem 1rem', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.78rem', color: '#1E40AF' }}>
+                                    <strong>Período:</strong> {periodo.nome} · {periodo.cidadeNome} ·{' '}
+                                    {periodo.dataInicio?.slice(0, 10)} → {periodo.dataFim?.slice(0, 10)} · motor letivo do período
+                                </div>
+                            )}
+
+                            {modoAvulso && (
+                                <div style={{ padding: '0.75rem 1rem', borderRadius: 10, background: '#F0FDF4', border: '1px solid #BBF7D0', fontSize: '0.78rem', color: '#065F46', lineHeight: 1.45 }}>
+                                    <strong>Motor letivo no período de curso.</strong> Turno, datas e calendário não são cadastrados aqui.
+                                    Vincule esta turma em <strong>Períodos de curso → aba Turmas</strong> — o período aplica o motor automaticamente.
+                                </div>
+                            )}
+
                             <FSelect label="Grupo Responsável" required value={form.groupId} error={errors.groupId}
+                                disabled={!!periodo?.grupoId}
                                 onChange={e => {
                                     set('groupId', e.target.value);
                                     set('cityId', '');
@@ -639,90 +736,8 @@ export default function NovaTurmaPage() {
                         </div>
                     )}
 
-                    {/* ══════════ STEP 3: HORÁRIOS ══════════ */}
+                    {/* ══════════ STEP 3: REVISÃO ══════════ */}
                     {step === 3 && (
-                        <div className="animate-fade-in" style={{ display: 'grid', gap: '1.25rem' }}>
-                            <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: 0, padding: '0.6rem 0.9rem', background: '#F9FAFB', borderRadius: 8, borderLeft: '3px solid #FFD600' }}>
-                                Configure as datas, período e horários das aulas. O término é calculado automaticamente com base na duração do curso.
-                            </p>
-
-                            {/* Period picker */}
-                            <div>
-                                <label style={LABEL}>Período das Aulas <span style={{ color: '#FFD600' }}>*</span></label>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.65rem' }}>
-                                    {PERIODS.map(p => {
-                                        const sel = form.period === p.value;
-                                        return (
-                                            <button key={p.value} type="button" onClick={() => selectPeriod(p)}
-                                                style={{ padding: '1rem', borderRadius: 12, border: `2px solid ${sel ? p.color : '#E5E7EB'}`, background: sel ? p.bg : '#F9FAFB', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s', boxShadow: sel ? `0 4px 14px ${p.color}25` : 'none', transform: sel ? 'scale(1.02)' : 'scale(1)' }}>
-                                                <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>{p.icon}</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.85rem', color: sel ? p.color : '#374151' }}>{p.label}</div>
-                                                <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.68rem', color: sel ? p.color : '#9CA3AF', marginTop: '0.2rem' }}>{p.timeRange}</div>
-                                                {sel && <div style={{ marginTop: '0.4rem' }}><CheckCircleIcon style={{ width: 14, height: 14, color: p.color, margin: '0 auto' }} /></div>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Times */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <FInput label="Horário de Início" type="time" value={form.startTime} onChange={e => set('startTime', e.target.value)} />
-                                <FInput label="Horário de Término" type="time" value={form.endTime} onChange={e => set('endTime', e.target.value)} />
-                            </div>
-
-                            {/* Dates */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <FInput label="Data de Início" required type="date" value={form.startDate} onChange={e => set('startDate', e.target.value)} error={errors.startDate} />
-                                <div>
-                                    <FInput label="Data de Término" required type="date" value={form.endDate} onChange={e => set('endDate', e.target.value)} error={errors.endDate} />
-                                    {selectedCourse && form.startDate && (
-                                        <p style={{ fontSize: '0.67rem', color: '#059669', marginTop: '0.25rem', fontWeight: 600 }}>
-                                            ✓ Calculado automaticamente ({selectedGroup?.state === 'PI' ? selectedCourse.durationDaysPI : selectedCourse.durationDaysMA} dias)
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Enrollment dates */}
-                            <div style={{ padding: '1rem 1.25rem', borderRadius: 12, background: '#F9FAFB', border: '1px solid #F3F4F6' }}>
-                                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#6B7280', marginBottom: '0.75rem' }}>Período de Inscrições (opcional)</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                    <FInput label="Abertura das Inscrições" type="date" value={form.enrollmentOpenDate} onChange={e => set('enrollmentOpenDate', e.target.value)} />
-                                    <FInput label="Encerramento das Inscrições" type="date" value={form.enrollmentCloseDate} onChange={e => set('enrollmentCloseDate', e.target.value)} />
-                                </div>
-                            </div>
-
-                            <div style={{ padding: '1rem 1.25rem', borderRadius: 12, background: '#FFFDE7', border: '1px solid #FEF08A' }}>
-                                <div style={{ ...SEC_TITLE, color: '#92400E' }}>Dias de aula (calendário letivo)</div>
-                                <p style={{ fontSize: '0.72rem', color: '#78350F', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
-                                    Define como o sistema conta <strong>sábados e domingos</strong> para meta de frequência/certificado (junto com feriados da turma e horários em &quot;Editar turma&quot;).
-                                </p>
-                                <FSelect label="Política de fins de semana" value={form.weekendPolicy}
-                                    onChange={e => set('weekendPolicy', e.target.value as FormState['weekendPolicy'])}>
-                                    <option value="WEEKDAYS_ONLY">Só dias úteis (seg–sex) — fins de semana não contam</option>
-                                    <option value="FOLLOW_SCHEDULE">Seguir horário cadastrado da turma (class_schedules)</option>
-                                    <option value="ALL_WEEKENDS">Todos os sábados e domingos no período contam como dia de aula</option>
-                                    <option value="SELECT_WEEKENDS">Apenas alguns fins de semana (indicar datas abaixo)</option>
-                                </FSelect>
-                                {form.weekendPolicy === 'SELECT_WEEKENDS' && (
-                                    <div style={{ marginTop: '0.75rem' }}>
-                                        <label style={LABEL}>Datas com aula (YYYY-MM-DD)</label>
-                                        <textarea
-                                            value={form.weekendExtraDatesRaw}
-                                            onChange={e => set('weekendExtraDatesRaw', e.target.value)}
-                                            placeholder={'2026-05-10\n2026-05-24'}
-                                            rows={4}
-                                            style={{ ...INPUT, resize: 'vertical', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem' }}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ══════════ STEP 4: REVISÃO ══════════ */}
-                    {step === 4 && (
                         <div className="animate-fade-in" style={{ display: 'grid', gap: '1.1rem' }}>
 
                             {/* Quick pills */}
@@ -769,19 +784,18 @@ export default function NovaTurmaPage() {
                                 {[
                                     ['Identificador', form.classIdentifier, true],
                                     ['Status', STATUS_OPTIONS.find(s => s.value === form.status)?.label || '—', false],
-                                    ['Período', PERIODS.find(p => p.value === form.period)?.label || '—', false],
-                                    ['Horário', `${form.startTime} – ${form.endTime}`, true],
-                                    ['Início', form.startDate ? new Date(form.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—', false],
-                                    ['Término', form.endDate ? new Date(form.endDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—', false],
+                                    ...(modoAvulso && !periodo
+                                        ? [['Calendário letivo', 'Definido ao vincular ao período de curso', false] as const]
+                                        : [
+                                            ['Turno', form.period === 'AFTERNOON' ? 'Tarde' : form.period === 'EVENING' ? 'Noite' : 'Manhã', false],
+                                            ['Horário', `${(periodo as { startTime?: string })?.startTime || form.startTime} – ${(periodo as { endTime?: string })?.endTime || form.endTime}`, true],
+                                            ['Início', form.startDate ? new Date(form.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : (periodo?.dataInicio ? new Date(periodo.dataInicio.slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'), false],
+                                            ['Término', form.endDate ? new Date(form.endDate + 'T12:00:00').toLocaleDateString('pt-BR') : (periodo?.dataFim ? new Date(periodo.dataFim.slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'), false],
+                                        ]),
                                     ['Vagas Totais', String(form.vacancies), true],
                                     ['Vagas Reserva', String(form.reserveSlots ?? 0), true],
-                                    ['Carreta', trucks.find(t => t.id === form.truckId)?.identifier || 'Sem carreta', false],
-                                    ['Fins de semana', (
-                                        form.weekendPolicy === 'WEEKDAYS_ONLY' ? 'Só dias úteis'
-                                            : form.weekendPolicy === 'ALL_WEEKENDS' ? 'Todos sáb/dom'
-                                                : form.weekendPolicy === 'SELECT_WEEKENDS' ? 'Datas específicas'
-                                                    : 'Horário da turma'
-                                    ), false],
+                                    ['Carreta', periodo?.carreta?.identifier || trucks.find(t => t.id === (periodo?.carretaId || form.truckId))?.identifier || '—', false],
+                                    ['Período vinculado', periodo?.nome || (modoAvulso ? 'Nenhum (vincular depois)' : '—'), false],
                                 ].map(([k, v, mono]) => (
                                     <div key={k as string} style={{ padding: '0.65rem 0.9rem', borderRadius: 10, background: '#F9FAFB', border: '1px solid #F3F4F6' }}>
                                         <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#9CA3AF', marginBottom: '0.2rem' }}>{k}</div>
@@ -794,9 +808,11 @@ export default function NovaTurmaPage() {
                             {selectedCourse && (
                                 <div style={{ padding: '0.85rem 1.1rem', borderRadius: 10, background: '#FFFDE7', border: '1px solid #FEF08A', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                                     <AcademicCapIcon style={{ width: 18, height: 18, color: '#B89B00', flexShrink: 0 }} />
-                                    <div style={{ fontSize: '0.75rem', color: '#92400E' }}>
-                                        <strong>{selectedCourse.name}</strong> · {selectedCourse.workloadHours}h de carga horária · {selectedCourse.isMulticourse ? 'Multicurso' : 'Padrão'} ·{' '}
-                                        {selectedGroup?.state === 'PI' ? `${selectedCourse.durationDaysPI} dias (PI)` : `${selectedCourse.durationDaysMA} dias (MA)`}
+                                    <div style={{ fontSize: '0.75rem', color: '#92400E', lineHeight: 1.45 }}>
+                                        <strong>{selectedCourse.name}</strong>
+                                        {courseContract
+                                            ? ` · ${courseContract.workloadHours}h (${courseContract.stateCode}) — motor no período de curso`
+                                            : ` · ${formatCourseHoursBadge(selectedCourse, selectedGroup?.state)}`}
                                     </div>
                                 </div>
                             )}
@@ -842,7 +858,7 @@ export default function NovaTurmaPage() {
                         ))}
                     </div>
 
-                    {step < 4
+                    {step < 3
                         ? <button onClick={next} className="btn-primary" style={{ minWidth: 130 }}>Próxima Etapa</button>
                         : <button onClick={handleSubmit} disabled={saving} className="btn-primary" style={{ minWidth: 150, opacity: saving ? 0.7 : 1 }}>
                             {saving ? 'Criando Turma...' : 'Criar Turma'}

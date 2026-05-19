@@ -12,7 +12,6 @@ import {
 } from '@/lib/api/stock';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { EstoqueHistoricoSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
-import { EstoqueQuickActionsBar } from '@/components/estoque/EstoqueQuickActionsBar';
 import {
     EstoqueSection,
     EstoqueSectionHeader,
@@ -501,7 +500,6 @@ export default function EstoqueHistoricoPage() {
                     <EntryDetail entry={activeEntry} onClose={() => setActiveEntry(null)} />
                 )}
             </div>
-            <EstoqueQuickActionsBar currentArea="historico" />
         </div>
     );
 }

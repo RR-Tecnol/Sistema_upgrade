@@ -111,7 +111,11 @@ export function TruckStockSection({ truckId, truckIdentifier }: Props) {
                         const qtd = Number(s.quantidadeAtual);
                         const preco = s.stockItem?.precoUnitario != null ? Number(s.stockItem.precoUnitario) : 0;
                         const valor = qtd * preco;
-                        const qmin = s.stockItem?.quantidadeMinima != null ? Number(s.stockItem.quantidadeMinima) : 0;
+                        const qmin = s.quantidadeMinima != null && Number(s.quantidadeMinima) > 0
+                            ? Number(s.quantidadeMinima)
+                            : s.stockItem?.quantidadeMinima != null
+                                ? Number(s.stockItem.quantidadeMinima)
+                                : 0;
                         const vazio = qtd <= 0;
                         const baixo = !vazio && qmin > 0 && qtd <= qmin;
 

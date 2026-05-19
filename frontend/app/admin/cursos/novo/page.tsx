@@ -69,10 +69,15 @@ const Icons = {
 // ── Step definitions ──────────────────────────────────────────────────────────
 const STEPS = [
     { id: 1, label: 'Identidade', icon: 'book', desc: 'Nome e descrição' },
-    { id: 2, label: 'Estrutura', icon: 'clock', desc: 'Carga e duração' },
-    { id: 3, label: 'Abrangência', icon: 'map', desc: 'Regiões e ementa' },
+    { id: 2, label: 'Estrutura', icon: 'clock', desc: 'Horas por UF e estados' },
+    { id: 3, label: 'Conteúdo', icon: 'map', desc: 'Ementa e pré-requisitos' },
     { id: 4, label: 'Revisão', icon: 'check', desc: 'Confirmar e criar' },
 ];
+
+/** Dias letivos são calculados na turma (motor); no curso só placeholder para o schema legado. */
+const COURSE_DURATION_PLACEHOLDER = 1;
+
+type StateRuleForm = { available: boolean; durationDays: number; workloadHours?: number };
 
 // ── Reusable field components ─────────────────────────────────────────────────
 function FieldGroup({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -193,17 +198,17 @@ export default function NovoCursoPage() {
     const [formData, setFormData] = useState<CreateCourseDto>({
         name: '',
         description: '',
-        durationDaysMA: 30,
-        durationDaysPI: 30,
-        workloadHours: 120,
+        durationDaysMA: COURSE_DURATION_PLACEHOLDER,
+        durationDaysPI: COURSE_DURATION_PLACEHOLDER,
+        workloadHours: 60,
         prerequisites: '',
         syllabus: '',
         availableInMA: true,
         availableInPI: true,
         isMulticourse: false,
         stateConfig: {
-            MA: { available: true, durationDays: 30 },
-            PI: { available: true, durationDays: 30 },
+            MA: { available: true, durationDays: COURSE_DURATION_PLACEHOLDER, workloadHours: 60 },
+            PI: { available: true, durationDays: COURSE_DURATION_PLACEHOLDER, workloadHours: 60 },
         },
     });
 
@@ -214,9 +219,15 @@ export default function NovoCursoPage() {
                 const merged = Array.from(new Set(['MA', 'PI', ...fromCities])).sort();
                 setAvailableStates(merged);
                 setFormData(prev => {
-                    const nextCfg = { ...(prev.stateConfig || {}) } as Record<string, { available: boolean; durationDays: number }>;
+                    const nextCfg = { ...(prev.stateConfig || {}) } as Record<string, StateRuleForm>;
                     for (const uf of merged) {
-                        if (!nextCfg[uf]) nextCfg[uf] = { available: false, durationDays: uf === 'MA' ? prev.durationDaysMA : (uf === 'PI' ? prev.durationDaysPI : prev.durationDaysMA) };
+                        if (!nextCfg[uf]) {
+                            nextCfg[uf] = {
+                                available: false,
+                                durationDays: COURSE_DURATION_PLACEHOLDER,
+                                workloadHours: prev.stateConfig?.MA?.workloadHours ?? 60,
+                            };
+                        }
                     }
                     return { ...prev, stateConfig: nextCfg };
                 });
@@ -229,22 +240,41 @@ export default function NovoCursoPage() {
     const set = (field: string, value: unknown) =>
         setFormData(p => ({ ...p, [field]: value }));
 
-    const setNum = (name: string, val: number) =>
+    const syncLegacyWorkloadField = (cfg: Record<string, StateRuleForm>) => {
+        const active = Object.values(cfg).filter(r => r?.available);
+        return active.length
+            ? Math.max(...active.map(r => Number(r.workloadHours) || 0))
+            : 60;
+    };
+
+    const setUfWorkload = (uf: string, hours: number) =>
         setFormData(p => {
-            const next: any = { ...p, [name]: val };
-            if (name === 'durationDaysMA') {
-                next.stateConfig = {
-                    ...(p.stateConfig || {}),
-                    MA: { available: p.stateConfig?.MA?.available ?? true, durationDays: val },
-                };
-            }
-            if (name === 'durationDaysPI') {
-                next.stateConfig = {
-                    ...(next.stateConfig || p.stateConfig || {}),
-                    PI: { available: p.stateConfig?.PI?.available ?? true, durationDays: val },
-                };
-            }
-            return next;
+            const cfg = { ...(p.stateConfig || {}) } as Record<string, StateRuleForm>;
+            const prevRule = cfg[uf];
+            cfg[uf] = {
+                available: prevRule?.available ?? (uf === 'MA' || uf === 'PI'),
+                durationDays: COURSE_DURATION_PLACEHOLDER,
+                workloadHours: hours,
+            };
+            return { ...p, stateConfig: cfg, workloadHours: syncLegacyWorkloadField(cfg) };
+        });
+
+    const setUfAvailable = (uf: string, available: boolean) =>
+        setFormData(p => {
+            const cfg = { ...(p.stateConfig || {}) } as Record<string, StateRuleForm>;
+            const prev = cfg[uf];
+            cfg[uf] = {
+                available,
+                durationDays: COURSE_DURATION_PLACEHOLDER,
+                workloadHours: prev?.workloadHours ?? p.workloadHours ?? 60,
+            };
+            return {
+                ...p,
+                stateConfig: cfg,
+                workloadHours: syncLegacyWorkloadField(cfg),
+                availableInMA: !!cfg.MA?.available,
+                availableInPI: !!cfg.PI?.available,
+            };
         });
 
     const handleInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -262,15 +292,14 @@ export default function NovoCursoPage() {
             if (formData.description.trim().length < 20) errs.description = 'Descrição muito curta (mín. 20 caracteres)';
         }
         if (step === 2) {
-            if (formData.workloadHours < 1) errs.workloadHours = 'Informe a carga horária';
             const cfg = formData.stateConfig || {};
-            const invalidDuration = Object.entries(cfg).some(([_, rule]) => rule?.available && Number(rule.durationDays) < 1);
-            if (invalidDuration) errs.duration = 'Duração inválida para um ou mais estados ativos';
+            const active = Object.entries(cfg).filter(([, rule]) => rule?.available);
+            if (active.length === 0) errs.region = 'Selecione ao menos um estado de atuação';
+            const invalidHours = active.some(([, rule]) => !rule?.workloadHours || Number(rule.workloadHours) < 1);
+            if (invalidHours) errs.workloadHours = 'Informe a carga horária (h) para cada UF activa';
         }
         if (step === 3) {
             if (!formData.syllabus.trim()) errs.syllabus = 'Ementa é obrigatória';
-            const hasAnyState = Object.values(formData.stateConfig || {}).some(rule => !!rule?.available);
-            if (!hasAnyState) errs.region = 'Selecione ao menos um estado';
         }
         setErrors(errs);
         return Object.keys(errs).length === 0;
@@ -291,14 +320,28 @@ export default function NovoCursoPage() {
         try {
             setLoading(true);
             // Garante que os campos numéricos são enviados como number (não string)
+            const cfg = formData.stateConfig || {};
+            const activeHours = Object.values(cfg)
+                .filter(r => r?.available)
+                .map(r => Number(r?.workloadHours) || 0);
+            const legacyWorkload = activeHours.length ? Math.max(...activeHours) : Number(formData.workloadHours) || 60;
             const payload = {
                 ...formData,
-                durationDaysMA: Number(formData.stateConfig?.MA?.durationDays || formData.durationDaysMA),
-                durationDaysPI: Number(formData.stateConfig?.PI?.durationDays || formData.durationDaysPI),
-                workloadHours: Number(formData.workloadHours),
-                availableInMA: !!formData.stateConfig?.MA?.available,
-                availableInPI: !!formData.stateConfig?.PI?.available,
-                stateConfig: formData.stateConfig,
+                durationDaysMA: COURSE_DURATION_PLACEHOLDER,
+                durationDaysPI: COURSE_DURATION_PLACEHOLDER,
+                workloadHours: legacyWorkload,
+                availableInMA: !!cfg.MA?.available,
+                availableInPI: !!cfg.PI?.available,
+                stateConfig: Object.fromEntries(
+                    Object.entries(cfg).map(([uf, rule]) => [
+                        uf,
+                        {
+                            available: !!rule?.available,
+                            durationDays: COURSE_DURATION_PLACEHOLDER,
+                            workloadHours: rule?.available ? Number(rule.workloadHours) || legacyWorkload : undefined,
+                        },
+                    ]),
+                ),
                 // Remove prerequisites vazio para não falhar na validação
                 prerequisites: formData.prerequisites?.trim() || undefined,
             };
@@ -319,6 +362,17 @@ export default function NovoCursoPage() {
     const charCount = formData.description.length;
     const syllabusLines = formData.syllabus.split('\n').filter(l => l.trim()).length;
     const stateConfig = formData.stateConfig || {};
+    /** UFs com toggle ligado — não listar AC/outros só porque existem cidades no cadastro */
+    const activeStateCodes = Object.entries(stateConfig)
+        .filter(([, rule]) => rule?.available)
+        .map(([uf]) => uf)
+        .sort((a, b) => {
+            if (a === 'MA') return -1;
+            if (b === 'MA') return 1;
+            if (a === 'PI') return -1;
+            if (b === 'PI') return 1;
+            return a.localeCompare(b);
+        });
 
     // ── Step 1: Identity ──────────────────────────────────────────────────────
     const Step1 = () => (
@@ -337,6 +391,7 @@ export default function NovoCursoPage() {
                         name="name"
                         value={formData.name}
                         onChange={handleInput}
+                        autoComplete="off"
                         className={`nc-input nc-input--lg ${errors.name ? 'nc-input--error' : ''}`}
                         placeholder="Ex: Informática Básica"
                     />
@@ -383,69 +438,64 @@ export default function NovoCursoPage() {
             <div className="nc-step-hero">
                 <div className="nc-hero-icon nc-hero-icon--cyan"><Icons.Clock /></div>
                 <div>
-                    <h2 className="nc-step-title">Estrutura Temporal</h2>
-                    <p className="nc-step-sub">Defina carga horária e duração em cada estado</p>
+                    <h2 className="nc-step-title">Carga horária por UF</h2>
+                    <p className="nc-step-sub">Cada estado com a sua meta em horas. Dias letivos são calculados na turma.</p>
                 </div>
             </div>
 
-            <FieldGroup label="Carga Horária Total *" hint="Total de horas-aula previstas no curso">
-                <div className="nc-stepper-row">
-                    <NumberStepper name="workloadHours" value={formData.workloadHours} onChange={setNum} min={1} max={9999} suffix="h" />
-                    <div className="nc-metric-card nc-metric-yellow">
-                        <span className="nc-metric-num">{formData.workloadHours}</span>
-                        <span className="nc-metric-unit">horas</span>
-                    </div>
-                    <div className="nc-metric-card nc-metric-blue">
-                        <span className="nc-metric-num">{Math.ceil(formData.workloadHours / 4)}</span>
-                        <span className="nc-metric-unit">semanas est.</span>
-                    </div>
+            <FieldGroup
+                label="Estados de atuação *"
+                hint="Detectados a partir das cidades em Configurações › Operacional."
+            >
+                <div className="nc-regions">
+                    {availableStates.map((uf) => {
+                        const rule = stateConfig[uf];
+                        const active = !!rule?.available;
+                        const hours = Number(rule?.workloadHours ?? 60);
+                        return (
+                            <div key={uf} className="nc-duration-card" style={{ borderColor: active ? '#FCD34D' : '#E5E7EB', boxShadow: active ? '0 0 0 2px rgba(252,211,77,0.35)' : undefined }}>
+                                <Toggle
+                                    checked={active}
+                                    onChange={v => setUfAvailable(uf, v)}
+                                    label={uf}
+                                    sublabel="Horas do curso neste estado"
+                                />
+                                {active && (
+                                    <div style={{ marginTop: 10 }}>
+                                        <div className="nc-duration-flag">Carga horária ({uf})</div>
+                                        <NumberStepper
+                                            name={`hours-${uf}`}
+                                            value={hours}
+                                            onChange={(_, val) => setUfWorkload(uf, val)}
+                                            min={1}
+                                            max={9999}
+                                            suffix=" h"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
+                {errors.region && <p className="nc-error">{errors.region}</p>}
                 {errors.workloadHours && <p className="nc-error">{errors.workloadHours}</p>}
             </FieldGroup>
 
-            <div className="nc-grid-2">
-                <FieldGroup label="Duração no Maranhão *" hint="Dias para conclusão (MA)">
-                    <div className="nc-duration-card nc-duration-ma">
-                        <div className="nc-duration-flag">🟢 MA</div>
-                        <NumberStepper name="durationDaysMA" value={formData.durationDaysMA} onChange={setNum} min={1} suffix=" dias" />
-                        <div className="nc-duration-weeks">{Math.ceil(formData.durationDaysMA / 5)} semanas letivas</div>
+            {activeStateCodes.length > 0 && (
+                <div className="nc-compare-card" style={{ background: '#F0F9FF', borderColor: '#BFDBFE' }}>
+                    <p className="nc-compare-title" style={{ color: '#1E40AF' }}>Resumo</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        {activeStateCodes.map(uf => (
+                            <span key={uf} style={{ fontSize: '0.8rem', fontWeight: 800, padding: '0.35rem 0.75rem', borderRadius: 8, background: '#fff', border: '1px solid #BFDBFE' }}>
+                                {uf}: {stateConfig[uf]?.workloadHours ?? '—'}h
+                            </span>
+                        ))}
                     </div>
-                    {errors.durationDaysMA && <p className="nc-error">{errors.durationDaysMA}</p>}
-                </FieldGroup>
-
-                <FieldGroup label="Duração no Piauí *" hint="Dias para conclusão (PI)">
-                    <div className="nc-duration-card nc-duration-pi">
-                        <div className="nc-duration-flag">🔵 PI</div>
-                        <NumberStepper name="durationDaysPI" value={formData.durationDaysPI} onChange={setNum} min={1} suffix=" dias" />
-                        <div className="nc-duration-weeks">{Math.ceil(formData.durationDaysPI / 5)} semanas letivas</div>
-                    </div>
-                    {errors.durationDaysPI && <p className="nc-error">{errors.durationDaysPI}</p>}
-                </FieldGroup>
-            </div>
-            {errors.duration && <p className="nc-error">{errors.duration}</p>}
-
-            {/* Comparison widget */}
-            <div className="nc-compare-card">
-                <p className="nc-compare-title">Diferença entre regiões</p>
-                <div className="nc-compare-bars">
-                    <div className="nc-compare-bar-row">
-                        <span>MA</span>
-                        <div className="nc-compare-track">
-                            <div className="nc-compare-fill nc-compare-fill--ma"
-                                style={{ width: `${Math.min(100, (formData.durationDaysMA / Math.max(formData.durationDaysMA, formData.durationDaysPI)) * 100)}%` }} />
-                        </div>
-                        <span className="nc-compare-label">{formData.durationDaysMA}d</span>
-                    </div>
-                    <div className="nc-compare-bar-row">
-                        <span>PI</span>
-                        <div className="nc-compare-track">
-                            <div className="nc-compare-fill nc-compare-fill--pi"
-                                style={{ width: `${Math.min(100, (formData.durationDaysPI / Math.max(formData.durationDaysMA, formData.durationDaysPI)) * 100)}%` }} />
-                        </div>
-                        <span className="nc-compare-label">{formData.durationDaysPI}d</span>
-                    </div>
+                    <p style={{ fontSize: '0.72rem', color: '#1D4ED8', margin: '0.75rem 0 0', lineHeight: 1.45 }}>
+                        Não somamos MA + PI (120h). Cada turma usa só as horas da UF do grupo. Dias letivos = motor na criação da turma.
+                    </p>
                 </div>
-            </div>
+            )}
         </div>
     );
 
@@ -455,36 +505,10 @@ export default function NovoCursoPage() {
             <div className="nc-step-hero">
                 <div className="nc-hero-icon nc-hero-icon--purple"><Icons.Map /></div>
                 <div>
-                    <h2 className="nc-step-title">Abrangência & Conteúdo</h2>
-                    <p className="nc-step-sub">Onde o curso irá e o que ele ensina</p>
+                    <h2 className="nc-step-title">Conteúdo do curso</h2>
+                    <p className="nc-step-sub">Ementa e pré-requisitos — estados e horas na etapa anterior</p>
                 </div>
             </div>
-
-            <FieldGroup label="Estados de Atuação *" hint="Detectados automaticamente a partir das Cidades de Curso em Configurações > Operacional">
-                <div className="nc-regions">
-                    {availableStates.map((uf) => (
-                        <div key={uf} className="nc-duration-card" style={{ borderColor: '#E5E7EB' }}>
-                            <Toggle
-                                checked={!!stateConfig[uf]?.available}
-                                onChange={(v) => set('stateConfig', { ...stateConfig, [uf]: { available: v, durationDays: stateConfig[uf]?.durationDays || 30 } })}
-                                label={uf}
-                                sublabel={`Estado ${uf} detectado no ecossistema`}
-                            />
-                            <div style={{ marginTop: 10 }}>
-                                <div className="nc-duration-flag">Duração ({uf})</div>
-                                <NumberStepper
-                                    name={`duration-${uf}`}
-                                    value={Number(stateConfig[uf]?.durationDays || 30)}
-                                    onChange={(_, val) => set('stateConfig', { ...stateConfig, [uf]: { available: !!stateConfig[uf]?.available, durationDays: val } })}
-                                    min={1}
-                                    suffix=" dias"
-                                />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                {errors.region && <p className="nc-error">{errors.region}</p>}
-            </FieldGroup>
 
             <FieldGroup label="Pré-requisitos" hint="Adicione tags pressionando Enter ou vírgula">
                 <TagInput value={formData.prerequisites ?? ''} onChange={v => set('prerequisites', v)} />
@@ -541,17 +565,30 @@ export default function NovoCursoPage() {
 
                 <div className="nc-review-section">
                     <div className="nc-review-section-title"><Icons.Clock /> Estrutura</div>
-                    <ReviewRow label="Carga Horária" value={`${formData.workloadHours}h`} />
-                    {availableStates.map((uf) => (
-                        <ReviewRow key={uf} label={`Duração ${uf}`} value={`${stateConfig[uf]?.durationDays || 30} dias`} />
-                    ))}
+                    {activeStateCodes.length === 0 ? (
+                        <ReviewRow label="Estados activos" value="Nenhum — active MA e/ou PI na etapa 2" />
+                    ) : (
+                        activeStateCodes.map((uf) => (
+                            <ReviewRow
+                                key={uf}
+                                label={`Carga ${uf}`}
+                                value={`${stateConfig[uf]?.workloadHours ?? '—'}h (dias letivos na turma)`}
+                            />
+                        ))
+                    )}
                 </div>
 
                 <div className="nc-review-section">
                     <div className="nc-review-section-title"><Icons.Map /> Abrangência</div>
-                    {availableStates.map((uf) => (
-                        <ReviewRow key={uf} label={`Disponível ${uf}`} value={!!stateConfig[uf]?.available} />
+                    {activeStateCodes.map((uf) => (
+                        <ReviewRow key={uf} label={uf} value="Sim" />
                     ))}
+                    {availableStates.filter((uf) => !stateConfig[uf]?.available).length > 0 && (
+                        <ReviewRow
+                            label="Outros UFs detectados"
+                            value={`${availableStates.filter((uf) => !stateConfig[uf]?.available).join(', ')} (não seleccionados)`}
+                        />
+                    )}
                     <ReviewRow label="Pré-requisitos" value={formData.prerequisites || 'Nenhum'} />
                 </div>
 

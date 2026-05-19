@@ -38,6 +38,14 @@ const MONTHS_PT = [
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
+const CLASS_STATUS_LABEL: Record<string, string> = {
+    PLANNED: 'planejada',
+    ENROLLMENT_OPEN: 'com matrículas abertas',
+    ENROLLMENT_CLOSED: 'com matrículas fechadas',
+    COMPLETED: 'concluída',
+    CANCELLED: 'cancelada',
+};
+
 function toLocalDateStr(d: Date) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -132,6 +140,10 @@ export default function TeacherFrequenciaClass() {
 
     /** Persistência no backend (hoje ou após confirmar retroativo no modal). */
     async function performSave() {
+        if (classData?.status !== 'IN_PROGRESS') {
+            showToast('Lançamento de frequência disponível apenas para turmas em andamento.', 'error');
+            return;
+        }
         if (students.length === 0) {
             showToast('Nenhum aluno para registrar.', 'error');
             return;
@@ -237,13 +249,15 @@ export default function TeacherFrequenciaClass() {
             setRecords(hist.records);
             setEditMode(false); // modo leitura
         } else {
-            // Dia sem registro → todos presentes + edição imediata
             const initial: Record<string, boolean> = {};
             students.forEach(s => { initial[s.id] = true; });
             setRecords(initial);
-            setEditMode(true);
+            setEditMode(classData?.status === 'IN_PROGRESS');
         }
     }
+
+    const turmaSomenteLeitura = classData?.status !== 'IN_PROGRESS';
+    const statusLabel = CLASS_STATUS_LABEL[classData?.status || ''] || classData?.status?.toLowerCase() || 'neste status';
 
     const cells = buildCalendarDays();
     const presentCount = students.filter(s => records[s.id]).length;
@@ -330,6 +344,17 @@ export default function TeacherFrequenciaClass() {
                     <AnimatedKpiCard label="Alunos" value={students.length} color="#0891B2" bg="#E0F2FE" border="#BAE6FD" compact />
                 </div>
             </div>
+
+            {turmaSomenteLeitura && (
+                <div style={{
+                    marginBottom: '1rem', padding: '0.85rem 1rem', borderRadius: 10,
+                    background: '#F3F4F6', border: '1px solid #D1D5DB',
+                    fontSize: '0.82rem', color: '#4B5563', lineHeight: 1.5,
+                }}>
+                    <strong style={{ color: '#374151' }}>Turma {statusLabel}</strong>
+                    {' '}— você pode consultar alunos e o calendário. O lançamento de frequência será liberado quando a turma estiver <strong>em andamento</strong>.
+                </div>
+            )}
 
             {/* ===================== VIEWS ===================== */}
 
@@ -446,13 +471,12 @@ export default function TeacherFrequenciaClass() {
                         </span>
                     </div>
 
-                    {/* Botão Registrar Hoje */}
+                    {!turmaSomenteLeitura && (
                     <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
                         <button
                             onClick={() => {
                                 const td = todayYmdBrasil();
                                 setSelectedDate(td);
-                                // Verificar se hoje já tem registro
                                 const hist = attendanceHistory[td];
                                 if (hist && hist.records && Object.keys(hist.records).length > 0) {
                                     setRecords(hist.records);
@@ -472,6 +496,7 @@ export default function TeacherFrequenciaClass() {
                             Registrar Frequência de Hoje
                         </button>
                     </div>
+                    )}
 
                     {/* ── SEÇÃO ALUNOS EM RISCO (abaixo do calendário) ── */}
                     {alunosEmRisco.length > 0 && (
@@ -586,7 +611,7 @@ export default function TeacherFrequenciaClass() {
                                 {absentCount} F
                             </span>
                             {/* FIX 5 — botão Editar no modo leitura */}
-                            {!editMode && attendanceHistory[selectedDate] && (
+                            {!turmaSomenteLeitura && !editMode && attendanceHistory[selectedDate] && (
                                 <button
                                     onClick={() => setEditMode(true)}
                                     style={{
@@ -657,7 +682,7 @@ export default function TeacherFrequenciaClass() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: editMode ? '5.5rem' : '1.5rem' }}>
 
                             {/* FIX 7 — Banner de leitura */}
-                            {!editMode && attendanceHistory[selectedDate] && (
+                            {!turmaSomenteLeitura && !editMode && attendanceHistory[selectedDate] && (
                                 <div style={{
                                     padding: '0.65rem 1rem', borderRadius: 10, marginBottom: '0.25rem',
                                     background: 'rgba(255,214,0,0.08)', border: '1px solid rgba(255,214,0,0.25)',
@@ -786,7 +811,7 @@ export default function TeacherFrequenciaClass() {
                     )}
 
                     {/* FIX 5 — Botão Salvar visível apenas em editMode */}
-                    {students.length > 0 && editMode && (
+                    {students.length > 0 && editMode && !turmaSomenteLeitura && (
                         <div style={{
                             position: 'fixed', bottom: 0, left: 240, right: 0,
                             padding: '0.9rem 1.5rem',

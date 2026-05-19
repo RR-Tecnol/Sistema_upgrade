@@ -9,6 +9,7 @@ import { acoesApi } from '@/lib/api/acoes';
 import { groupsApi, type Group } from '@/lib/api/groups';
 import { citiesApi, type City } from '@/lib/api/cities';
 import { trucksApi, type Truck } from '@/lib/api/trucks';
+import { unwrapListData } from '@/lib/api/pagination';
 import { toast } from '@/components/ui/Toast';
 
 type CreateMode = 'individual' | 'full';
@@ -57,15 +58,15 @@ export default function GestaoAcademicaNovoPage() {
 
     useEffect(() => {
         Promise.all([
-            coursesApi.getAll({ active: true }).catch(() => []),
-            groupsApi.getAll().catch(() => []),
+            coursesApi.getAll({ active: true, limit: 500, page: 1 }).catch(() => []),
+            groupsApi.getAll({ limit: 500, page: 1 }).catch(() => []),
             citiesApi.getAll().catch(() => []),
-            trucksApi.getAll({ status: 'AVAILABLE' }).catch(() => []),
+            trucksApi.getAll({ status: 'AVAILABLE', limit: 500, page: 1 }).catch(() => []),
         ]).then(([c, g, ci, t]) => {
-            setCourses(c);
-            setGroups(g);
+            setCourses(unwrapListData<Course>(c));
+            setGroups(unwrapListData<Group>(g));
             setCities(ci);
-            setTrucks(t);
+            setTrucks(unwrapListData<Truck>(t));
         });
     }, []);
 

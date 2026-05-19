@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { trucksApi, Truck } from '@/lib/api/trucks';
-import { groupsApi } from '@/lib/api/groups';
+import { groupsApi, Group } from '@/lib/api/groups';
+import { unwrapListData } from '@/lib/api/pagination';
 import api from '@/lib/api/client';
 import {
     ArrowLeftIcon,
@@ -12,7 +13,6 @@ import {
     CheckIcon,
 } from '@heroicons/react/24/outline';
 import { MovimentacaoModal } from '@/components/estoque/MovimentacaoModal';
-import { EstoqueQuickActionsBar } from '@/components/estoque/EstoqueQuickActionsBar';
 import { TruckStockSection } from '@/components/estoque/TruckStockSection';
 
 const STATUS_OPTIONS = [
@@ -68,11 +68,11 @@ export default function CarretaEditPage() {
         try {
             const [t, g, sRes] = await Promise.all([
                 trucksApi.getOne(id),
-                groupsApi.getAll().catch(() => []),
+                groupsApi.getAll({ limit: 500, page: 1 }).catch(() => []),
                 api.get(`/truck-maintenance/truck/${id}/stats`).catch(() => null)
             ]);
             setTruck(t);
-            setGroups(g);
+            setGroups(unwrapListData<Group>(g));
             setStats(sRes?.data || null);
             setForm({
                 identifier: t.identifier,
@@ -446,8 +446,6 @@ export default function CarretaEditPage() {
 
             {/* ── Itens em estoque NESTA carreta + vínculo com última ação consumidora ── */}
             <TruckStockSection truckId={id} truckIdentifier={truck?.identifier} />
-
-            <EstoqueQuickActionsBar currentArea="carretas" />
         </div>
     );
 }

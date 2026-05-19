@@ -13,8 +13,13 @@ export interface CreateGroupDto {
 }
 
 export const groupsApi = {
-    getAll: async () => {
-        const response = await api.get<Group[]>('/groups');
+    getAll: async (filters?: { page?: number; limit?: number; search?: string }) => {
+        const params = new URLSearchParams();
+        if (filters?.page) params.append('page', String(filters.page));
+        if (filters?.limit) params.append('limit', String(filters.limit));
+        if (filters?.search) params.append('search', filters.search);
+        const qs = params.toString();
+        const response = await api.get(`/groups${qs ? `?${qs}` : ''}`);
         return response.data;
     },
 

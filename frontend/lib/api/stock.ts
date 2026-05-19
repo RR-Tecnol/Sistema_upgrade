@@ -1,4 +1,10 @@
 import api from './client';
+import { unwrapListData } from './pagination';
+
+/** Chamadas sem page/limit precisam de array; o hub passa page/limit e recebe o objeto paginado. */
+function wantsPaginatedStockQuery(filters?: { page?: number; limit?: number }) {
+    return filters?.page != null || filters?.limit != null;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 //   TYPES
@@ -406,6 +412,21 @@ export interface StockMovement {
     registrar?: { id: string; name: string; role: string };
 }
 
+/** Mesma regra do cadastro de insumo: quantidade × preço unitário do item. */
+export function stockMovementLineValue(
+    m: Pick<StockMovement, 'quantidade' | 'stockItem'>,
+): number | null {
+    const preco = Number(m.stockItem?.precoUnitario ?? 0);
+    if (!Number.isFinite(preco) || preco <= 0) return null;
+    const qtd = Number(m.quantidade);
+    if (!Number.isFinite(qtd) || qtd <= 0) return null;
+    return qtd * preco;
+}
+
+export function formatStockCurrency(value: number): string {
+    return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export interface StockPurchaseRequest {
     id: string;
     stockItemId: string;
@@ -618,7 +639,9 @@ export const stockApi = {
             onlyExpiring?: boolean;
             diasAteVencer?: number;
             includeInactive?: boolean;
-        }): Promise<StockItem[]> => {
+            page?: number;
+            limit?: number;
+        }) => {
             const params = new URLSearchParams();
             if (filters?.categoria) params.append('categoria', filters.categoria);
             if (filters?.customCategoryId) params.append('customCategoryId', filters.customCategoryId);
@@ -627,8 +650,17 @@ export const stockApi = {
             if (filters?.onlyExpiring) params.append('onlyExpiring', 'true');
             if (filters?.diasAteVencer != null) params.append('diasAteVencer', String(filters.diasAteVencer));
             if (filters?.includeInactive) params.append('includeInactive', 'true');
-            const r = await api.get<StockItem[]>(`/stock/items?${params.toString()}`);
-            return r.data;
+            const paginated = wantsPaginatedStockQuery(filters);
+            if (paginated) {
+                if (filters?.page) params.append('page', String(filters.page));
+                if (filters?.limit) params.append('limit', String(filters.limit));
+            } else {
+                params.append('page', '1');
+                params.append('limit', '500');
+            }
+            const r = await api.get(`/stock/items?${params.toString()}`);
+            const raw = r.data;
+            return paginated ? raw : unwrapListData<StockItem>(raw);
         },
 
         financials: async (id: string): Promise<any> => {
@@ -857,13 +889,24 @@ export const stockApi = {
             status?: StockPurchaseRequestStatus;
             stockItemId?: string;
             onlyMine?: boolean;
-        }): Promise<StockPurchaseRequest[]> => {
+            page?: number;
+            limit?: number;
+        }) => {
             const params = new URLSearchParams();
             if (filters?.status) params.append('status', filters.status);
             if (filters?.stockItemId) params.append('stockItemId', filters.stockItemId);
             if (filters?.onlyMine) params.append('onlyMine', 'true');
-            const r = await api.get<StockPurchaseRequest[]>(`/stock/purchase-requests?${params.toString()}`);
-            return r.data;
+            const paginated = wantsPaginatedStockQuery(filters);
+            if (paginated) {
+                if (filters?.page) params.append('page', String(filters.page));
+                if (filters?.limit) params.append('limit', String(filters.limit));
+            } else {
+                params.append('page', '1');
+                params.append('limit', '500');
+            }
+            const r = await api.get(`/stock/purchase-requests?${params.toString()}`);
+            const raw = r.data;
+            return paginated ? raw : unwrapListData<StockPurchaseRequest>(raw);
         },
 
         getOne: async (id: string): Promise<StockPurchaseRequest> => {
@@ -1038,36 +1081,7 @@ export const PURCHASE_STATUS_COLOR: Record<StockPurchaseRequestStatus, string> =
     CANCELADA: '#6B7280',
 };
 
-/** Mapa amigável de actions de auditoria para a UI */
-export const AUDIT_ACTION_META: Record<string, { label: string; color: string; icon: string }> = {
-    STOCK_ITEM_CREATE:              { label: 'Item cadastrado',          color: '#0891B2', icon: '📦' },
-    STOCK_ITEM_UPDATE:              { label: 'Item editado',             color: '#6366F1', icon: '✏️' },
-    STOCK_ITEM_DEACTIVATE:          { label: 'Item desativado',          color: '#6B7280', icon: '🚫' },
-    STOCK_ITEM_REACTIVATE:          { label: 'Item reativado',           color: '#10B981', icon: '♻️' },
-    STOCK_MOVEMENT_ENTRADA:         { label: 'Entrada (Central → Carreta)', color: '#0891B2', icon: '⬇️' },
-    STOCK_MOVEMENT_SAIDA:           { label: 'Saída (Consumo)',          color: '#EA580C', icon: '➡️' },
-    STOCK_MOVEMENT_TRANSFERENCIA:   { label: 'Transferência entre Carretas', color: '#7C3AED', icon: '🔄' },
-    STOCK_MOVEMENT_DEVOLUCAO:       { label: 'Devolução (Carreta → Central)', color: '#059669', icon: '⬆️' },
-    STOCK_MOVEMENT_AJUSTE:          { label: 'Ajuste de Inventário',     color: '#D97706', icon: '⚖️' },
-    STOCK_MOVEMENT_PERDA:           { label: 'Perda / Baixa',            color: '#DC2626', icon: '⚠️' },
-    STOCK_MOVEMENT_REPOSICAO:       { label: 'Reposição (Compra)',       color: '#10B981', icon: '🛒' },
-    STOCK_MOVEMENT_ENCOMENDA:       { label: 'Encomenda aguardando recebimento', color: '#3B82F6', icon: '📦' },
-    STOCK_PURCHASE_REQUEST_CREATE:  { label: 'Solicitação de compra criada', color: '#FFD600', icon: '📝' },
-    STOCK_PURCHASE_REQUEST_APPROVE: { label: 'Solicitação aprovada',     color: '#10B981', icon: '✅' },
-    STOCK_PURCHASE_REQUEST_RECEIVE: { label: 'Compra recebida no estoque', color: '#10B981', icon: '📥' },
-    STOCK_PURCHASE_REQUEST_REJECT:  { label: 'Solicitação rejeitada',    color: '#EF4444', icon: '❌' },
-    STOCK_PURCHASE_REQUEST_CANCEL:  { label: 'Solicitação cancelada',    color: '#6B7280', icon: '🚫' },
-    STOCK_RESERVATION_KEPT:         { label: 'Sobra mantida na carreta',  color: '#7C3AED', icon: '🚛' },
-};
-
-export function auditActionMeta(action: string) {
-    const fallback = action
-        .replace(/^STOCK_/, '')
-        .replace(/_/g, ' ')
-        .toLowerCase()
-        .replace(/\b\w/g, c => c.toUpperCase());
-    return AUDIT_ACTION_META[action] ?? { label: fallback || 'Evento de auditoria', color: '#6B7280', icon: '📌' };
-}
+export { AUDIT_ACTION_META, auditActionMeta } from '@/lib/auditLabels';
 
 /** Helper para checar se item está com estoque baixo (inclui crítico) */
 export function isLowStock(item: StockItem): boolean {

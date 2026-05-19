@@ -23,7 +23,6 @@ import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { EstoqueItensSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import { SolicitarCompraModal } from '@/components/estoque/SolicitarCompraModal';
 import { MovimentacaoModal } from '@/components/estoque/MovimentacaoModal';
-import { EstoqueQuickActionsBar } from '@/components/estoque/EstoqueQuickActionsBar';
 import {
     EstoqueSection,
     EstoqueSectionHeader,
@@ -717,7 +716,6 @@ export default function EstoqueItensListPage() {
                         </div>
                     )}
                 </EstoqueSection>
-                <EstoqueQuickActionsBar currentArea="itens" />
             </div>
 
             <ConfirmModal

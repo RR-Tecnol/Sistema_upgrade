@@ -158,6 +158,35 @@ export class UsersService {
         });
     }
 
+    // MEL-07: Saída professor
+    async registerCheckout(userId: string) {
+        const today = new Date().toISOString().split('T')[0];
+        const existing = await this.prisma.teacherCheckin.findFirst({
+            where: { userId, date: today },
+        });
+        if (!existing) {
+            throw new BadRequestException('Registre a entrada antes de registrar a saída.');
+        }
+        if (existing.checkoutAt) {
+            return { ...existing, alreadyRegistered: true };
+        }
+        try {
+            const updated = await this.prisma.teacherCheckin.update({
+                where: { id: existing.id },
+                data: { checkoutAt: new Date() },
+            });
+            return { ...updated, alreadyRegistered: false };
+        } catch (e) {
+            const msg = (e as { message?: string })?.message || '';
+            if (msg.includes('checkoutAt') || msg.includes('checkout_at')) {
+                throw new BadRequestException(
+                    'Saída indisponível: execute a migration MEL-07 (checkoutAt) na base de dados.',
+                );
+            }
+            throw e;
+        }
+    }
+
     // ─── PASSO 4.2: Registro de ponto motorista ───────────────────────
 
     async registerDriverCheckin(userId: string, note?: string) {
@@ -221,6 +250,35 @@ export class UsersService {
             orderBy: { checkedAt: 'desc' },
             take: 30,
         });
+    }
+
+    // MEL-07: Saída motorista
+    async registerDriverCheckout(userId: string) {
+        const today = new Date().toISOString().split('T')[0];
+        const existing = await this.prisma.driverCheckin.findFirst({
+            where: { userId, date: today },
+        });
+        if (!existing) {
+            throw new BadRequestException('Registre a entrada antes de registrar a saída.');
+        }
+        if (existing.checkoutAt) {
+            return { ...existing, alreadyRegistered: true };
+        }
+        try {
+            const updated = await this.prisma.driverCheckin.update({
+                where: { id: existing.id },
+                data: { checkoutAt: new Date() },
+            });
+            return { ...updated, alreadyRegistered: false };
+        } catch (e) {
+            const msg = (e as { message?: string })?.message || '';
+            if (msg.includes('checkoutAt') || msg.includes('checkout_at')) {
+                throw new BadRequestException(
+                    'Saída indisponível: execute a migration MEL-07 (checkoutAt) na base de dados.',
+                );
+            }
+            throw e;
+        }
     }
 
     async getPreferences(userId: string) {

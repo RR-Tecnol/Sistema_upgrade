@@ -17,7 +17,7 @@ export interface Course {
     createdAt: string;
     updatedAt: string;
     _count?: { classes: number };
-    stateConfig?: Record<string, { available: boolean; durationDays: number }>;
+    stateConfig?: Record<string, { available: boolean; durationDays: number; workloadHours?: number }>;
 }
 
 export interface CreateCourseDto {
@@ -31,17 +31,27 @@ export interface CreateCourseDto {
     availableInMA: boolean;
     availableInPI: boolean;
     isMulticourse: boolean;
-    stateConfig?: Record<string, { available: boolean; durationDays: number }>;
+    stateConfig?: Record<string, { available: boolean; durationDays: number; workloadHours?: number }>;
 }
 
 export const coursesApi = {
-    getAll: async (filters?: { state?: string; active?: boolean; isMulticourse?: boolean }) => {
+    getAll: async (filters?: {
+        state?: string;
+        active?: boolean;
+        isMulticourse?: boolean;
+        search?: string;
+        page?: number;
+        limit?: number;
+    }) => {
         const params = new URLSearchParams();
         if (filters?.state) params.append('state', filters.state);
         if (filters?.active !== undefined) params.append('active', String(filters.active));
         if (filters?.isMulticourse !== undefined) params.append('isMulticourse', String(filters.isMulticourse));
+        if (filters?.search) params.append('search', filters.search);
+        if (filters?.page) params.append('page', String(filters.page));
+        if (filters?.limit) params.append('limit', String(filters.limit));
 
-        const response = await api.get<Course[]>(`/courses?${params.toString()}`);
+        const response = await api.get(`/courses?${params.toString()}`);
         return response.data;
     },
 

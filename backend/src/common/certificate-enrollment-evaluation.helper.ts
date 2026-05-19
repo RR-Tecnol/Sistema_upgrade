@@ -6,6 +6,7 @@ import {
     applyImprevistoPenaltiesAndEvaluateEligibility,
 } from './certificate-eligibility.util';
 import { buildStudentCertificateRiskState, type ClassCalendarForRisk } from './student-certificate-risk.util';
+import { fetchMergedHolidayDatesForClass } from './holiday-catalog.util';
 
 type ClassForCertEval = {
     startDate: Date;
@@ -58,11 +59,20 @@ export async function evaluateCertificateEligibilityForEnrollment(
             include: {
                 schedules: { where: { active: true } },
                 holidays: { where: { active: true }, select: { date: true } },
+                city: { select: { state: true } },
             },
         }),
     ]);
 
     if (!student?.userId || !cls) return null;
+
+    const mergedHolidayDates = await fetchMergedHolidayDatesForClass(prisma, {
+        classId: cls.id,
+        stateCode: cls.city?.state ?? null,
+        rangeStart: cls.startDate,
+        rangeEnd: cls.endDate,
+    });
+    const clsForEval = { ...cls, holidays: mergedHolidayDates.map((date) => ({ date })) };
 
     const [rows, penalRows] = await Promise.all([
         prisma.attendance.findMany({
@@ -80,7 +90,7 @@ export async function evaluateCertificateEligibilityForEnrollment(
         }),
     ]);
 
-    return evaluateWithClsRowsPenal(cls, rows, penalRows, asOf);
+    return evaluateWithClsRowsPenal(clsForEval, rows, penalRows, asOf);
 }
 
 /**
@@ -101,6 +111,7 @@ export async function evaluateCertificateEligibilityMapForClass(
         include: {
             schedules: { where: { active: true } },
             holidays: { where: { active: true }, select: { date: true } },
+            city: { select: { state: true } },
         },
     });
 
@@ -108,6 +119,14 @@ export async function evaluateCertificateEligibilityMapForClass(
         for (const id of studentIds) out.set(id, null);
         return out;
     }
+
+    const mergedHolidayDates = await fetchMergedHolidayDatesForClass(prisma, {
+        classId: cls.id,
+        stateCode: cls.city?.state ?? null,
+        rangeStart: cls.startDate,
+        rangeEnd: cls.endDate,
+    });
+    const clsForEval = { ...cls, holidays: mergedHolidayDates.map((date) => ({ date })) };
 
     const students = await prisma.student.findMany({
         where: { id: { in: studentIds } },
@@ -156,7 +175,7 @@ export async function evaluateCertificateEligibilityMapForClass(
         }
         const rows = attByStudent.get(sid) ?? [];
         const penalRows = penalByUser.get(uid) ?? [];
-        out.set(sid, evaluateWithClsRowsPenal(cls, rows, penalRows, asOf));
+        out.set(sid, evaluateWithClsRowsPenal(clsForEval, rows, penalRows, asOf));
     }
     return out;
 }

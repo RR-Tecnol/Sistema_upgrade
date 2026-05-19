@@ -9,6 +9,8 @@ import { GruposSidebarTutorial } from '@/components/admin/adminSidebarTutorials'
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { CreationSuccessScreen } from '@/components/CreationSuccessScreen';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_CARDS } from '@/lib/api/pagination';
 
 const STATE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; accent: string }> = {
     MA: { label: 'Maranhão', color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD', accent: '#0E7490' },
@@ -113,6 +115,9 @@ function ModalEdicaoGrupo({ group, onClose, onSaved }: { group: Group; onClose: 
 
 export default function GruposPage() {
     const [groups, setGroups] = useState<Group[]>([]);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
     const [loading, setLoading] = useState(true);
     const [editGroup, setEditGroup] = useState<Group | null>(null);
     const [deleteGroup, setDeleteGroup] = useState<Group | null>(null);
@@ -121,7 +126,7 @@ export default function GruposPage() {
     const [newGroupSaving, setNewGroupSaving] = useState(false);
     const [creationDone, setCreationDone] = useState<{ name: string } | null>(null);
 
-    useEffect(() => { loadGroups(); }, []);
+    useEffect(() => { loadGroups(); }, [page]);
     useEffect(() => {
         if (!creationDone) return;
         const t = setTimeout(() => setCreationDone(null), 2400);
@@ -136,8 +141,11 @@ export default function GruposPage() {
     const loadGroups = async () => {
         try {
             setLoading(true);
-            const data = await groupsApi.getAll();
-            setGroups(data);
+            const raw = await groupsApi.getAll({ page, limit: ADMIN_PAGE_SIZE_CARDS });
+            const norm = normalizePaginated<Group>(raw, ADMIN_PAGE_SIZE_CARDS);
+            setGroups(norm.data);
+            setTotal(norm.total);
+            setTotalPages(norm.totalPages);
         } catch (error) {
             /* silencioso — lista vazia exibida ao usuário */
         } finally {
@@ -336,6 +344,15 @@ export default function GruposPage() {
                     })}
                 </div>
             )}
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="grupo(s)"
+            />
 
             {/* INFO */}
             <div style={{

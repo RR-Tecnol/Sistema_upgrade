@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
 import { MailService } from '../mail/mail.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
@@ -314,6 +315,8 @@ export class EnrollmentsService {
         status?: EnrollmentStatus;
         classId?: string;
         search?: string;
+        page?: number;
+        limit?: number;
     }) {
         const where: Prisma.EnrollmentWhereInput = {};
 
@@ -333,28 +336,36 @@ export class EnrollmentsService {
             ];
         }
 
-        return this.prisma.enrollment.findMany({
-            where,
-            include: {
-                student: {
-                    include: {
-                        user: true,
-                        contact: { select: { email: true, phone: true } },
-                        address: { select: { city: true, state: true } },
-                    },
-                },
-                class: {
-                    include: {
-                        course: true,
-                        city: true,
-                        group: { select: { name: true, state: true } },
-                    },
+        const { skip, page, limit } = resolvePagination(filters?.page, filters?.limit, 20);
+        const include = {
+            student: {
+                include: {
+                    user: true,
+                    contact: { select: { email: true, phone: true } },
+                    address: { select: { city: true, state: true } },
                 },
             },
-            orderBy: {
-                createdAt: 'desc',
+            class: {
+                include: {
+                    course: true,
+                    city: true,
+                    group: { select: { name: true, state: true } },
+                },
             },
-        });
+        };
+
+        const [data, total] = await Promise.all([
+            this.prisma.enrollment.findMany({
+                where,
+                include,
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit,
+            }),
+            this.prisma.enrollment.count({ where }),
+        ]);
+
+        return paginatedResult(data, total, page, limit);
     }
 
     async findOne(id: string, requesterId?: string, requesterRole?: string) {

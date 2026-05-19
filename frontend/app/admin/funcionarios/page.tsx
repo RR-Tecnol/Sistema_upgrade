@@ -10,6 +10,8 @@ import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { CreationSuccessScreen } from '@/components/CreationSuccessScreen';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import { EmployeeDocumentsPreview } from '@/components/admin/EmployeeDocumentsPreview';
+import { toast } from '@/components/ui/Toast';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
 
 /* ── Types ─────────────────────────────────────────── */
 type EmployeeRole = 'INSTRUCTOR' | 'DRIVER' | 'COORDINATOR' | 'TECHNICIAN' | 'ADMINISTRATIVE' | 'OTHER';
@@ -124,7 +126,7 @@ function DocumentPreviewField({ label, value, onChange, acceptNoPossui = false }
             });
             onChange(res.data?.url || '');
         } catch {
-            // silencioso
+            toast.error('Não foi possível enviar o documento. Verifique se o MinIO está ativo (porta 9010).');
         } finally {
             setUploading(false);
             e.target.value = '';
@@ -1632,6 +1634,9 @@ function GenerateLinkModal({ onClose }: { onClose: () => void }) {
 /* ── MAIN PAGE ─────────────────────────────────────── */
 export default function FuncionariosPage() {
     const [employees, setEmployees] = useState<Employee[]>([]);
+    const [empPage, setEmpPage] = useState(1);
+    const [empTotalPages, setEmpTotalPages] = useState(1);
+    const [empTotal, setEmpTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [filterRole, setFilterRole] = useState('');
@@ -1648,6 +1653,9 @@ export default function FuncionariosPage() {
     // Aba Pendentes — usuários auto-cadastrados aguardando aprovação
     const [activeTab, setActiveTab] = useState<'employees' | 'pending'>('employees');
     const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+    const [pendingPage, setPendingPage] = useState(1);
+    const [pendingTotalPages, setPendingTotalPages] = useState(1);
+    const [pendingTotal, setPendingTotal] = useState(0);
     const [loadingPending, setLoadingPending] = useState(false);
     const [pendingAction, setPendingAction] = useState<string | null>(null);
     const [pendingDailyCost, setPendingDailyCost] = useState<Record<string, string>>({});
@@ -1668,7 +1676,7 @@ export default function FuncionariosPage() {
     const fetchEmployees = useCallback(async () => {
         setLoading(true);
         try {
-            const params: any = {};
+            const params: Record<string, string | number> = { page: empPage, limit: 12 };
             if (search) params.search = search;
             if (filterRole) params.role = filterRole;
             if (filterDept) params.department = filterDept;
@@ -1677,13 +1685,19 @@ export default function FuncionariosPage() {
             const res = await api.get('/employees', { params });
             const data = res.data;
             setEmployees(data.employees || []);
+            setEmpTotal(data.total || 0);
+            setEmpTotalPages(data.totalPages || 1);
             setKpis({ total: data.total || 0, active: data.activeCount || 0, byRole: data.byRole || [], byDept: data.byDept || [] });
         } catch {
             setEmployees([]);
+            setEmpTotal(0);
+            setEmpTotalPages(1);
         } finally {
             setLoading(false);
         }
-    }, [search, filterRole, filterDept, filterActive]);
+    }, [search, filterRole, filterDept, filterActive, empPage]);
+
+    useEffect(() => { setEmpPage(1); }, [search, filterRole, filterDept, filterActive]);
 
     useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
 
@@ -1703,10 +1717,22 @@ export default function FuncionariosPage() {
     const fetchPending = useCallback(async () => {
         setLoadingPending(true);
         try {
-            const res = await api.get('/employees/registration-requests');
-            setPendingUsers(res.data || []);
-        } catch { setPendingUsers([]); } finally { setLoadingPending(false); }
-    }, []);
+            const res = await api.get('/employees/registration-requests', {
+                params: { page: pendingPage, limit: 12 },
+            });
+            const data = res.data;
+            const list = data?.data ?? (Array.isArray(data) ? data : []);
+            setPendingUsers(list);
+            setPendingTotal(data?.total ?? list.length);
+            setPendingTotalPages(data?.totalPages ?? 1);
+        } catch {
+            setPendingUsers([]);
+            setPendingTotal(0);
+            setPendingTotalPages(1);
+        } finally { setLoadingPending(false); }
+    }, [pendingPage]);
+
+    useEffect(() => { if (activeTab === 'pending') setPendingPage(1); }, [activeTab]);
 
     useEffect(() => { if (activeTab === 'pending') fetchPending(); }, [activeTab, fetchPending]);
 
@@ -1905,7 +1931,7 @@ export default function FuncionariosPage() {
             <div style={{ display: 'flex', gap: '0.4rem', borderBottom: '2px solid #F3F4F6', paddingBottom: 0 }}>
                 {([
                     { key: 'employees' as const, label: '👥 Funcionários', count: kpis.total, accent: '#FFD600' },
-                    { key: 'pending' as const, label: '⏳ Pendentes', count: pendingUsers.length, accent: '#DC2626' },
+                    { key: 'pending' as const, label: '⏳ Pendentes', count: pendingTotal, accent: '#DC2626' },
                 ]).map(tab => (
                     <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
                         padding: '0.6rem 1.1rem', border: 'none', cursor: 'pointer', background: 'transparent',
@@ -2510,11 +2536,26 @@ export default function FuncionariosPage() {
                 </div>
             )}
 
-            {/* ── TOTAL BADGE ── */}
-            {employees.length > 0 && (
-                <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
-                    Exibindo {employees.length} de {kpis.total} funcionários
-                </div>
+            {activeTab === 'employees' && (
+                <AdminListPagination
+                    page={empPage}
+                    totalPages={empTotalPages}
+                    total={empTotal}
+                    loading={loading}
+                    onPageChange={setEmpPage}
+                    itemLabel="funcionário(s)"
+                />
+            )}
+
+            {activeTab === 'pending' && pendingTotal > 0 && (
+                <AdminListPagination
+                    page={pendingPage}
+                    totalPages={pendingTotalPages}
+                    total={pendingTotal}
+                    loading={loadingPending}
+                    onPageChange={setPendingPage}
+                    itemLabel="pendente(s)"
+                />
             )}
 
             {/* ── DETAIL PANEL ── */}

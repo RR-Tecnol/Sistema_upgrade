@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -16,23 +16,29 @@ import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 
 /* ── Tipos ─────────────────────────────────────────── */
 interface Holiday {
     id: string;
-    classId: string;
+    classId?: string | null;
     date: string;
     reason: string;
     description?: string;
     type?: 'NATIONAL' | 'LOCAL' | 'WEATHER' | 'OTHER';
     active: boolean;
     newEndDate?: string;
-    createdAt: string;
+    createdAt?: string;
+    source?: 'catalog' | 'class';
+    scope?: 'NATIONAL' | 'STATE';
+    stateCode?: string | null;
 }
 
 interface Class {
     id: string;
     classIdentifier: string;
+    status?: string;
     course?: { name: string };
     city?: { name: string; state: string };
 }
@@ -243,6 +249,7 @@ export default function FeriadosPage() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [filterType, setFilterType] = useState('');
+    const [page, setPage] = useState(1);
     const [deleting, setDeleting] = useState<string | null>(null);
     const [preloading, setPreloading] = useState(false);
     const [preloadResult, setPreloadResult] = useState<{ ok: number; skip: number; detail?: string } | null>(null);
@@ -251,81 +258,111 @@ export default function FeriadosPage() {
     const load = async () => {
         setLoading(true);
         try {
-            const classRes = await api.get('/classes?status=IN_PROGRESS');
-            const cls: Class[] = Array.isArray(classRes.data) ? classRes.data : (classRes.data?.data ?? []);
-            setClasses(cls);
-            if (cls.length > 0) {
+            const catalogRes = await api.get('/holiday/catalog');
+            const catalog: Holiday[] = (Array.isArray(catalogRes.data) ? catalogRes.data : []).map(h => ({
+                ...h,
+                classId: null,
+                source: 'catalog' as const,
+                active: true,
+            }));
+
+            let classHolidays: Holiday[] = [];
+            let cls: Class[] = [];
+            try {
+                const classRes = await api.get('/classes');
+                cls = Array.isArray(classRes.data) ? classRes.data : (classRes.data?.data ?? []);
+            } catch { /* lista de turmas opcional para ocorrência por turma */ }
+
+            const turmasModal = cls.filter(c => c.status === 'IN_PROGRESS' || c.status === 'OPEN' || c.status === 'PLANNED');
+            setClasses(turmasModal.length ? turmasModal : cls);
+
+            const inProgress = cls.filter(c => c.status === 'IN_PROGRESS');
+            if (inProgress.length > 0) {
                 const results = await Promise.allSettled(
-                    cls.map(c => api.get(`/holiday/class/${c.id}`).then(r => (Array.isArray(r.data) ? r.data : [])))
+                    inProgress.map(c =>
+                        api.get(`/holiday/class/${c.id}`).then(r => (Array.isArray(r.data) ? r.data : [])),
+                    ),
                 );
-                const allHolidays: Holiday[] = results
+                classHolidays = results
                     .filter(r => r.status === 'fulfilled')
-                    .flatMap(r => (r as PromiseFulfilledResult<Holiday[]>).value);
-                setHolidays(allHolidays);
-            } else {
-                setHolidays([]);
+                    .flatMap(r =>
+                        (r as PromiseFulfilledResult<Holiday[]>).value.map(h => ({
+                            ...h,
+                            source: 'class' as const,
+                        })),
+                    );
             }
-        } catch { setHolidays([]); }
-        finally { setLoading(false); }
+
+            setHolidays([...catalog, ...classHolidays]);
+        } catch {
+            setHolidays([]);
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => { load(); }, []);
 
     const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
     const [confirmRemoveDesc, setConfirmRemoveDesc] = useState('');
+    const [confirmRemoveSource, setConfirmRemoveSource] = useState<'catalog' | 'class'>('class');
     const [removeMotivo, setRemoveMotivo] = useState('');
-    const handleRemove = async (id: string) => {
+    const handleRemove = async (id: string, source: 'catalog' | 'class') => {
         setDeleting(id);
-        try { await api.delete(`/holiday/${id}`); toast.success('Ocorrência removida!'); await load(); }
-        catch { toast.error('Erro ao remover ocorrência'); }
-        finally { setDeleting(null); setConfirmRemoveId(null); }
-    };
-
-    /* FEAT-FERIADO: Pré-carregar feriados nacionais 2025/2026 para todas as turmas ativas */
-    const handlePreloadNacional = async () => {
-        if (!classes.length) {
-            toast.warning('Nenhuma turma ativa (IN_PROGRESS) encontrada.');
-            return;
-        }
-        setPreloading(true);
-        let ok = 0; let skip = 0;
-        for (const cls of classes) {
-            for (const f of FERIADOS_NACIONAIS) {
-                try {
-                    await api.post(`/holiday/class/${cls.id}`, { date: f.date, reason: f.reason });
-                    ok++;
-                } catch {
-                    skip++; // já existe ou fora do período
-                }
+        try {
+            if (source === 'catalog') {
+                await api.delete(`/holiday/catalog/${id}`);
+                toast.success('Feriado removido do catálogo global.');
+            } else {
+                await api.delete(`/holiday/${id}`);
+                toast.success('Ocorrência removida da turma!');
             }
+            await load();
+        } catch {
+            toast.error('Erro ao remover feriado');
+        } finally {
+            setDeleting(null);
+            setConfirmRemoveId(null);
         }
-        setPreloadResult({
-            ok,
-            skip,
-            detail: `${classes.length} turma(s) em andamento analisada(s).`,
-        });
-        setPreloading(false);
-        await load();
     };
 
-    /** Feriados estaduais fixos por UF da cidade da turma (backend `brazil-state-holidays`). */
-    const handlePreloadEstaduais = async () => {
-        if (!classes.length) {
-            toast.warning('Nenhuma turma ativa (IN_PROGRESS) encontrada.');
-            return;
-        }
+    /** BUG-15: catálogo global — não exige turma IN_PROGRESS */
+    const handlePreloadNacional = async () => {
         setPreloading(true);
         try {
-            const y = new Date().getFullYear();
-            const res = await api.post<{ ok: number; skip: number; classesProcessed: number }>(
-                '/holiday/preload-state-holidays',
-                { years: [y, y + 1] },
+            const res = await api.post<{ ok: number; skip: number }>(
+                '/holiday/preload-national-catalog',
+                { years: [2025, 2026] },
             );
-            const { ok, skip, classesProcessed } = res.data;
+            const { ok, skip } = res.data;
             setPreloadResult({
                 ok,
                 skip,
-                detail: `${classesProcessed} turma(s) em andamento — feriados aplicados conforme o estado da cidade.`,
+                detail: 'Catálogo global do sistema (válido para todas as turmas ao calcular calendário e diárias).',
+            });
+            toast.success('Feriados nacionais carregados no catálogo.');
+        } catch {
+            toast.error('Não foi possível pré-carregar feriados nacionais.');
+        } finally {
+            setPreloading(false);
+            await load();
+        }
+    };
+
+    /** BUG-15: feriados estaduais no catálogo por UF (sem turma obrigatória). */
+    const handlePreloadEstaduais = async () => {
+        setPreloading(true);
+        try {
+            const y = new Date().getFullYear();
+            const res = await api.post<{ ok: number; skip: number; statesProcessed: number }>(
+                '/holiday/preload-state-catalog',
+                { years: [y, y + 1] },
+            );
+            const { ok, skip, statesProcessed } = res.data;
+            setPreloadResult({
+                ok,
+                skip,
+                detail: `${statesProcessed} UF(s) no catálogo global — turmas usam o estado da cidade ao montar o calendário.`,
             });
             toast.success('Pré-carga de feriados estaduais concluída.');
         } catch {
@@ -336,18 +373,37 @@ export default function FeriadosPage() {
         }
     };
 
-    const filtered = filterType ? holidays.filter(h => inferType(h) === filterType) : holidays;
+    const holidayTurmaLabel = (h: Holiday) => {
+        if (h.source === 'catalog') {
+            if (h.scope === 'STATE' && h.stateCode) return `Sistema · ${h.stateCode}`;
+            return 'Sistema · Nacional';
+        }
+        const cls = classes.find(c => c.id === h.classId);
+        return cls ? `${cls.classIdentifier} · ${cls.city?.name}/${cls.city?.state}` : 'Turma';
+    };
+
+    const filteredAll = useMemo(
+        () => (filterType ? holidays.filter(h => inferType(h) === filterType) : holidays),
+        [holidays, filterType],
+    );
+    const totalPages = Math.max(1, Math.ceil(filteredAll.length / ADMIN_PAGE_SIZE_TABLE));
+    const pageItems = useMemo(() => {
+        const start = (page - 1) * ADMIN_PAGE_SIZE_TABLE;
+        return filteredAll.slice(start, start + ADMIN_PAGE_SIZE_TABLE);
+    }, [filteredAll, page]);
+
+    useEffect(() => { setPage(1); }, [filterType]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }} className="animate-fade-in">
             <AdminHeaderHero
                 title="FERIADOS"
-                subtitle="Registre feriados e imprevistos — data final de turmas é recalculada automaticamente (REQ-08)"
+                subtitle="Catálogo global de feriados + ocorrências por turma. Pré-carga nacional/estadual não exige turma ativa (BUG-15)."
                 rightSlot={(
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     {/* FEAT-FERIADO: botão de pré-carga */}
                     <button onClick={handlePreloadNacional} disabled={preloading}
-                        title={`Registrar os ${FERIADOS_NACIONAIS.length} feriados nacionais (2025–2026) automaticamente para todas as turmas ativas`}
+                        title={`Registrar os ${FERIADOS_NACIONAIS.length} feriados nacionais (2025–2026) no catálogo global do sistema`}
                         style={{
                             padding: '8px 14px', borderRadius: 10, fontSize: '0.78rem', fontWeight: 700,
                             cursor: preloading ? 'not-allowed' : 'pointer',
@@ -357,7 +413,7 @@ export default function FeriadosPage() {
                         🇧🇷 {preloading ? 'Carregando...' : `Pré-carregar ${FERIADOS_NACIONAIS.length} Feriados Nacionais 2025/2026`}
                     </button>
                     <button onClick={handlePreloadEstaduais} disabled={preloading}
-                        title="Registrar feriados estaduais com data fixa (ex.: Farroupilha no RS) conforme o estado da cidade de cada turma em andamento — anos 2025 e 2026"
+                        title="Registrar feriados estaduais fixos de todas as UFs mapeadas no catálogo global (anos atual e seguinte)"
                         style={{
                             padding: '8px 14px', borderRadius: 10, fontSize: '0.78rem', fontWeight: 700,
                             cursor: preloading ? 'not-allowed' : 'pointer',
@@ -424,20 +480,20 @@ export default function FeriadosPage() {
             <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #F3F4F6', overflow: 'hidden' }}>
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: '3rem' }}><div className="spinner" style={{ margin: '0 auto 1rem' }} /><p style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>Carregando ocorrências...</p></div>
-                ) : filtered.length === 0 ? (
+                ) : filteredAll.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '3rem', color: '#9CA3AF' }}>
                         <CheckCircleIcon style={{ width: 36, height: 36, margin: '0 auto 8px', opacity: 0.3 }} />
                         <p style={{ fontFamily: 'Orbitron', fontSize: '0.75rem', letterSpacing: '0.12em' }}>NENHUMA OCORRÊNCIA REGISTRADA</p>
                         <p style={{ fontSize: '0.78rem', color: '#9CA3AF', marginTop: 6 }}>
                             Use <strong>Pré-carregar Feriados Nacionais</strong> ou{' '}
-                            <strong>Pré-carregar Feriados Estaduais</strong> (conforme o estado da cidade da turma)
+                            <strong>Estaduais</strong> — funciona mesmo sem turma em andamento
                         </p>
                     </div>
                 ) : listViewMode === 'card' ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, padding: 14 }}>
-                        {filtered.map((h, idx) => {
+                        {pageItems.map((h, idx) => {
                             const cfg = TYPE_CONFIG[inferType(h)] ?? TYPE_CONFIG['OTHER'];
-                            const cls = classes.find(c => c.id === h.classId);
+                            const turmaLabel = holidayTurmaLabel(h);
                             return (
                                 <div
                                     key={h.id}
@@ -459,13 +515,17 @@ export default function FeriadosPage() {
                                         <div style={{ marginBottom: 6 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: '0.65rem', fontWeight: 700, border: `1px solid ${cfg.color}30` }}>{cfg.icon} {cfg.label}</span></div>
                                         <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem', fontWeight: 700, color: '#111827' }}>{fmtDate(h.date.split('T')[0])}</div>
                                         <div style={{ fontSize: '0.8rem', color: '#374151', marginTop: 8, lineHeight: 1.35 }}>{h.reason ?? h.description ?? '—'}</div>
-                                        <div style={{ fontSize: '0.72rem', color: '#92400E', marginTop: 8, fontFamily: 'JetBrains Mono' }}>{cls ? `${cls.classIdentifier} · ${cls.city?.name}/${cls.city?.state}` : '—'}</div>
+                                        <div style={{ fontSize: '0.72rem', color: '#92400E', marginTop: 8, fontFamily: 'JetBrains Mono' }}>{turmaLabel}</div>
                                         <div style={{ fontSize: '0.72rem', color: '#D97706', marginTop: 4, fontWeight: 600 }}>
-                                            {h.newEndDate ? <>Nova fim: {fmtDate(h.newEndDate.split('T')[0])}</> : 'Fim: auto-calculado'}
+                                            {h.source === 'catalog'
+                                                ? 'Catálogo global'
+                                                : h.newEndDate
+                                                    ? <>Nova fim: {fmtDate(h.newEndDate.split('T')[0])}</>
+                                                    : 'Fim: auto-calculado'}
                                         </div>
                                     </div>
                                     <div style={{ position: 'relative', zIndex: 1, borderTop: '1px solid #F3F4F6', padding: '8px 12px' }}>
-                                        <button type="button" onClick={() => { setConfirmRemoveId(h.id); setConfirmRemoveDesc(h.reason || h.date?.split('T')[0] || ''); setRemoveMotivo(''); }} disabled={deleting === h.id} title="Remover" style={{ padding: '6px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <button type="button" onClick={() => { setConfirmRemoveId(h.id); setConfirmRemoveDesc(h.reason || h.date?.split('T')[0] || ''); setConfirmRemoveSource(h.source === 'catalog' ? 'catalog' : 'class'); setRemoveMotivo(''); }} disabled={deleting === h.id} title="Remover" style={{ padding: '6px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <TrashIcon style={{ width: 14, height: 14 }} /> Remover
                                         </button>
                                     </div>
@@ -487,9 +547,9 @@ export default function FeriadosPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map(h => {
+                                {pageItems.map(h => {
                                     const cfg = TYPE_CONFIG[inferType(h)] ?? TYPE_CONFIG['OTHER'];
-                                    const cls = classes.find(c => c.id === h.classId);
+                                    const turmaLabel = holidayTurmaLabel(h);
                                     return (
                                         <tr key={h.id} style={{ opacity: h.active ? 1 : 0.5 }}>
                                             <td>
@@ -504,15 +564,12 @@ export default function FeriadosPage() {
                                             </td>
                                             <td style={{ maxWidth: 220, fontSize: '0.82rem', color: '#374151' }}>{h.reason ?? h.description ?? '—'}</td>
                                             <td>
-                                                {cls ? (
-                                                    <div>
-                                                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.75rem', color: '#B89B00', fontWeight: 700 }}>{cls.classIdentifier}</div>
-                                                        <div style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>{cls.city?.name}/{cls.city?.state}</div>
-                                                    </div>
-                                                ) : <span style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>—</span>}
+                                                <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.75rem', color: '#B89B00', fontWeight: 700 }}>{turmaLabel}</span>
                                             </td>
                                             <td>
-                                                {h.newEndDate ? (
+                                                {h.source === 'catalog' ? (
+                                                    <span style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>Catálogo</span>
+                                                ) : h.newEndDate ? (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                                                         <ClockIcon style={{ width: 13, height: 13, color: '#D97706' }} />
                                                         <span style={{ fontSize: '0.78rem', color: '#D97706', fontWeight: 700, fontFamily: 'JetBrains Mono' }}>
@@ -522,8 +579,8 @@ export default function FeriadosPage() {
                                                 ) : <span style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>Auto-calculado</span>}
                                             </td>
                                             <td>
-                                                <button onClick={() => { setConfirmRemoveId(h.id); setConfirmRemoveDesc(h.reason || h.date?.split('T')[0] || ''); setRemoveMotivo(''); }} disabled={deleting === h.id}
-                                                    title="Remover ocorrência"
+                                                <button onClick={() => { setConfirmRemoveId(h.id); setConfirmRemoveDesc(h.reason || h.date?.split('T')[0] || ''); setConfirmRemoveSource(h.source === 'catalog' ? 'catalog' : 'class'); setRemoveMotivo(''); }} disabled={deleting === h.id}
+                                                    title="Remover"
                                                     style={{ padding: '5px', borderRadius: 7, background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer', display: 'flex', opacity: deleting === h.id ? 0.5 : 1 }}>
                                                     <TrashIcon style={{ width: 14, height: 14 }} />
                                                 </button>
@@ -536,6 +593,15 @@ export default function FeriadosPage() {
                     </div>
                 )}
             </div>
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={filteredAll.length}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="feriado(s)/ocorrência(s)"
+            />
 
             {showModal && <ModalNovaOcorrencia classes={classes} onClose={() => setShowModal(false)} onCreated={load} />}
 
@@ -581,7 +647,7 @@ export default function FeriadosPage() {
                         <div style={{ padding: '0.85rem 1.4rem', borderTop: '1px solid #F3F4F6', display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
                             <button onClick={() => setConfirmRemoveId(null)} className="btn-ghost" style={{ fontSize: '0.82rem' }}>Cancelar</button>
                             <button
-                                onClick={() => { if (confirmRemoveId) handleRemove(confirmRemoveId); }}
+                                onClick={() => { if (confirmRemoveId) handleRemove(confirmRemoveId, confirmRemoveSource); }}
                                 disabled={!removeMotivo.trim() || deleting === confirmRemoveId}
                                 style={{
                                     padding: '0.55rem 1.1rem', borderRadius: 9, border: 'none',

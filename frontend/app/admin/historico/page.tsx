@@ -7,6 +7,14 @@ import { HistoricoSidebarTutorial } from '@/components/admin/adminSidebarTutoria
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
+import {
+    AUDIT_MODULE_FILTER_OPTIONS,
+    formatAuditAction,
+    formatAuditTable,
+    formatUserRole,
+    getAuditActionStyle,
+    resolveAuditActionMeta,
+} from '@/lib/auditLabels';
 
 interface AuditLog {
     id: string;
@@ -17,20 +25,6 @@ interface AuditLog {
     ipAddress: string | null;
     createdAt: string;
     user?: { id: string; name: string; email: string; role: string } | null;
-}
-
-const ACTION_COLORS: Record<string, { bg: string; color: string }> = {
-    CREATE: { bg: '#DCFCE7', color: '#059669' },
-    UPDATE: { bg: '#DBEAFE', color: '#2563EB' },
-    DELETE: { bg: '#FEE2E2', color: '#DC2626' },
-    APPROVE: { bg: '#FEF9C3', color: '#D97706' },
-    REJECT: { bg: '#FEE2E2', color: '#DC2626' },
-    LOGIN: { bg: '#F0F9FF', color: '#0891B2' },
-};
-
-function getActionStyle(action: string) {
-    const key = Object.keys(ACTION_COLORS).find(k => action.toUpperCase().startsWith(k));
-    return key ? ACTION_COLORS[key] : { bg: '#F3F4F6', color: '#6B7280' };
 }
 
 function fmtDate(d: string) {
@@ -76,7 +70,6 @@ export default function HistoricoPage() {
 
     useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
-    const TABLES = ['users', 'enrollments', 'employees', 'trips', 'classes', 'reimbursements', 'certificates', 'notifications'];
     const registrosFiltrados = logs.length;
 
     return (
@@ -99,11 +92,12 @@ export default function HistoricoPage() {
             <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E5E7EB', padding: '1rem 1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
                     <MagnifyingGlassIcon style={{ width: 14, height: 14, position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', pointerEvents: 'none' }} />
-                    <input className="form-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por ação..." style={{ paddingLeft: '2.1rem', fontSize: '0.82rem' }} />
+                    <input className="form-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Código técnico da ação (opcional)…" style={{ paddingLeft: '2.1rem', fontSize: '0.82rem' }} />
                 </div>
-                <select className="form-input" value={filterTable} onChange={e => setFilterTable(e.target.value)} style={{ width: 160, fontSize: '0.82rem' }}>
-                    <option value="">Todos os módulos</option>
-                    {TABLES.map(t => <option key={t} value={t}>{t}</option>)}
+                <select className="form-input" value={filterTable} onChange={e => setFilterTable(e.target.value)} style={{ width: 220, fontSize: '0.82rem' }}>
+                    {AUDIT_MODULE_FILTER_OPTIONS.map(o => (
+                        <option key={o.value || 'all'} value={o.value}>{o.label}</option>
+                    ))}
                 </select>
                 <input className="form-input" type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} style={{ width: 145, fontSize: '0.82rem' }} />
                 <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>até</span>
@@ -133,17 +127,27 @@ export default function HistoricoPage() {
                         {listViewMode === 'card' ? (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, padding: 14 }}>
                                 {logs.map((log, i) => {
-                                    const style = getActionStyle(log.action);
+                                    const style = getAuditActionStyle(log.action);
+                                    const meta = resolveAuditActionMeta(log.action);
                                     return (
                                         <div key={log.id} className="adm-kpi-card adm-scale-in" style={{ animationDelay: `${i * 18}ms`, background: '#fff', borderStyle: 'solid', borderWidth: '1px 1px 1px 4px', borderLeftColor: style.color, borderTopColor: '#E5E7EB', borderRightColor: '#E5E7EB', borderBottomColor: '#E5E7EB' }}>
                                             <div className="adm-kpi-grid" />
                                             <div style={{ position: 'relative', zIndex: 1, padding: '12px 14px' }}>
                                                 <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: '#6B7280', marginBottom: 8 }}>{fmtDate(log.createdAt)}</div>
-                                                <span style={{ display: 'inline-block', padding: '0.2rem 0.55rem', borderRadius: 100, background: style.bg, color: style.color, fontSize: '0.62rem', fontWeight: 800 }}>{log.action}</span>
-                                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginTop: 10 }}>{log.tableName}</div>
+                                                <span style={{ display: 'inline-block', padding: '0.2rem 0.55rem', borderRadius: 100, background: style.bg, color: style.color, fontSize: '0.62rem', fontWeight: 800 }} title={log.action}>
+                                                    {meta.icon} {formatAuditAction(log.action)}
+                                                </span>
+                                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginTop: 10 }}>{formatAuditTable(log.tableName)}</div>
                                                 <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#9CA3AF', marginTop: 4 }}>{log.recordId ? log.recordId.substring(0, 8) + '…' : '—'}</div>
                                                 <div style={{ marginTop: 10, fontSize: '0.76rem', color: '#374151' }}>
-                                                    {log.user ? <><strong>{log.user.name}</strong> <span style={{ color: '#9CA3AF' }}>({log.user.role})</span></> : 'Sistema'}
+                                                    {log.user ? (
+                                                        <>
+                                                            <strong>{log.user.name}</strong>{' '}
+                                                            <span style={{ color: '#9CA3AF' }}>({formatUserRole(log.user.role)})</span>
+                                                        </>
+                                                    ) : (
+                                                        'Sistema'
+                                                    )}
                                                 </div>
                                                 <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#9CA3AF', marginTop: 6 }}>IP: {log.ipAddress || '—'}</div>
                                             </div>
@@ -165,18 +169,19 @@ export default function HistoricoPage() {
                             </thead>
                             <tbody>
                                 {logs.map((log, i) => {
-                                    const style = getActionStyle(log.action);
+                                    const style = getAuditActionStyle(log.action);
+                                    const meta = resolveAuditActionMeta(log.action);
                                     return (
                                         <tr key={log.id} className="animate-fade-in" style={{ animationDelay: `${i * 20}ms` }}>
                                             <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
                                                 {fmtDate(log.createdAt)}
                                             </td>
                                             <td>
-                                                <span style={{ display: 'inline-block', padding: '0.2rem 0.55rem', borderRadius: 100, background: style.bg, color: style.color, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
-                                                    {log.action}
+                                                <span style={{ display: 'inline-block', padding: '0.2rem 0.55rem', borderRadius: 100, background: style.bg, color: style.color, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.02em', whiteSpace: 'nowrap' }} title={log.action}>
+                                                    {meta.icon} {formatAuditAction(log.action)}
                                                 </span>
                                             </td>
-                                            <td style={{ fontSize: '0.75rem', color: '#374151', fontWeight: 600 }}>{log.tableName}</td>
+                                            <td style={{ fontSize: '0.75rem', color: '#374151', fontWeight: 600 }}>{formatAuditTable(log.tableName)}</td>
                                             <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: '#9CA3AF', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                 {log.recordId ? log.recordId.substring(0, 8) + '...' : '—'}
                                             </td>
@@ -184,7 +189,7 @@ export default function HistoricoPage() {
                                                 {log.user ? (
                                                     <div>
                                                         <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827' }}>{log.user.name}</div>
-                                                        <div style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>{log.user.role}</div>
+                                                        <div style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>{formatUserRole(log.user.role)}</div>
                                                     </div>
                                                 ) : <span style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>Sistema</span>}
                                             </td>

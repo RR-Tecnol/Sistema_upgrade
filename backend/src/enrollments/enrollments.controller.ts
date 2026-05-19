@@ -69,12 +69,22 @@ export class EnrollmentsController {
     @ApiQuery({ name: 'classId', required: false, type: String })
     @ApiQuery({ name: 'search', required: false, type: String })
     @ApiResponse({ status: 200, description: 'Lista de inscrições' })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     async findAll(
         @Query('status') status?: EnrollmentStatus,
         @Query('classId') classId?: string,
         @Query('search') search?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
-        return this.enrollmentsService.findAll({ status, classId, search });
+        return this.enrollmentsService.findAll({
+            status,
+            classId,
+            search,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
     }
 
     /**

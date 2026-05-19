@@ -18,6 +18,14 @@ interface Trip {
     destination?: string;
     originCityName?: string;
     destinationCityName?: string;
+    class?: {
+        classIdentifier: string;
+        startDate?: string;
+        endDate?: string;
+        startTime?: string;
+        endTime?: string;
+        course?: { name: string };
+    };
     /** URLs das fotos enviadas pelo motorista (mesmo modelo de pré-visualização das inscrições). */
     startOdometerPhotoUrl?: string | null;
     endOdometerPhotoUrl?: string | null;
@@ -195,6 +203,22 @@ export default function DriverViagens() {
                                 : `Partida: ${fmtDate(trip.departureDate)} · Chegada prevista: ${fmtDate(trip.expectedArrivalDate)}`
                             }
                         </div>
+                        {trip.class && (
+                            <div style={{
+                                fontSize: '0.76rem', color: '#374151', marginBottom: '0.75rem',
+                                padding: '0.55rem 0.7rem', borderRadius: 8, background: '#FFFBEB', border: '1px solid #FDE68A',
+                            }}>
+                                <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                                    📚 {trip.class.course?.name || 'Curso'} · Turma {trip.class.classIdentifier}
+                                </div>
+                                <div>🚌 Carreta {trip.truck?.identifier || '—'}</div>
+                                {(trip.class.startTime || trip.class.endTime) && (
+                                    <div style={{ marginTop: 4, color: '#6B7280' }}>
+                                        Horário aula: {trip.class.startTime || '—'} – {trip.class.endTime || '—'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {trip.notes && (
                             <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '0.6rem 0.75rem', marginBottom: '0.75rem', fontSize: '0.75rem', color: '#6B7280', fontStyle: 'italic', maxHeight: 60, overflow: 'hidden', border: '1px solid #E5E7EB' }}>

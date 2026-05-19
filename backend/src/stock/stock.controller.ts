@@ -35,6 +35,7 @@ import { CreatePurchaseRequestDto } from './dto/create-purchase-request.dto';
 import { CreateItemWithPurchaseRequestDto } from './dto/create-item-with-purchase-request.dto';
 import { CreateStockCategoryDto, UpdateStockCategoryDto } from './dto/stock-category.dto';
 import { BulkUpsertAcaoReservationsDto } from './dto/acao-reservation.dto';
+import { UpdateTruckStockMinimoDto } from './dto/update-truck-stock-minimo.dto';
 import { BaixaAcaoLoteDto, DevolverSobraLoteDto } from './dto/baixa-acao.dto';
 import {
     ApprovePurchaseRequestDto,
@@ -114,6 +115,8 @@ export class StockController {
     @ApiQuery({ name: 'onlyExpiring', required: false, type: Boolean })
     @ApiQuery({ name: 'diasAteVencer', required: false, type: Number })
     @ApiQuery({ name: 'includeInactive', required: false, type: Boolean })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     findAllItems(
         @Query('categoria') categoria?: string,
         @Query('customCategoryId') customCategoryId?: string,
@@ -122,6 +125,8 @@ export class StockController {
         @Query('onlyExpiring') onlyExpiring?: string,
         @Query('diasAteVencer') diasAteVencer?: string,
         @Query('includeInactive') includeInactive?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
         return this.stockService.findAllItems({
             categoria,
@@ -131,6 +136,8 @@ export class StockController {
             onlyExpiring: onlyExpiring === 'true',
             diasAteVencer: diasAteVencer ? parseInt(diasAteVencer, 10) : undefined,
             includeInactive: includeInactive === 'true',
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
         });
     }
 
@@ -318,6 +325,26 @@ export class StockController {
         return this.stockService.findStockByTruck(truckId);
     }
 
+    @Patch('trucks/:truckId/items/:stockItemId/minimo')
+    @Roles('ADMIN', 'IT_ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Atualizar quantidade mínima de um item na carreta' })
+    @ApiParam({ name: 'truckId' })
+    @ApiParam({ name: 'stockItemId' })
+    @ApiBody({ type: UpdateTruckStockMinimoDto })
+    updateTruckStockMinimo(
+        @Param('truckId') truckId: string,
+        @Param('stockItemId') stockItemId: string,
+        @Body() dto: UpdateTruckStockMinimoDto,
+        @Request() req: any,
+    ) {
+        return this.stockService.updateTruckStockMinimo(
+            truckId,
+            stockItemId,
+            dto.quantidadeMinima,
+            { id: req.user.id, role: req.user.role },
+        );
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     //   MOVIMENTAÇÕES
     // ═══════════════════════════════════════════════════════════════════
@@ -385,15 +412,25 @@ export class StockController {
     @ApiQuery({ name: 'status', required: false, enum: StockPurchaseRequestStatus })
     @ApiQuery({ name: 'stockItemId', required: false })
     @ApiQuery({ name: 'onlyMine', required: false, type: Boolean })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     listPurchaseRequests(
         @Request() req: any,
         @Query('status') status?: StockPurchaseRequestStatus,
         @Query('stockItemId') stockItemId?: string,
         @Query('onlyMine') onlyMine?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
         return this.stockService.listPurchaseRequests(
             { id: req.user.id, role: req.user.role },
-            { status, stockItemId, onlyMine: onlyMine === 'true' },
+            {
+                status,
+                stockItemId,
+                onlyMine: onlyMine === 'true',
+                page: page ? parseInt(page, 10) : undefined,
+                limit: limit ? parseInt(limit, 10) : undefined,
+            },
         );
     }
 

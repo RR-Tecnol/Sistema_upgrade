@@ -37,10 +37,14 @@ export class ContasPagarController {
         @Query('data_fim') data_fim?: string,
         @Query('search') search?: string,
         @Query('includeDeleted') includeDeleted?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
         return this.service.findAll({
             tipo_conta, status, cidade, data_inicio, data_fim, search,
             includeDeleted: includeDeleted === 'true',
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
         });
     }
 

@@ -17,6 +17,7 @@ import {
 type StockItemWithStocks = Omit<StockItem, 'truckStocks'> & { truckStocks?: TruckStockItem[] };
 import { trucksApi, Truck } from '@/lib/api/trucks';
 import { acoesApi, Acao } from '@/lib/api/acoes';
+import { unwrapListData } from '@/lib/api/pagination';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import { toast } from '@/components/ui/Toast';
 
@@ -87,11 +88,11 @@ export function MovimentacaoModal({
         (async () => {
             try {
                 const [its, tks] = await Promise.all([
-                    stockApi.items.getAll(),
-                    trucksApi.getAll(),
+                    stockApi.items.getAll({ limit: 500, page: 1 }),
+                    trucksApi.getAll({ limit: 500, page: 1 }),
                 ]);
-                setItems(its);
-                setTrucks(tks);
+                setItems(unwrapListData<StockItem>(its));
+                setTrucks(unwrapListData<Truck>(tks));
             } catch (e) {
                 console.error('[MovimentacaoModal] erro ao carregar listas', e);
             }
@@ -105,8 +106,8 @@ export function MovimentacaoModal({
         if (acoes.length > 0) return;
         (async () => {
             try {
-                const data = await acoesApi.listar({ status: 'EM_ANDAMENTO' });
-                setAcoes(data);
+                const data = await acoesApi.listar({ status: 'EM_ANDAMENTO', limit: 500, page: 1 });
+                setAcoes(unwrapListData(data));
             } catch (e) {
                 console.error('[MovimentacaoModal] erro ao carregar ações', e);
             }

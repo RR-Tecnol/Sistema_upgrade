@@ -44,6 +44,7 @@ import {
     STATUS_CFG,
     REIMBURSEMENT_CATEGORY_LABELS,
     parseReimbursementMeta,
+    getContaTipoDisplayLabel,
     fmtCur,
     fmtDate,
     fmtDateTime,
@@ -95,6 +96,8 @@ export function ContaPagarDetailModal({
     const tipo = getTipo(conta.tipo_conta);
     const origem = ORIGEM_TIPO_CONTA[conta.tipo_conta];
     const reimbursementMeta = useMemo(() => parseReimbursementMeta(conta), [conta]);
+    const tipoDisplay =
+        getContaTipoDisplayLabel(conta) || tipo.label;
 
     const accentColor = tipo.color || TIPO_COLOR_FALLBACK;
 
@@ -168,7 +171,10 @@ export function ContaPagarDetailModal({
     // ── HEADER tags ──
     const headerTags = (
         <>
-            <HeaderChip color={accentColor} icon={tipo.icon} label={tipo.label} />
+            <HeaderChip color={accentColor} icon={tipo.icon} label={tipoDisplay} />
+            {conta.origemPerfilLabel && conta.tipo_conta === 'funcionario' && (
+                <HeaderChip color="#2563EB" icon="👤" label={conta.origemPerfilLabel} />
+            )}
             <HeaderChip color={statusCfg.color} icon="💰" label={fmtCur(conta.valor)} />
             {conta.cidade?.trim() && (
                 <HeaderChip color="#0EA5E9" icon="📍" label={conta.cidade} />
@@ -294,7 +300,7 @@ export function ContaPagarDetailModal({
                 </div>
 
                 {/* Conteúdo da tab atual */}
-                {tab === 'resumo'       && <TabResumo       conta={conta} accent={accentColor} statusCfg={statusCfg} tipoLabel={tipo.label} />}
+                {tab === 'resumo'       && <TabResumo       conta={conta} accent={accentColor} statusCfg={statusCfg} tipoLabel={tipoDisplay} />}
                 {tab === 'origem'       && <TabOrigem       conta={conta} accent={accentColor} reimbursementMeta={reimbursementMeta} origem={origem} />}
                 {tab === 'vinculos'     && <TabVinculos     conta={conta} accent={accentColor} reimbursementMeta={reimbursementMeta} />}
                 {tab === 'conformidade' && <TabConformidade conta={conta} accent={accentColor} comprovanteUrl={comprovanteUrl} />}
@@ -637,6 +643,7 @@ function ReimbursementCard({ meta }: { meta: ReturnType<typeof parseReimbursemen
                 {meta.reimbursementId && <KV label="Identificador da solicitação" value={meta.reimbursementId.slice(0, 8) + '…'} />}
                 {meta.category && <KV label="Categoria" value={REIMBURSEMENT_CATEGORY_LABELS[meta.category] || meta.category} />}
                 {meta.reason && <KV label="Motivo" value={meta.reason} />}
+                {meta.perfil && <KV label="Perfil" value={meta.perfil} />}
             </div>
         </div>
     );

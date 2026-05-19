@@ -7,6 +7,8 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import { toast } from '@/components/ui/Toast';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { CarretasSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_CARDS } from '@/lib/api/pagination';
 
 // ── Keyframes CSS ─────────────────────────────────────────────────────────────
 
@@ -312,6 +314,10 @@ function TruckCard({ truck, onDelete }: { truck: Truck; onDelete: (id: string) =
 
 export default function CarretasPage() {
     const [trucks, setTrucks] = useState<Truck[]>([]);
+    const [page, setPage] = useState(1);
+    const [listTotal, setListTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [kpiCounts, setKpiCounts] = useState({ total: 0, available: 0, inUse: 0, maintenance: 0 });
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'MA' | 'PI'>('all');
     const [search, setSearch] = useState('');
@@ -321,10 +327,33 @@ export default function CarretasPage() {
     const loadTrucks = useCallback(async () => {
         try {
             setLoading(true);
-            const f = filter !== 'all' ? { state: filter } : undefined;
-            setTrucks(await trucksApi.getAll(f));
+            const base = {
+                state: filter !== 'all' ? filter : undefined,
+                search: search.trim() || undefined,
+                page,
+                limit: ADMIN_PAGE_SIZE_CARDS,
+            };
+            const [raw, allR, avR, useR, maintR] = await Promise.all([
+                trucksApi.getAll(base),
+                trucksApi.getAll({ limit: 1, page: 1 }),
+                trucksApi.getAll({ status: 'AVAILABLE', limit: 1, page: 1 }),
+                trucksApi.getAll({ status: 'IN_USE', limit: 1, page: 1 }),
+                trucksApi.getAll({ status: 'MAINTENANCE', limit: 1, page: 1 }),
+            ]);
+            const norm = normalizePaginated<Truck>(raw, ADMIN_PAGE_SIZE_CARDS);
+            setTrucks(norm.data);
+            setListTotal(norm.total);
+            setTotalPages(norm.totalPages);
+            setKpiCounts({
+                total: normalizePaginated<Truck>(allR, 1).total,
+                available: normalizePaginated<Truck>(avR, 1).total,
+                inUse: normalizePaginated<Truck>(useR, 1).total,
+                maintenance: normalizePaginated<Truck>(maintR, 1).total,
+            });
         } catch { /* noop */ } finally { setLoading(false); }
-    }, [filter]);
+    }, [filter, search, page]);
+
+    useEffect(() => { setPage(1); }, [filter, search]);
 
     useEffect(() => { loadTrucks(); }, [loadTrucks]);
 
@@ -347,16 +376,11 @@ export default function CarretasPage() {
         }
     };
 
-    const total = trucks.length;
-    const available = trucks.filter(t => t.status === 'AVAILABLE').length;
-    const inUse = trucks.filter(t => t.status === 'IN_USE').length;
-    const maintenance = trucks.filter(t => t.status === 'MAINTENANCE').length;
-
-    const filtered = trucks.filter(t =>
-        !search || t.identifier.toLowerCase().includes(search.toLowerCase()) ||
-        t.licensePlate.toLowerCase().includes(search.toLowerCase()) ||
-        (t.group?.name ?? '').toLowerCase().includes(search.toLowerCase())
-    );
+    const total = kpiCounts.total;
+    const available = kpiCounts.available;
+    const inUse = kpiCounts.inUse;
+    const maintenance = kpiCounts.maintenance;
+    const filtered = trucks;
 
     const FILTERS = [
         { label: 'Todas', value: 'all' as const },
@@ -418,7 +442,7 @@ export default function CarretasPage() {
                 }}>
                     <span style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: '#9CA3AF' }}>Estado</span>
                     {FILTERS.map(f => (
-                        <button key={f.value} onClick={() => setFilter(f.value)} style={{
+                        <button key={f.value} onClick={() => { setFilter(f.value); setPage(1); }} style={{
                             padding: '0.38rem 1rem', borderRadius: 9, fontSize: '0.78rem', fontWeight: 700,
                             border: 'none', cursor: 'pointer', transition: 'all .2s',
                             background: filter === f.value ? '#FFD600' : '#F3F4F6',
@@ -465,6 +489,16 @@ export default function CarretasPage() {
                         ))}
                     </div>
                 )}
+
+                <AdminListPagination
+                    page={page}
+                    totalPages={totalPages}
+                    total={listTotal}
+                    loading={loading}
+                    onPageChange={setPage}
+                    itemLabel="carreta(s)"
+                    style={{ marginTop: 16 }}
+                />
             </div>
 
             <ConfirmModal

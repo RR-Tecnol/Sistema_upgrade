@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsInt, IsEnum, IsOptional, IsDateString, IsNumber, Min, Length, Max, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsInt, IsEnum, IsOptional, IsDateString, IsNumber, Min, Length, Max, IsArray, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Period, ClassStatus, ClassWeekendPolicy } from '@prisma/client';
@@ -153,4 +153,25 @@ export class CreateClassDto {
     @IsArray()
     @IsString({ each: true })
     weekendExtraDates?: string[];
+
+    @ApiPropertyOptional({
+        description: 'Override da duração em dias letivos (padrão: durationDaysMA/PI do curso)',
+    })
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    teachingDaysCount?: number;
+
+    @ApiPropertyOptional({
+        description: 'Se false, usa endDate enviado pelo cliente (edição manual). Padrão: recalcular pelo calendário letivo.',
+        default: true,
+    })
+    @IsOptional()
+    @IsBoolean()
+    useAutoEndDate?: boolean;
+
+    @ApiPropertyOptional({ description: 'Vincula à criação ao período e herda motor letivo do período' })
+    @IsOptional()
+    @IsString()
+    acaoId?: string;
 }

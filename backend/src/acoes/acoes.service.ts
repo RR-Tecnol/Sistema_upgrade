@@ -1,12 +1,41 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
-import { AcaoStatus } from '@prisma/client';
+import { AcaoStatus, ClassWeekendPolicy } from '@prisma/client';
 import { CreateAcaoDto } from './dto/create-acao.dto';
 import { CreateAcaoCustoDto } from './dto/create-acao-custo.dto';
 import { CreateAcaoEquipeDto } from './dto/create-acao-equipe.dto';
 import { CreateAcaoFuncionarioDto } from './dto/create-acao-funcionario.dto';
+import { calcularDiasEfetivos } from '../common/calcular-dias-efetivos.util';
+import { fetchMergedHolidayDatesForClass } from '../common/holiday-catalog.util';
+import { getAcaoCalendarioResumo } from '../common/class-teaching-end-date.helper';
+import {
+    syncTeacherToAcao,
+    syncTeacherToAcaoClasses,
+    ensureTeacherForUserId,
+} from '../common/teacher-academic-link.util';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
+import {
+    recalcularPeriodoPelasTurmas,
+    suggestInstructorDiasForClasses,
+} from '../common/acao-motor-recalc.util';
+import { resolveTeacherOrThrow } from '../common/resolve-teacher.util';
+import {
+    assignDriverToAcaoPeriod,
+    assignDriverToClass,
+    listTeacherPoolForAcao,
+    syncTurmaLinkedToAcao,
+    findTurmasForCourseContext,
+    findTurmasEligibleForAcao,
+    completeTurmasWhenAcaoConcluded,
+    syncDriverForEmployeeOnAcao,
+    tryGenerateTripsForNewTurmaOnAcao,
+    type TripGenPerClass,
+} from '../common/academic-ecosystem-sync.util';
+import { EmployeeRole } from '@prisma/client';
+import { TripsService } from '../trips/trips.service';
+import { CoursesService } from '../courses/courses.service';
 
 @Injectable()
 export class AcoesService {
@@ -14,8 +43,10 @@ export class AcoesService {
 
     constructor(
         private prisma: PrismaService,
+        private coursesService: CoursesService,
         private settingsService: SettingsService,
         private readonly notifications: NotificationsGateway,
+        private readonly tripsService: TripsService,
     ) { }
 
     private emitFinanceiroListagemRefresh(source: string, extra: Record<string, unknown> = {}) {
@@ -29,6 +60,8 @@ export class AcoesService {
         grupoId?: string;
         cidadeId?: string;
         search?: string;
+        page?: number;
+        limit?: number;
     }) {
         const where: any = {};
         if (filters?.status) where.status = filters.status;
@@ -41,20 +74,28 @@ export class AcoesService {
             ];
         }
 
-        const acoes = await this.prisma.acao.findMany({
-            where,
-            include: {
-                cidade: { select: { id: true, name: true, state: true } },
-                grupo: { select: { id: true, name: true, state: true } },
-                carreta: { select: { id: true, identifier: true, licensePlate: true, type: true } },
-                _count: {
-                    select: { turmas: true, custos: true, equipe: true },
-                },
+        const { skip, page, limit } = resolvePagination(filters?.page, filters?.limit, 12);
+        const include = {
+            cidade: { select: { id: true, name: true, state: true } },
+            grupo: { select: { id: true, name: true, state: true } },
+            carreta: { select: { id: true, identifier: true, licensePlate: true, type: true } },
+            _count: {
+                select: { turmas: true, custos: true, equipe: true },
             },
-            orderBy: { dataInicio: 'desc' },
-        });
+        };
 
-        return acoes;
+        const [acoes, total] = await Promise.all([
+            this.prisma.acao.findMany({
+                where,
+                include,
+                orderBy: { dataInicio: 'desc' },
+                skip,
+                take: limit,
+            }),
+            this.prisma.acao.count({ where }),
+        ]);
+
+        return paginatedResult(acoes, total, page, limit);
     }
 
     // Autocomplete: busca cidades existentes pelo nome digitado
@@ -260,6 +301,16 @@ export class AcoesService {
                 status: data.status ?? AcaoStatus.PLANEJADA,
                 dataInicio: new Date(data.dataInicio),
                 dataFim: new Date(data.dataFim),
+                motorCourseId: data.motorCourseId || undefined,
+                period: data.period,
+                startTime: data.startTime,
+                endTime: data.endTime,
+                weekendPolicy: data.weekendPolicy,
+                weekendExtraDates:
+                    Array.isArray(data.weekendExtraDates) && data.weekendExtraDates.length
+                        ? data.weekendExtraDates.filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x))
+                        : undefined,
+                teachingDaysOverride: data.teachingDaysOverride,
                 localExecucao: data.localExecucao,
                 // ── REQ-LOCAL-2026: detalhes adicionais do local físico ──
                 localEndereco: data.localEndereco,
@@ -293,6 +344,12 @@ export class AcoesService {
                 ...data,
                 dataInicio: data.dataInicio ? new Date(data.dataInicio) : undefined,
                 dataFim: data.dataFim ? new Date(data.dataFim) : undefined,
+                weekendExtraDates:
+                    data.weekendExtraDates === undefined
+                        ? undefined
+                        : Array.isArray(data.weekendExtraDates) && data.weekendExtraDates.length
+                          ? data.weekendExtraDates.filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x))
+                          : [],
             },
             include: {
                 cidade: true,
@@ -339,7 +396,18 @@ export class AcoesService {
             }
         }
 
-        return this.prisma.acao.update({ where: { id }, data: { status } });
+        const updated = await this.prisma.acao.update({ where: { id }, data: { status } });
+
+        if (status === AcaoStatus.CONCLUIDA) {
+            const closed = await completeTurmasWhenAcaoConcluded(this.prisma, id);
+            if (closed.updated > 0) {
+                this.logger.log(
+                    `Período ${id} concluído: ${closed.updated} turma(s) marcada(s) como COMPLETED.`,
+                );
+            }
+        }
+
+        return updated;
     }
 
     async delete(id: string) {
@@ -349,13 +417,75 @@ export class AcoesService {
     }
 
     // ── Turmas ──────────────────────────────────────────────────
+    async getCalendarioResumo(acaoId: string) {
+        await this.findOne(acaoId);
+        const link = await this.prisma.acaoTurma.findFirst({
+            where: { acaoId },
+            include: { turma: { include: { course: true } } },
+        });
+        const course = link?.turma?.course;
+        const stateConfig = course
+            ? this.coursesService.getCourseStateConfig({
+                  id: course.id,
+                  durationDaysMA: course.durationDaysMA,
+                  durationDaysPI: course.durationDaysPI,
+                  availableInMA: course.availableInMA,
+                  availableInPI: course.availableInPI,
+                  workloadHours: course.workloadHours,
+              })
+            : null;
+        return getAcaoCalendarioResumo(this.prisma, acaoId, stateConfig);
+    }
+
+    private resolveCourseStateConfig(course: {
+        id: string;
+        durationDaysMA: number;
+        durationDaysPI: number;
+        availableInMA: boolean;
+        availableInPI: boolean;
+        workloadHours: number;
+    }) {
+        return this.coursesService.getCourseStateConfig(course);
+    }
+
+    async recalcularMotorPeriodo(acaoId: string) {
+        await this.findOne(acaoId);
+        return recalcularPeriodoPelasTurmas(this.prisma, acaoId, (course) =>
+            this.resolveCourseStateConfig(course),
+        );
+    }
+
+    async previewInstructorDias(acaoId: string, classIds: string[]) {
+        await this.findOne(acaoId);
+        const ids = [...new Set(classIds.filter(Boolean))].sort();
+        return suggestInstructorDiasForClasses(this.prisma, acaoId, ids, (course) =>
+            this.resolveCourseStateConfig(course),
+        );
+    }
+
     async addTurma(acaoId: string, turmaId: string) {
         await this.findOne(acaoId);
         try {
-            return await this.prisma.acaoTurma.create({
+            const link = await this.prisma.acaoTurma.create({
                 data: { acaoId, turmaId },
                 include: { turma: { include: { course: true } } },
             });
+            const sync = await syncTurmaLinkedToAcao(this.prisma, acaoId, turmaId);
+            const tripSync = await tryGenerateTripsForNewTurmaOnAcao(
+                this.prisma,
+                this.tripsService,
+                acaoId,
+                turmaId,
+            );
+            return {
+                ...link,
+                ...sync,
+                driverTripSync: {
+                    totalGenerated: tripSync.totalGenerated,
+                    warnings: tripSync.warnings,
+                    perClass: tripSync.perClass,
+                },
+            };
         } catch {
             throw new ConflictException('Turma já vinculada a esta ação');
         }
@@ -364,6 +494,171 @@ export class AcoesService {
     async removeTurma(acaoId: string, turmaId: string) {
         await this.prisma.acaoTurma.deleteMany({ where: { acaoId, turmaId } });
         return { message: 'Turma removida da ação com sucesso' };
+    }
+
+    // ── Professores (período → turmas + cursos) ─────────────────
+    async listTeachers(acaoId: string) {
+        await this.findOne(acaoId);
+
+        const acaoTurmas = await this.prisma.acaoTurma.findMany({
+            where: { acaoId },
+            include: {
+                turma: {
+                    include: {
+                        course: { select: { id: true, name: true } },
+                        teachers: {
+                            include: {
+                                teacher: {
+                                    include: {
+                                        user: { select: { id: true, name: true, email: true } },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        const courseIds = new Set<string>();
+        const byTeacherId = new Map<
+            string,
+            {
+                teacherId: string;
+                userId: string;
+                name: string;
+                email: string;
+                courses: { id: string; name: string }[];
+                classIdentifiers: string[];
+            }
+        >();
+
+        for (const at of acaoTurmas) {
+            const turma = at.turma;
+            if (!turma) continue;
+            courseIds.add(turma.courseId);
+
+            for (const ct of turma.teachers || []) {
+                const t = ct.teacher;
+                if (!t?.user) continue;
+                const prev = byTeacherId.get(t.id) || {
+                    teacherId: t.id,
+                    userId: t.user.id,
+                    name: t.user.name,
+                    email: t.user.email,
+                    courses: [],
+                    classIdentifiers: [],
+                };
+                if (!prev.courses.some(c => c.id === turma.course.id)) {
+                    prev.courses.push({ id: turma.course.id, name: turma.course.name });
+                }
+                if (!prev.classIdentifiers.includes(turma.classIdentifier)) {
+                    prev.classIdentifiers.push(turma.classIdentifier);
+                }
+                byTeacherId.set(t.id, prev);
+            }
+        }
+
+        if (courseIds.size > 0) {
+            const courseTeachers = await this.prisma.teacherCourse.findMany({
+                where: { courseId: { in: [...courseIds] } },
+                include: {
+                    teacher: {
+                        include: {
+                            user: { select: { id: true, name: true, email: true } },
+                        },
+                    },
+                    course: { select: { id: true, name: true } },
+                },
+            });
+            for (const tc of courseTeachers) {
+                const t = tc.teacher;
+                if (!t?.user) continue;
+                const prev = byTeacherId.get(t.id) || {
+                    teacherId: t.id,
+                    userId: t.user.id,
+                    name: t.user.name,
+                    email: t.user.email,
+                    courses: [],
+                    classIdentifiers: [],
+                };
+                if (!prev.courses.some(c => c.id === tc.course.id)) {
+                    prev.courses.push({ id: tc.course.id, name: tc.course.name });
+                }
+                byTeacherId.set(t.id, prev);
+            }
+        }
+
+        return Array.from(byTeacherId.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    async listTeacherPool(acaoId: string) {
+        await this.findOne(acaoId);
+        return listTeacherPoolForAcao(this.prisma, acaoId);
+    }
+
+    async assignTeacher(acaoId: string, teacherIdOrUserId: string) {
+        await this.findOne(acaoId);
+        const turmasNoPeriodo = await this.prisma.acaoTurma.count({ where: { acaoId } });
+        if (turmasNoPeriodo === 0) {
+            throw new BadRequestException(
+                'Vincule pelo menos uma turma a este período antes de atribuir professores.',
+            );
+        }
+
+        const pool = await listTeacherPoolForAcao(this.prisma, acaoId);
+        const teacher = await resolveTeacherOrThrow(this.prisma, teacherIdOrUserId);
+        if (pool.length > 0) {
+            const allowed = pool.some(p => p.teacherId === teacher.id || p.userId === teacherIdOrUserId);
+            if (!allowed) {
+                throw new BadRequestException(
+                    'Este professor não está vinculado ao curso base das turmas deste período. Vincule-o primeiro no cadastro do curso.',
+                );
+            }
+        }
+
+        const sync = await syncTeacherToAcao(this.prisma, acaoId, teacherIdOrUserId);
+        const turmasAtivas = sync.classIds.length;
+        const novosVinculos = sync.classLinks;
+        const message =
+            turmasAtivas === 0
+                ? 'Nenhuma turma ativa no período para vincular o professor.'
+                : novosVinculos === 0
+                  ? `Professor já estava vinculado às ${turmasAtivas} turma(s) deste período.`
+                  : `Professor vinculado em ${novosVinculos} turma(s) (${turmasAtivas} no período).`;
+        return {
+            teacherId: teacher.id,
+            message,
+            academicSync: {
+                ...sync,
+                turmasNoPeriodo: turmasAtivas,
+                novosVinculosTurma: novosVinculos,
+            },
+        };
+    }
+
+    async assignDriver(acaoId: string, driverUserId: string) {
+        await this.findOne(acaoId);
+        return assignDriverToAcaoPeriod(this.prisma, this.tripsService, acaoId, driverUserId);
+    }
+
+    async assignDriverToTurma(acaoId: string, turmaId: string, driverUserId: string) {
+        await this.findOne(acaoId);
+        const link = await this.prisma.acaoTurma.findFirst({ where: { acaoId, turmaId } });
+        if (!link) throw new BadRequestException('Turma não pertence a este período.');
+        return assignDriverToClass(this.prisma, this.tripsService, turmaId, driverUserId, acaoId);
+    }
+
+    async listTurmasByCourse(courseId: string, groupId?: string, excludeAcaoId?: string) {
+        return findTurmasForCourseContext(this.prisma, courseId, {
+            groupId,
+            excludeLinkedToAcaoId: excludeAcaoId,
+        });
+    }
+
+    async listTurmasElegiveis(acaoId: string) {
+        await this.findOne(acaoId);
+        return findTurmasEligibleForAcao(this.prisma, acaoId);
     }
 
     // ── Equipe ───────────────────────────────────────────────────
@@ -479,16 +774,103 @@ export class AcoesService {
     }
 
     // ── Funcionários da Ação ─────────────────────────────────────────
-    async listFuncionarios(acaoId: string) {
-        return this.prisma.acaoFuncionario.findMany({
+    async listFuncionariosDisponiveis(
+        acaoId: string,
+        filters?: { search?: string; role?: string; page?: number; limit?: number },
+    ) {
+        await this.findOne(acaoId);
+        const vinculados = await this.prisma.acaoFuncionario.findMany({
             where: { acaoId },
-            include: {
-                employee: {
-                    select: { id: true, name: true, role: true, department: true, phone: true, email: true, specialty: true, dailyCost: true, photoUrl: true, active: true },
+            select: { employeeId: true },
+        });
+        const excludeIds = vinculados.map(v => v.employeeId);
+        const page = Math.max(1, filters?.page ?? 1);
+        const limit = Math.min(50, Math.max(1, filters?.limit ?? 12));
+        const skip = (page - 1) * limit;
+
+        const where: any = { active: true };
+        if (excludeIds.length) where.id = { notIn: excludeIds };
+        if (filters?.role) where.role = filters.role;
+        if (filters?.search?.trim()) {
+            const q = filters.search.trim();
+            where.OR = [
+                { name: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+                { cpf: { contains: q, mode: 'insensitive' } },
+                { specialty: { contains: q, mode: 'insensitive' } },
+            ];
+        }
+
+        const [employees, total] = await Promise.all([
+            this.prisma.employee.findMany({
+                where,
+                orderBy: { name: 'asc' },
+                skip,
+                take: limit,
+                select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                    department: true,
+                    dailyCost: true,
+                    userId: true,
+                    specialty: true,
+                    phone: true,
+                    email: true,
+                    photoUrl: true,
+                },
+            }),
+            this.prisma.employee.count({ where }),
+        ]);
+
+        return {
+            employees,
+            total,
+            page,
+            limit,
+            totalPages: Math.max(1, Math.ceil(total / limit)),
+        };
+    }
+
+    async listFuncionarios(
+        acaoId: string,
+        opts?: { page?: number; limit?: number },
+    ) {
+        const { skip, page, limit } = resolvePagination(opts?.page, opts?.limit, 12);
+        const where = { acaoId };
+        const include = {
+            employee: {
+                select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                    department: true,
+                    phone: true,
+                    email: true,
+                    specialty: true,
+                    dailyCost: true,
+                    photoUrl: true,
+                    active: true,
                 },
             },
-            orderBy: { createdAt: 'asc' },
-        });
+        };
+        const [data, total] = await Promise.all([
+            this.prisma.acaoFuncionario.findMany({
+                where,
+                include,
+                orderBy: { createdAt: 'asc' },
+                skip,
+                take: limit,
+            }),
+            this.prisma.acaoFuncionario.count({ where }),
+        ]);
+        return paginatedResult(data, total, page, limit);
+    }
+
+    /** Dias efetivos do período — motor letivo do período (FDS, feriados, grade). */
+    private async computeDiasEfetivosForAcao(acaoId: string): Promise<number> {
+        const resumo = await this.getCalendarioResumo(acaoId);
+        return resumo.suggestedDiasPagamento ?? resumo.diasLetivos;
     }
 
     async addFuncionario(acaoId: string, dto: CreateAcaoFuncionarioDto) {
@@ -496,16 +878,41 @@ export class AcoesService {
         const emp = await this.prisma.employee.findUnique({ where: { id: dto.employeeId } });
         if (!emp) throw new NotFoundException('Funcionário não encontrado');
 
-        // GAP-F1: usar dailyCost do cadastro como default quando valorDiaria
-        // não for informado no DTO (evita que admin re-digite manualmente)
+        const turmaCount = await this.prisma.acaoTurma.count({ where: { acaoId } });
+        if (turmaCount === 0) {
+            throw new BadRequestException(
+                'Vincule uma turma ao período antes de adicionar funcionários. ' +
+                    'Os dias de diária seguem o motor letivo do período de curso (FDS, feriados e turno).',
+            );
+        }
+
         const valorDiariaFinal = dto.valorDiaria ?? (emp.dailyCost ? Number(emp.dailyCost) : 0);
 
-        // Auto-calcular dias trabalhados com base nas datas da ação
         const dataInicio = new Date((acao as any).dataInicio);
         const dataFim = new Date((acao as any).dataFim);
-        const diffMs = dataFim.getTime() - dataInicio.getTime();
-        const diasCalc = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1);
-        const diasFinal = dto.diasTrabalhados ?? diasCalc;
+        const calResumo = await this.getCalendarioResumo(acaoId);
+        let diasCalc = calResumo.suggestedDiasPagamento ?? calResumo.diasLetivos;
+
+        if (emp.role === EmployeeRole.INSTRUCTOR && dto.classIds?.length) {
+            const instPreview = await suggestInstructorDiasForClasses(
+                this.prisma,
+                acaoId,
+                dto.classIds,
+                (course) => this.resolveCourseStateConfig(course),
+            );
+            diasCalc = instPreview.suggestedDiasPagamento;
+        }
+
+        const diasCorridosHint =
+            Math.max(1, Math.ceil((dataFim.getTime() - dataInicio.getTime()) / 86400000) + 1);
+        const diasFinal =
+            dto.diasTrabalhados != null && dto.diasTrabalhados > 0
+                ? dto.diasTrabalhados
+                : diasCalc;
+        this.logger.log(
+            `BUG-05: dias calculados para ${emp.name}: ${diasCalc} ` +
+            `(de ${dataInicio.toISOString().slice(0, 10)} até ${dataFim.toISOString().slice(0, 10)})`,
+        );
 
         let vinculo: any;
         try {
@@ -558,24 +965,134 @@ export class AcoesService {
         });
         this.emitFinanceiroListagemRefresh('acao_add_funcionario_diaria', { acaoId, employeeId: dto.employeeId });
 
-        return vinculo;
+        const roleEffects: {
+            instructor?: {
+                turmasNoPeriodo: number;
+                novosVinculosTurma: number;
+                message: string;
+            };
+            driver?: {
+                truckSynced: boolean;
+                turmasAtualizadas: number;
+                tripsGenerated: number;
+                tripsWarning?: string;
+                perClass?: TripGenPerClass[];
+                message: string;
+            };
+        } = {};
+
+        if (emp.role === EmployeeRole.INSTRUCTOR) {
+            if (!dto.classIds?.length) {
+                throw new BadRequestException(
+                    'Selecione ao menos uma turma do período para o instrutor (cada curso tem carga horária própria).',
+                );
+            }
+            if (!emp.userId) {
+                throw new BadRequestException(
+                    'Instrutor sem acesso ao sistema. Aprove o cadastro em Funcionários com login antes de vincular ao período.',
+                );
+            }
+            await ensureTeacherForUserId(this.prisma, emp.userId);
+            const sync = await syncTeacherToAcaoClasses(this.prisma, acaoId, emp.userId, dto.classIds!);
+            const turmasAtivas = sync.classIds.length;
+            const novos = sync.classLinks;
+            const turmaLabel =
+                dto.classIds?.length && dto.classIds.length < turmasAtivas
+                    ? `${turmasAtivas} turma(s) selecionada(s)`
+                    : `${turmasAtivas} turma(s) no período`;
+            roleEffects.instructor = {
+                turmasNoPeriodo: turmasAtivas,
+                novosVinculosTurma: novos,
+                message:
+                    turmasAtivas === 0
+                        ? 'Nenhuma turma ativa no período.'
+                        : novos === 0
+                          ? `Professor já estava vinculado às ${turmaLabel}.`
+                          : `Professor vinculado em ${novos} turma(s) (${turmaLabel}).`,
+            };
+        }
+
+        if (emp.role === EmployeeRole.DRIVER) {
+            const driverSync = await syncDriverForEmployeeOnAcao(
+                this.prisma,
+                this.tripsService,
+                acaoId,
+                emp.userId,
+            );
+            roleEffects.driver = {
+                truckSynced: driverSync.truckSynced,
+                turmasAtualizadas: driverSync.turmasAtualizadas,
+                tripsGenerated: driverSync.totalGenerated,
+                tripsWarning: driverSync.tripsWarning,
+                perClass: driverSync.perClass,
+                message: driverSync.message,
+            };
+        }
+
+        return {
+            ...vinculo,
+            diasTrabalhados: diasFinal,
+            diasCalculados: diasCalc,
+            diasCorridos: diasCorridosHint,
+            roleEffects,
+        };
+    }
+
+    /** Reaplica carreta + geração de viagens para motorista já vinculado ao período. */
+    async regenerateFuncionarioTrips(acaoId: string, employeeId: string) {
+        const vinculo = await this.prisma.acaoFuncionario.findFirst({
+            where: { acaoId, employeeId },
+            include: { employee: { select: { id: true, name: true, role: true, userId: true } } },
+        });
+        if (!vinculo) throw new NotFoundException('Vínculo de funcionário não encontrado');
+        if (vinculo.employee.role !== EmployeeRole.DRIVER) {
+            throw new BadRequestException('Apenas motoristas podem regenerar viagens do período.');
+        }
+        if (!vinculo.employee.userId) {
+            throw new BadRequestException(
+                'Motorista sem login no sistema. Vincule um usuário DRIVER em Funcionários.',
+            );
+        }
+
+        const driverSync = await syncDriverForEmployeeOnAcao(
+            this.prisma,
+            this.tripsService,
+            acaoId,
+            vinculo.employee.userId,
+        );
+
+        return {
+            employeeId,
+            employeeName: vinculo.employee.name,
+            truckSynced: driverSync.truckSynced,
+            turmasAtualizadas: driverSync.turmasAtualizadas,
+            tripsGenerated: driverSync.totalGenerated,
+            tripsWarning: driverSync.tripsWarning,
+            perClass: driverSync.perClass,
+            message: driverSync.message,
+        };
     }
 
     async updateFuncionarioDias(acaoId: string, employeeId: string, diasTrabalhados: number) {
-        // Buscar o vínculo para obter valorDiaria e nome do funcionário
         const vinculo = await this.prisma.acaoFuncionario.findFirst({
             where: { acaoId, employeeId },
             include: { employee: { select: { id: true, name: true } } },
         });
         if (!vinculo) throw new NotFoundException('Vínculo de funcionário não encontrado');
 
-        const novoValor = Number(vinculo.valorDiaria) * diasTrabalhados;
+        const diasCalc = await this.computeDiasEfetivosForAcao(acaoId);
+        const diasFinal = diasTrabalhados > 0 ? diasTrabalhados : diasCalc;
+        this.logger.log(
+            `BUG-05: atualizar dias ${vinculo.employee.name}: informado=${diasTrabalhados}, calc=${diasCalc}, final=${diasFinal}`,
+        );
+
+        const novoValor = Number(vinculo.valorDiaria) * diasFinal;
         const descricao = `Diária - ${vinculo.employee.name}`;
 
         // 1. Atualizar AcaoFuncionario
         await this.prisma.acaoFuncionario.updateMany({
             where: { acaoId, employeeId },
-            data: { diasTrabalhados },
+            data: { diasTrabalhados: diasFinal },
         });
 
         // 2. Upsert AcaoCusto — cria se não existir (funcionários vinculados antes do auto-create)
@@ -587,7 +1104,7 @@ export class AcoesService {
                 where: { id: acaoCusto.id },
                 data: {
                     valor: novoValor,
-                    observacoes: `${diasTrabalhados} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
+                    observacoes: `${diasFinal} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
                 },
             });
         } else {
@@ -599,7 +1116,7 @@ export class AcoesService {
                     descricao,
                     valor: novoValor,
                     data: acao?.dataInicio || new Date(),
-                    observacoes: `${diasTrabalhados} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
+                    observacoes: `${diasFinal} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
                 },
             });
         }
@@ -613,7 +1130,7 @@ export class AcoesService {
                 where: { id: conta.id },
                 data: {
                     valor: novoValor,
-                    observacoes: `${diasTrabalhados} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
+                    observacoes: `${diasFinal} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
                 },
             });
         } else {
@@ -628,13 +1145,18 @@ export class AcoesService {
                     recorrente: false,
                     acaoId,
                     cidade: acao?.cidadeNome || undefined,
-                    observacoes: `${diasTrabalhados} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
+                    observacoes: `${diasFinal} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
                 },
             });
         }
         this.emitFinanceiroListagemRefresh('acao_update_funcionario_dias_diaria', { acaoId, employeeId });
 
-        return { message: 'Dias e custos atualizados com sucesso', valor: novoValor, dias: diasTrabalhados };
+        return {
+            message: 'Dias e custos atualizados com sucesso',
+            valor: novoValor,
+            dias: diasFinal,
+            diasCalculados: diasCalc,
+        };
     }
 
     async removeFuncionario(acaoId: string, employeeId: string) {

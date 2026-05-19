@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { studentsApi, Student, StudentFilters, StudentStats } from '@/lib/api/students';
-import { PlusIcon, MagnifyingGlassIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, TrashIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, MagnifyingGlassIcon, EyeIcon, TrashIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
 import Link from 'next/link';
 import api from '@/lib/api/client';
 import { toast } from '@/components/ui/Toast';
@@ -351,36 +352,14 @@ export default function AlunosPage() {
             </div>
 
             {/* ── PAGINATION ── */}
-            {totalPages > 1 && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                    <button
-                        onClick={() => setFilters(f => ({ ...f, page: f.page! - 1 }))}
-                        disabled={filters.page === 1}
-                        style={{ padding: '0.5rem 0.85rem', borderRadius: 9, background: '#F9FAFB', border: '1px solid #E5E7EB', cursor: filters.page === 1 ? 'not-allowed' : 'pointer', opacity: filters.page === 1 ? 0.4 : 1, display: 'flex', alignItems: 'center' }}
-                    >
-                        <ChevronLeftIcon style={{ width: 15, height: 15, color: '#6B7280' }} />
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                        <button key={p} onClick={() => setFilters(f => ({ ...f, page: p }))}
-                            style={{
-                                width: 34, height: 34, borderRadius: 9, fontSize: '0.8rem', fontWeight: 700,
-                                cursor: 'pointer', border: 'none', transition: 'all 0.18s',
-                                background: filters.page === p ? '#FFD600' : '#F3F4F6',
-                                color: filters.page === p ? '#000' : '#6B7280',
-                                boxShadow: filters.page === p ? '0 2px 8px rgba(255,214,0,0.35)' : 'none',
-                            }}>
-                            {p}
-                        </button>
-                    ))}
-                    <button
-                        onClick={() => setFilters(f => ({ ...f, page: f.page! + 1 }))}
-                        disabled={filters.page === totalPages}
-                        style={{ padding: '0.5rem 0.85rem', borderRadius: 9, background: '#F9FAFB', border: '1px solid #E5E7EB', cursor: filters.page === totalPages ? 'not-allowed' : 'pointer', opacity: filters.page === totalPages ? 0.4 : 1, display: 'flex', alignItems: 'center' }}
-                    >
-                        <ChevronRightIcon style={{ width: 15, height: 15, color: '#6B7280' }} />
-                    </button>
-                </div>
-            )}
+            <AdminListPagination
+                page={filters.page ?? 1}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={(p) => setFilters(f => ({ ...f, page: p }))}
+                itemLabel="aluno(s)"
+            />
         </div>
         {/* Modal exclusão padrão aluno */}
         {deleteStudentId && (

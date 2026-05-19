@@ -8,10 +8,13 @@ import { InstitutionsService } from '../institutions/institutions.service';
 import { NotificationType } from '@prisma/client';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveTeacherOrThrow } from '../common/resolve-teacher.util';
+import { syncTeacherToCourse } from '../common/teacher-academic-link.util';
 
-type CourseStateRule = { available: boolean; durationDays: number };
+type CourseStateRule = { available: boolean; durationDays: number; workloadHours?: number };
 type CourseStateConfigMap = Record<string, Record<string, CourseStateRule>>;
 
 @Injectable()
@@ -50,10 +53,25 @@ export class CoursesService {
         fs.writeFileSync(this.stateConfigPath, JSON.stringify(next, null, 2), 'utf-8');
     }
 
-    private defaultStateConfigForCourse(course: { durationDaysMA: number; durationDaysPI: number; availableInMA: boolean; availableInPI: boolean }): Record<string, CourseStateRule> {
+    private defaultStateConfigForCourse(course: {
+        durationDaysMA: number;
+        durationDaysPI: number;
+        availableInMA: boolean;
+        availableInPI: boolean;
+        workloadHours?: number;
+    }): Record<string, CourseStateRule> {
+        const hours = Math.max(1, Math.floor(Number(course.workloadHours) || 60));
         return {
-            MA: { available: !!course.availableInMA, durationDays: Math.max(1, Number(course.durationDaysMA) || 1) },
-            PI: { available: !!course.availableInPI, durationDays: Math.max(1, Number(course.durationDaysPI) || 1) },
+            MA: {
+                available: !!course.availableInMA,
+                durationDays: Math.max(1, Number(course.durationDaysMA) || 1),
+                workloadHours: course.availableInMA ? hours : undefined,
+            },
+            PI: {
+                available: !!course.availableInPI,
+                durationDays: Math.max(1, Number(course.durationDaysPI) || 1),
+                workloadHours: course.availableInPI ? hours : undefined,
+            },
         };
     }
 
@@ -69,9 +87,11 @@ export class CoursesService {
                 ? ruleObj.available
                 : next[uf]?.available ?? true;
             const durationCandidate = Number(ruleObj.durationDays ?? next[uf]?.durationDays ?? 1);
+            const whCandidate = Number(ruleObj.workloadHours ?? next[uf]?.workloadHours);
             next[uf] = {
                 available,
                 durationDays: Number.isFinite(durationCandidate) && durationCandidate > 0 ? Math.floor(durationCandidate) : 1,
+                ...(Number.isFinite(whCandidate) && whCandidate > 0 ? { workloadHours: Math.floor(whCandidate) } : {}),
             };
         }
 
@@ -80,7 +100,14 @@ export class CoursesService {
         return next;
     }
 
-    private getCourseStateConfig(course: { id: string; durationDaysMA: number; durationDaysPI: number; availableInMA: boolean; availableInPI: boolean }): Record<string, CourseStateRule> {
+    getCourseStateConfig(course: {
+        id: string;
+        durationDaysMA: number;
+        durationDaysPI: number;
+        availableInMA: boolean;
+        availableInPI: boolean;
+        workloadHours?: number;
+    }): Record<string, CourseStateRule> {
         const map = this.readStateConfigMap();
         const fallback = this.defaultStateConfigForCourse(course);
         return this.sanitizeStateConfig(map[course.id], fallback);
@@ -184,7 +211,14 @@ export class CoursesService {
         });
     }
 
-    async findAll(filters?: { state?: string; active?: boolean; isMulticourse?: boolean }) {
+    async findAll(filters?: {
+        state?: string;
+        active?: boolean;
+        isMulticourse?: boolean;
+        page?: number;
+        limit?: number;
+        search?: string;
+    }) {
         const where: any = {};
 
         if (filters?.active !== undefined) {
@@ -194,30 +228,58 @@ export class CoursesService {
         if (filters?.isMulticourse !== undefined) {
             where.isMulticourse = filters.isMulticourse;
         }
+        if (filters?.search?.trim()) {
+            where.name = { contains: filters.search.trim(), mode: 'insensitive' };
+        }
 
-        const courses = await this.prisma.course.findMany({
-            where,
-            orderBy: { name: 'asc' },
-            include: {
-                institution: { select: { id: true, name: true, shortName: true } },
-                _count: {
-                    select: {
-                        modules: true,
-                        teachers: true,
-                        classes: true,
-                    },
+        const include = {
+            institution: { select: { id: true, name: true, shortName: true } },
+            _count: {
+                select: {
+                    modules: true,
+                    teachers: true,
+                    classes: true,
                 },
             },
-        });
+        };
 
         const stateFilter = filters?.state?.toUpperCase();
-        const enriched = courses.map((course: any) => ({
+        const { skip, page, limit } = resolvePagination(filters?.page, filters?.limit, 12);
+
+        if (stateFilter) {
+            const courses = await this.prisma.course.findMany({
+                where,
+                orderBy: { name: 'asc' },
+                include,
+            });
+            const enriched = courses
+                .map((course: any) => ({
+                    ...course,
+                    stateConfig: this.getCourseStateConfig(course),
+                }))
+                .filter((course: any) => !!course.stateConfig?.[stateFilter]?.available);
+            const total = enriched.length;
+            const slice = enriched.slice(skip, skip + limit);
+            return paginatedResult(slice, total, page, limit);
+        }
+
+        const [courses, total] = await Promise.all([
+            this.prisma.course.findMany({
+                where,
+                orderBy: { name: 'asc' },
+                include,
+                skip,
+                take: limit,
+            }),
+            this.prisma.course.count({ where }),
+        ]);
+
+        const data = courses.map((course: any) => ({
             ...course,
             stateConfig: this.getCourseStateConfig(course),
         }));
 
-        if (!stateFilter) return enriched;
-        return enriched.filter((course: any) => !!course.stateConfig?.[stateFilter]?.available);
+        return paginatedResult(data, total, page, limit);
     }
 
     async findOne(id: string) {
@@ -320,10 +382,13 @@ export class CoursesService {
         const { institutionId: instOpt, stateConfig, ...rest } = data;
         const institutionId = instOpt ?? (await this.institutions.getDefaultInstitutionId());
 
-        const normalizedStateConfig = this.sanitizeStateConfig(stateConfig, {
-            MA: { available: rest.availableInMA ?? true, durationDays: Number(rest.durationDaysMA) || 30 },
-            PI: { available: rest.availableInPI ?? true, durationDays: Number(rest.durationDaysPI) || 30 },
-        });
+        const normalizedStateConfig = this.sanitizeStateConfig(stateConfig, this.defaultStateConfigForCourse({
+            durationDaysMA: Number(rest.durationDaysMA) || 30,
+            durationDaysPI: Number(rest.durationDaysPI) || 30,
+            availableInMA: rest.availableInMA ?? true,
+            availableInPI: rest.availableInPI ?? true,
+            workloadHours: Number(rest.workloadHours) || 0,
+        }));
 
         const created = await this.prisma.course.create({
             data: {
@@ -455,35 +520,13 @@ export class CoursesService {
     }
 
     // Teacher Assignment
-    async assignTeacher(courseId: string, teacherId: string) {
+    async assignTeacher(courseId: string, teacherIdOrUserId: string) {
         await this.findOne(courseId);
 
-        // Check if teacher exists
-        const teacher = await this.prisma.teacher.findUnique({
-            where: { id: teacherId },
-        });
+        const sync = await syncTeacherToCourse(this.prisma, courseId, teacherIdOrUserId);
 
-        if (!teacher) {
-            throw new NotFoundException('Teacher not found');
-        }
-
-        // Check if already assigned
-        const existing = await this.prisma.teacherCourse.findFirst({
-            where: {
-                courseId,
-                teacherId,
-            },
-        });
-
-        if (existing) {
-            throw new ConflictException('Teacher already assigned to this course');
-        }
-
-        return this.prisma.teacherCourse.create({
-            data: {
-                courseId,
-                teacherId,
-            },
+        const assignment = await this.prisma.teacherCourse.findFirst({
+            where: { courseId, teacherId: sync.teacherId },
             include: {
                 teacher: {
                     include: {
@@ -498,13 +541,21 @@ export class CoursesService {
                 },
             },
         });
+
+        return {
+            ...assignment,
+            propagatedClasses: sync.classLinks,
+            academicSync: sync,
+        };
     }
 
-    async removeTeacher(courseId: string, teacherId: string) {
+    async removeTeacher(courseId: string, teacherIdOrUserId: string) {
+        const teacher = await resolveTeacherOrThrow(this.prisma, teacherIdOrUserId);
+
         const assignment = await this.prisma.teacherCourse.findFirst({
             where: {
                 courseId,
-                teacherId,
+                teacherId: teacher.id,
             },
         });
 

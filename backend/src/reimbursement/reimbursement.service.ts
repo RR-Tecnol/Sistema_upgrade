@@ -12,6 +12,11 @@ import {
   looksLikeAlreadyPresignedGetUrl,
   parseMinioPublicUrlToBucketKey,
 } from './minio-public-url.util';
+import {
+    buildStoredObjectUrl,
+    isVpsStorageMode,
+    resolveBrowserViewUrl,
+} from '../common/minio-browser-url.util';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { MailService } from '../mail/mail.service';
@@ -58,13 +63,8 @@ export class ReimbursementService {
       const bucket = process.env.MINIO_BUCKET_REIMBURSEMENT || 'reimbursements';
       const fileKey = `${userId}/${Date.now()}_${filename}`;
       const uploadUrl = await this.minio.presignedPutUrl(bucket, fileKey, 900);
-      
-      const minioEndpoint = process.env.MINIO_ENDPOINT || 'localhost';
-      const minioPort = process.env.MINIO_PORT || '9010';
-      const useSSL = process.env.MINIO_USE_SSL === 'true';
-      const protocol = useSSL ? 'https' : 'http';
-      const fileUrl = `${protocol}://${minioEndpoint}:${minioPort}/${bucket}/${fileKey}`;
-      
+      const fileUrl = buildStoredObjectUrl(bucket, fileKey);
+
       return { uploadUrl, fileKey, fileUrl };
   }
 
@@ -238,6 +238,11 @@ export class ReimbursementService {
       throw new BadRequestException('Este reembolso não tem comprovante anexado');
     }
 
+    const browserUrl = resolveBrowserViewUrl(raw);
+    if (browserUrl) {
+      return { url: browserUrl, expiresIn: 0 };
+    }
+
     if (looksLikeAlreadyPresignedGetUrl(raw)) {
       return { url: raw, expiresIn: 0 };
     }
@@ -245,6 +250,12 @@ export class ReimbursementService {
     const parsed = parseMinioPublicUrlToBucketKey(raw);
     if (!parsed) {
       throw new BadRequestException('URL do comprovante não reconhecida para leitura segura');
+    }
+
+    if (isVpsStorageMode()) {
+      throw new BadRequestException(
+        'URL do comprovante não reconhecida. Use anexo via upload do sistema ou contacte o suporte.',
+      );
     }
 
     const expirySeconds = 3600;
@@ -307,7 +318,7 @@ export class ReimbursementService {
             valor: item.amount,
             data_vencimento: new Date(),
             status: 'pendente',
-            observacoes: `origem=reembolso | ${marker} | categoria=${item.type} | motivo=${motivoLimpo}`,
+            observacoes: `origem=reembolso | ${marker} | categoria=${item.type} | motivo=${motivoLimpo} | perfil=${item.employee?.role || 'FUNCIONARIO'}`,
             comprovante_url: item.receiptUrl ?? undefined,
           },
         });

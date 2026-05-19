@@ -16,6 +16,8 @@ import {
 import { toast } from '@/components/ui/Toast';
 import { roleLabel } from '@/lib/i18n';
 import { customConfirm } from '@/components/ui/ConfirmModal';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 
 const STATUS_TABS: { value: StockPurchaseRequestStatus | 'all'; label: string; emoji: string }[] = [
     { value: 'PENDENTE', label: 'Pendentes', emoji: '⏳' },
@@ -42,6 +44,9 @@ interface Props {
 
 export function SolicitacoesEstoquePanel({ highlightPrId, initialStatusTab, initialCategoria, onStockUpdated, refreshKey, readOnly = false }: Props) {
     const [reqs, setReqs] = useState<StockPurchaseRequest[]>([]);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
     const [loading, setLoading] = useState(true);
     const [statusTab, setStatusTab] = useState<StockPurchaseRequestStatus | 'all'>(initialStatusTab ?? 'PENDENTE');
     const [filterCategoria, setFilterCategoria] = useState<StockItemCategory | ''>(initialCategoria ?? '');
@@ -107,18 +112,24 @@ export function SolicitacoesEstoquePanel({ highlightPrId, initialStatusTab, init
     const load = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await stockApi.purchaseRequests.list({
+            const raw = await stockApi.purchaseRequests.list({
                 status: statusTab === 'all' ? undefined : statusTab,
-                
+                page,
+                limit: ADMIN_PAGE_SIZE_TABLE,
             });
-            setReqs(data);
+            const norm = normalizePaginated<StockPurchaseRequest>(raw, ADMIN_PAGE_SIZE_TABLE);
+            setReqs(norm.data);
+            setTotal(norm.total);
+            setTotalPages(norm.totalPages);
         } catch (e) {
             console.error('[SolicitacoesEstoquePanel]', e);
             toast.error('Erro ao carregar solicitações');
         } finally {
             setLoading(false);
         }
-    }, [statusTab, filterCategoria]);
+    }, [statusTab, filterCategoria, page]);
+
+    useEffect(() => { setPage(1); }, [statusTab, filterCategoria]);
 
     useEffect(() => {
         load();
@@ -457,7 +468,7 @@ export function SolicitacoesEstoquePanel({ highlightPrId, initialStatusTab, init
                     fontWeight: 800,
                     color: '#B89B00',
                 }}>
-                    {loading ? '...' : `${reqs.length} itens`}
+                    {loading ? '...' : `${total} itens`}
                 </span>
             </div>
 
@@ -516,6 +527,16 @@ export function SolicitacoesEstoquePanel({ highlightPrId, initialStatusTab, init
                     ))}
                 </div>
             )}
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="solicitação(ões)"
+                style={{ marginTop: 12 }}
+            />
 
             {reviewing &&
                 reviewMode &&

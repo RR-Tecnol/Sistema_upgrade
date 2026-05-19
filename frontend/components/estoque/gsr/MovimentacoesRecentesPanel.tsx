@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
     stockApi,
@@ -10,9 +10,12 @@ import {
     MOV_TYPE_LABEL,
     MOV_TYPE_COLOR,
     auditActionMeta,
+    stockMovementLineValue,
+    formatStockCurrency,
 } from '@/lib/api/stock';
 import { toast } from '@/components/ui/Toast';
 import { acoesApi, Acao } from '@/lib/api/acoes';
+import { unwrapListData } from '@/lib/api/pagination';
 
 const TYPE_OPTS: { value: 'all' | StockMovementType; label: string }[] = [
     { value: 'all', label: 'Todos os tipos' },
@@ -86,7 +89,10 @@ export function MovimentacoesRecentesPanel({ truckId, showAudit, auditAction }: 
     const [acoes, setAcoes] = useState<Acao[]>([]);
 
     useEffect(() => {
-        acoesApi.listar().then(setAcoes).catch(() => {});
+        acoesApi
+            .listar({ limit: 500, page: 1 })
+            .then((raw) => setAcoes(unwrapListData<Acao>(raw)))
+            .catch(() => {});
     }, []);
 
     const load = useCallback(async () => {
@@ -122,6 +128,22 @@ export function MovimentacoesRecentesPanel({ truckId, showAudit, auditAction }: 
     useEffect(() => {
         load();
     }, [load]);
+
+    const resumoValor = useMemo(() => {
+        let valorTotal = 0;
+        let comValor = 0;
+        let semPreco = 0;
+        for (const m of movs) {
+            const v = stockMovementLineValue(m);
+            if (v == null) {
+                semPreco += 1;
+            } else {
+                comValor += 1;
+                valorTotal += v;
+            }
+        }
+        return { valorTotal, comValor, semPreco };
+    }, [movs]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -168,6 +190,53 @@ export function MovimentacoesRecentesPanel({ truckId, showAudit, auditAction }: 
                     </select>
                 </div>
             </div>
+
+            {!loading && movs.length > 0 && (
+                <div style={{
+                    padding: '12px 16px',
+                    borderRadius: 12,
+                    background: resumoValor.comValor > 0 ? '#F0FDFA' : '#F8FAFC',
+                    border: `1.5px solid ${resumoValor.comValor > 0 ? '#5EEAD4' : '#E2E8F0'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                }}>
+                    <span style={{ fontSize: '1.35rem' }}>💰</span>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                        <div style={{
+                            fontSize: '0.65rem',
+                            fontWeight: 800,
+                            color: resumoValor.comValor > 0 ? '#0F766E' : '#64748B',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                            marginBottom: 4,
+                        }}>
+                            Valor total das movimentações (filtro atual)
+                        </div>
+                        {resumoValor.comValor > 0 ? (
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{
+                                    fontFamily: 'Orbitron, sans-serif',
+                                    fontSize: '1.15rem',
+                                    fontWeight: 900,
+                                    color: '#0D9488',
+                                }}>
+                                    R$ {formatStockCurrency(resumoValor.valorTotal)}
+                                </span>
+                                <span style={{ fontSize: '0.72rem', color: '#14B8A6', fontWeight: 700 }}>
+                                    {resumoValor.comValor} {resumoValor.comValor === 1 ? 'linha' : 'linhas'} com preço
+                                    {resumoValor.semPreco > 0 ? ` · ${resumoValor.semPreco} sem preço` : ''}
+                                </span>
+                            </div>
+                        ) : (
+                            <span style={{ fontSize: '0.78rem', color: '#94A3B8', fontWeight: 600, fontStyle: 'italic' }}>
+                                sem preço cadastrado nos itens — valor não calculado
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* ── TABLE HEADER ── */}
             <div style={{
@@ -251,18 +320,61 @@ export function MovimentacoesRecentesPanel({ truckId, showAudit, auditAction }: 
                                         )}
                                     </td>
                                     <td style={{ ...TD, textAlign: 'right', fontWeight: 800, fontFamily: 'Orbitron, sans-serif', fontSize: '0.82rem' }}>{Number(m.quantidade)}</td>
-                                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'Orbitron, sans-serif', fontSize: '0.8rem' }}>
+                                    <td style={{ ...TD, textAlign: 'right' }}>
                                         {(() => {
+                                            const valor = stockMovementLineValue(m);
                                             const preco = Number(m.stockItem?.precoUnitario ?? 0);
-                                            if (!preco || preco <= 0) return <span style={{ color: '#94A3B8' }}>—</span>;
-                                            const valor = Number(m.quantidade) * preco;
-                                            return <span style={{ fontWeight: 700, color: '#059669' }}>R$ {valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+                                            if (valor == null) {
+                                                return (
+                                                    <span style={{
+                                                        fontSize: '0.72rem',
+                                                        color: '#94A3B8',
+                                                        fontWeight: 600,
+                                                        fontStyle: 'italic',
+                                                    }}>
+                                                        sem preço cadastrado
+                                                    </span>
+                                                );
+                                            }
+                                            return (
+                                                <div>
+                                                    <span style={{
+                                                        fontWeight: 700,
+                                                        color: '#059669',
+                                                        fontFamily: 'Orbitron, sans-serif',
+                                                        fontSize: '0.85rem',
+                                                    }}>
+                                                        R$ {formatStockCurrency(valor)}
+                                                    </span>
+                                                    <div style={{
+                                                        fontSize: '0.6rem',
+                                                        color: '#64748B',
+                                                        marginTop: 2,
+                                                        fontWeight: 600,
+                                                    }}>
+                                                        {Number(m.quantidade)} {m.stockItem?.unidade ?? ''} × R$ {formatStockCurrency(preco)}
+                                                    </div>
+                                                </div>
+                                            );
                                         })()}
                                     </td>
                                     <td style={{ ...TD, fontSize: '0.78rem', color: '#64748B' }}>{m.registrar?.name ?? '—'}</td>
                                 </tr>
                             ))}
                         </tbody>
+                        {movs.length > 0 && resumoValor.comValor > 0 && (
+                            <tfoot>
+                                <tr style={{ background: 'linear-gradient(180deg, #F0FDFA 0%, #ECFDF5 100%)' }}>
+                                    <td colSpan={4} style={{ ...TD, fontWeight: 800, color: '#0F766E', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                        Total (linhas com preço)
+                                    </td>
+                                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.95rem', color: '#0D9488' }}>
+                                        R$ {formatStockCurrency(resumoValor.valorTotal)}
+                                    </td>
+                                    <td style={TD} />
+                                </tr>
+                            </tfoot>
+                        )}
                     </table>
                     {movs.length === 0 && (
                         <div style={{

@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { CreateContaPagarDto } from './dto/create-conta-pagar.dto';
 import { StockService } from '../stock/stock.service';
+import { resolveOrigemPerfilForConta } from '../common/conta-pagar-perfil.util';
+import { resolvePagination } from '../common/pagination.util';
 
 @Injectable()
 export class ContasPagarService {
@@ -100,6 +102,8 @@ export class ContasPagarService {
         data_fim?: string;
         search?: string;
         includeDeleted?: boolean; // PASSO 3.9: aba excluídos
+        page?: number;
+        limit?: number;
     }) {
         const where: any = {};
         // PASSO 3.9: por padrão filtra apenas activos; includeDeleted mostra só os excluídos
@@ -121,11 +125,8 @@ export class ContasPagarService {
             ];
         }
 
-        const [contas, total] = await Promise.all([
-            this.prisma.contaPagar.findMany({
-                where,
-                orderBy: { createdAt: 'desc' },
-                include: {
+        const { skip, page, limit } = resolvePagination(filters?.page, filters?.limit, 20);
+        const include = {
                     acao: { select: { id: true, nome: true } },
                     courseFeedback: {
                         select: {
@@ -170,15 +171,26 @@ export class ContasPagarService {
                             reviewer: { select: { id: true, name: true, role: true } },
                         },
                     },
-                },
+        };
+
+        const [contas, total] = await Promise.all([
+            this.prisma.contaPagar.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                include,
+                skip,
+                take: limit,
             }),
             this.prisma.contaPagar.count({ where }),
         ]);
 
-        // KPIs por status — só contas ativas (excluídas não entram nos totais)
+        // Totais por status em todo o conjunto filtrado (todas as páginas), ignorando filtro de status
+        const whereTotais = { ...where };
+        delete whereTotais.status;
+
         const kpis = await this.prisma.contaPagar.groupBy({
             by: ['status'],
-            where: { active: true },
+            where: whereTotais,
             _sum: { valor: true },
             _count: { _all: true },
         });
@@ -186,11 +198,36 @@ export class ContasPagarService {
         const totaisPorStatus = {
             pendente: 0, paga: 0, vencida: 0, cancelada: 0,
         };
+        const contagemPorStatus = {
+            pendente: 0, paga: 0, vencida: 0, cancelada: 0,
+        };
         kpis.forEach(k => {
-            totaisPorStatus[k.status] = Number(k._sum.valor ?? 0);
+            const st = k.status as keyof typeof totaisPorStatus;
+            if (st in totaisPorStatus) {
+                totaisPorStatus[st] = Number(k._sum.valor ?? 0);
+                contagemPorStatus[st] = k._count._all;
+            }
         });
 
-        return { contas, total, totaisPorStatus };
+        return {
+            contas: contas.map((c) => this.serializeConta(c)),
+            total,
+            page,
+            limit,
+            totalPages: Math.max(1, Math.ceil(total / limit)),
+            totaisPorStatus,
+            contagemPorStatus,
+        };
+    }
+
+    private serializeConta(conta: any) {
+        const perfil = resolveOrigemPerfilForConta(conta);
+        return {
+            ...conta,
+            valor: Number(conta.valor),
+            origemPerfil: perfil.code,
+            origemPerfilLabel: perfil.label,
+        };
     }
 
     async findOne(id: string) {
@@ -241,7 +278,7 @@ export class ContasPagarService {
             },
         });
         if (!conta) throw new NotFoundException('Conta não encontrada');
-        return conta;
+        return this.serializeConta(conta);
     }
 
     async update(id: string, dto: Partial<CreateContaPagarDto> & { data_pagamento?: string; status?: ContaPagarStatus }) {

@@ -17,6 +17,8 @@ import {
     EmployeeStylePill,
     EmployeeStyleSectionTitle,
 } from '@/components/admin/employee-style-admin-detail';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 import {
     CurrencyDollarIcon,
     PlusIcon,
@@ -342,7 +344,12 @@ function ModalAprovacao({
 /* ── Página Principal ───────────────────────────────── */
 export default function ReembolsosPage() {
     const [items, setItems] = useState<Reimbursement[]>([]);
-    const [kpiSource, setKpiSource] = useState<Reimbursement[]>([]);
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [kpiTotals, setKpiTotals] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+    const [kpiAmounts, setKpiAmounts] = useState({ approved: 0, rejected: 0 });
+    const [rejectedPreview, setRejectedPreview] = useState<Reimbursement[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('');
     const [selected, setSelected] = useState<Reimbursement | null>(null);
@@ -353,23 +360,60 @@ export default function ReembolsosPage() {
 
     const loadKpis = useCallback(async () => {
         try {
-            const res = await api.get('/reimbursements');
-            const list = Array.isArray(res.data) ? res.data : res.data?.data ?? [];
-            setKpiSource(list);
+            const [allR, pendR, apprR, rejR, rejListR, apprListR] = await Promise.all([
+                api.get('/reimbursements', { params: { limit: 1 } }),
+                api.get('/reimbursements', { params: { status: 'PENDING', limit: 1 } }),
+                api.get('/reimbursements', { params: { status: 'APPROVED', limit: 1 } }),
+                api.get('/reimbursements', { params: { status: 'REJECTED', limit: 1 } }),
+                api.get('/reimbursements', { params: { status: 'REJECTED', limit: 6, page: 1 } }),
+                api.get('/reimbursements', { params: { status: 'APPROVED', limit: 500, page: 1 } }),
+            ]);
+            const all = normalizePaginated<Reimbursement>(allR.data, 1);
+            const pend = normalizePaginated<Reimbursement>(pendR.data, 1);
+            const appr = normalizePaginated<Reimbursement>(apprR.data, 1);
+            const rej = normalizePaginated<Reimbursement>(rejR.data, 1);
+            const rejList = normalizePaginated<Reimbursement>(rejListR.data, 6);
+            const apprList = normalizePaginated<Reimbursement>(apprListR.data, 500);
+            setKpiTotals({
+                total: all.total,
+                pending: pend.total,
+                approved: appr.total,
+                rejected: rej.total,
+            });
+            setRejectedPreview(rejList.data);
+            setKpiAmounts({
+                approved: apprList.data.reduce((s, i) => s + Number(i.amount), 0),
+                rejected: rejList.data.reduce((s, i) => s + Number(i.amount), 0),
+            });
         } catch {
-            setKpiSource([]);
+            setKpiTotals({ total: 0, pending: 0, approved: 0, rejected: 0 });
+            setRejectedPreview([]);
+            setKpiAmounts({ approved: 0, rejected: 0 });
         }
     }, []);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const params = filterStatus ? `?status=${filterStatus}` : '';
-            const res = await api.get(`/reimbursements${params}`);
-            setItems(Array.isArray(res.data) ? res.data : res.data.data ?? []);
-        } catch { setItems([]); }
-        finally { setLoading(false); }
-    }, [filterStatus]);
+            const res = await api.get('/reimbursements', {
+                params: {
+                    page,
+                    limit: ADMIN_PAGE_SIZE_TABLE,
+                    ...(filterStatus ? { status: filterStatus } : {}),
+                },
+            });
+            const norm = normalizePaginated<Reimbursement>(res.data, ADMIN_PAGE_SIZE_TABLE);
+            setItems(norm.data);
+            setTotal(norm.total);
+            setTotalPages(norm.totalPages);
+        } catch {
+            setItems([]);
+            setTotal(0);
+            setTotalPages(1);
+        } finally { setLoading(false); }
+    }, [filterStatus, page]);
+
+    useEffect(() => { setPage(1); }, [filterStatus]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -395,16 +439,14 @@ export default function ReembolsosPage() {
     };
 
     const stats = {
-        total: kpiSource.length,
-        pending: kpiSource.filter(i => i.status === 'PENDING').length,
-        approved: kpiSource.filter(i => i.status === 'APPROVED').length,
-        rejected: kpiSource.filter(i => i.status === 'REJECTED').length,
-        totalApproved: kpiSource.filter(i => i.status === 'APPROVED').reduce((s, i) => s + Number(i.amount), 0),
-        totalRejected: kpiSource.filter(i => i.status === 'REJECTED').reduce((s, i) => s + Number(i.amount), 0),
+        total: kpiTotals.total,
+        pending: kpiTotals.pending,
+        approved: kpiTotals.approved,
+        rejected: kpiTotals.rejected,
+        totalApproved: kpiAmounts.approved,
+        totalRejected: kpiAmounts.rejected,
     };
-    const rejectedList = kpiSource
-        .filter((i) => i.status === 'REJECTED')
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const rejectedList = rejectedPreview;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }} className="animate-fade-in">
@@ -422,11 +464,11 @@ export default function ReembolsosPage() {
             {/* KPIs */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
                 {[
-                    { label: 'Total', value: stats.total, color: '#B89B00', sub: 'todas as solicitações', onClick: () => setFilterStatus('') },
-                    { label: 'Pendentes', value: stats.pending, color: '#D97706', sub: 'aguardando análise', onClick: () => setFilterStatus('PENDING') },
-                    { label: 'Aprovados', value: stats.approved, color: '#059669', sub: 'liberados para pagamento', onClick: () => setFilterStatus('APPROVED') },
-                    { label: 'Rejeitados', value: stats.rejected, color: '#DC2626', sub: `${fmtCurr(stats.totalRejected)} recusados`, onClick: () => setFilterStatus('REJECTED') },
-                    { label: 'Total Aprovado (R$)', value: Number(stats.totalApproved.toFixed(2)), color: '#1D4ED8', sub: 'valor financeiro aprovado', onClick: () => setFilterStatus('APPROVED') },
+                    { label: 'Total', value: stats.total, color: '#B89B00', sub: 'todas as solicitações', onClick: () => { setFilterStatus(''); setPage(1); } },
+                    { label: 'Pendentes', value: stats.pending, color: '#D97706', sub: 'aguardando análise', onClick: () => { setFilterStatus('PENDING'); setPage(1); } },
+                    { label: 'Aprovados', value: stats.approved, color: '#059669', sub: 'liberados para pagamento', onClick: () => { setFilterStatus('APPROVED'); setPage(1); } },
+                    { label: 'Rejeitados', value: stats.rejected, color: '#DC2626', sub: `${fmtCurr(stats.totalRejected)} recusados`, onClick: () => { setFilterStatus('REJECTED'); setPage(1); } },
+                    { label: 'Total Aprovado (R$)', value: Number(stats.totalApproved.toFixed(2)), color: '#1D4ED8', sub: 'valor financeiro aprovado', onClick: () => { setFilterStatus('APPROVED'); setPage(1); } },
                 ].map((k, i) => (
                     <AnimatedKpiCard
                         key={i}
@@ -444,12 +486,12 @@ export default function ReembolsosPage() {
 
             {/* Filtros de status */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setFilterStatus('')}
+                <button onClick={() => { setFilterStatus(''); setPage(1); }}
                     style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600, border: !filterStatus ? '1px solid #B89B00' : '1px solid #E5E7EB', background: !filterStatus ? '#FFFDE7' : 'transparent', color: !filterStatus ? '#B89B00' : '#6B7280', cursor: 'pointer' }}>
                     Todos
                 </button>
                 {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                    <button key={k} onClick={() => setFilterStatus(k)}
+                    <button key={k} onClick={() => { setFilterStatus(k); setPage(1); }}
                         style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, border: filterStatus === k ? `1px solid ${v.color}` : '1px solid #E5E7EB', background: filterStatus === k ? v.bg : 'transparent', color: filterStatus === k ? v.color : '#6B7280', cursor: 'pointer' }}>
                         {v.icon} {v.label}
                     </button>
@@ -616,6 +658,15 @@ export default function ReembolsosPage() {
                     </div>
                 )}
             </div>
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="reembolso(s)"
+            />
 
             {selected && (
                 <ModalAprovacao

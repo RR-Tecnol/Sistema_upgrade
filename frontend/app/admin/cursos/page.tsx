@@ -17,6 +17,8 @@ import AdminCollapsibleTutorial, { type AdminTutorialStep } from '@/components/a
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_CARDS } from '@/lib/api/pagination';
 
 /* ── Course accent colors ── */
 const ACCENTS = [
@@ -110,6 +112,10 @@ const COURSES_TUTORIAL_STEPS: AdminTutorialStep[] = [
 
 export default function CursosPage() {
     const [courses, setCourses] = useState<Course[]>([]);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [summaryMeta, setSummaryMeta] = useState({ active: 0, inactive: 0, multicourse: 0 });
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [hovered, setHovered] = useState<string | null>(null);
@@ -120,11 +126,39 @@ export default function CursosPage() {
     const [togglingId, setTogglingId] = useState<string | null>(null);
     const dragScrollRef = useDragScroll();
 
-    useEffect(() => { loadCourses(); }, []);
+    useEffect(() => { setPage(1); }, [search, statusFilter, stateFilter, multicourseFilter]);
+
+    useEffect(() => { loadCourses(); }, [page, search, statusFilter, stateFilter, multicourseFilter]);
 
     const loadCourses = async () => {
-        try { setLoading(true); setCourses(await coursesApi.getAll()); }
-        catch { /* noop */ } finally { setLoading(false); }
+        try {
+            setLoading(true);
+            const [raw, actR, inactR, multiR] = await Promise.all([
+                coursesApi.getAll({
+                    search: search.trim() || undefined,
+                    active: statusFilter === 'all' ? undefined : statusFilter === 'active',
+                    state: stateFilter === 'all' ? undefined : stateFilter,
+                    isMulticourse: multicourseFilter === 'all' ? undefined : multicourseFilter === 'multi',
+                    page,
+                    limit: ADMIN_PAGE_SIZE_CARDS,
+                }),
+                coursesApi.getAll({ active: true, limit: 1, page: 1 }),
+                coursesApi.getAll({ active: false, limit: 1, page: 1 }),
+                coursesApi.getAll({ isMulticourse: true, limit: 1, page: 1 }),
+            ]);
+            const norm = normalizePaginated<Course>(raw, ADMIN_PAGE_SIZE_CARDS);
+            setCourses(norm.data.sort((a, b) => {
+                if (a.active !== b.active) return a.active ? -1 : 1;
+                return a.name.localeCompare(b.name, 'pt-BR');
+            }));
+            setTotal(norm.total);
+            setTotalPages(norm.totalPages);
+            setSummaryMeta({
+                active: normalizePaginated<Course>(actR, 1).total,
+                inactive: normalizePaginated<Course>(inactR, 1).total,
+                multicourse: normalizePaginated<Course>(multiR, 1).total,
+            });
+        } catch { /* noop */ } finally { setLoading(false); }
     };
 
     const handleToggleActive = async (course: Course) => {
@@ -154,34 +188,17 @@ export default function CursosPage() {
     }, [courses]);
 
     const summary = useMemo(() => {
-        const active = courses.filter(c => c.active).length;
-        const inactive = courses.length - active;
-        const multicourse = courses.filter(c => c.isMulticourse).length;
         const totalHours = courses.reduce((s, c) => s + (c.workloadHours || c.workload || 0), 0);
-        return { active, inactive, multicourse, totalHours, statesCount: detectedStates.length };
-    }, [courses, detectedStates.length]);
+        return {
+            active: summaryMeta.active,
+            inactive: summaryMeta.inactive,
+            multicourse: summaryMeta.multicourse,
+            totalHours,
+            statesCount: detectedStates.length,
+        };
+    }, [courses, detectedStates.length, summaryMeta]);
 
-    const filtered = useMemo(() => {
-        return courses
-            .filter(c =>
-                c.name.toLowerCase().includes(search.toLowerCase()) ||
-                c.description?.toLowerCase().includes(search.toLowerCase())
-            )
-            .filter(c => statusFilter === 'all' ? true : statusFilter === 'active' ? c.active : !c.active)
-            .filter(c => {
-                if (stateFilter === 'all') return true;
-                const cfg = c.stateConfig || {};
-                if (cfg[stateFilter]?.available) return true;
-                if (stateFilter === 'MA') return c.availableInMA;
-                if (stateFilter === 'PI') return c.availableInPI;
-                return false;
-            })
-            .filter(c => multicourseFilter === 'all' ? true : multicourseFilter === 'multi' ? c.isMulticourse : !c.isMulticourse)
-            .sort((a, b) => {
-                if (a.active !== b.active) return a.active ? -1 : 1;
-                return a.name.localeCompare(b.name, 'pt-BR');
-            });
-    }, [courses, search, statusFilter, stateFilter, multicourseFilter]);
+    const filtered = courses;
 
     return (
         <>
@@ -218,7 +235,7 @@ export default function CursosPage() {
                     {
                         key: 'all',
                         label: 'Total de Cursos',
-                        value: courses.length,
+                        value: total,
                         suffix: '',
                         color: '#B89B00',
                         bg: '#FFFDE7',
@@ -573,6 +590,15 @@ export default function CursosPage() {
                     })}
                 </div>
             )}
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="curso(s)"
+            />
         </div>
 
         </>

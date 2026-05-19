@@ -95,6 +95,15 @@ export class UsersController {
         return this.usersService.getDriverCheckins(req.user.id);
     }
 
+    // MEL-07: checkout motorista
+    @Post('me/driver-checkout')
+    @Roles('DRIVER')
+    @ApiOperation({ summary: 'MEL-07: Registrar saída do motorista autenticado' })
+    @ApiResponse({ status: 200, description: 'Saída do motorista registrada' })
+    async driverCheckout(@Request() req: any) {
+        return this.usersService.registerDriverCheckout(req.user.id);
+    }
+
     @Get('me/preferences')
     @Roles(...ALL_ROLES)
     @ApiOperation({ summary: 'Buscar preferências do usuário autenticado' })

@@ -21,6 +21,8 @@ import api from '@/lib/api/client';
 import { formatCalendarDatePtBR } from '@/lib/calendar-date-display';
 import { toast } from '@/components/ui/Toast';
 import { useAdminFinanceRefresh } from '@/hooks/useAdminFinanceRefresh';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { ImprevistosSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
@@ -553,6 +555,10 @@ function ModalCreate({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
 // â”€â”€â”€ PÃ¡gina principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function AdminImprevistos() {
     const [absences, setAbsences] = useState<Absence[]>([]);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [kpiCounts, setKpiCounts] = useState({ total: 0, pending: 0, validated: 0, rejected: 0, penalized: 0 });
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
     const [reviewing, setReviewing] = useState<Absence | null>(null);
@@ -572,13 +578,33 @@ export default function AdminImprevistos() {
     const load = async () => {
         try {
             setLoading(true);
-            const r = await api.get(`/admin/absences?status=${filter || ''}`);
-            setAbsences(r.data ?? []);
-        } catch { setAbsences([]); }
+            const params = { page, limit: ADMIN_PAGE_SIZE_TABLE, ...(filter ? { status: filter } : {}) };
+            const [r, allR, pendR, valR, rejR, penR] = await Promise.all([
+                api.get('/admin/absences', { params }),
+                api.get('/admin/absences', { params: { limit: 1, page: 1 } }),
+                api.get('/admin/absences', { params: { status: 'PENDING', limit: 1, page: 1 } }),
+                api.get('/admin/absences', { params: { status: 'VALIDATED', limit: 1, page: 1 } }),
+                api.get('/admin/absences', { params: { status: 'REJECTED', limit: 1, page: 1 } }),
+                api.get('/admin/absences', { params: { status: 'PENALIZED', limit: 1, page: 1 } }),
+            ]);
+            const norm = normalizePaginated<Absence>(r.data, ADMIN_PAGE_SIZE_TABLE);
+            setAbsences(norm.data);
+            setTotal(norm.total);
+            setTotalPages(norm.totalPages);
+            setKpiCounts({
+                total: normalizePaginated<Absence>(allR.data, 1).total,
+                pending: normalizePaginated<Absence>(pendR.data, 1).total,
+                validated: normalizePaginated<Absence>(valR.data, 1).total,
+                rejected: normalizePaginated<Absence>(rejR.data, 1).total,
+                penalized: normalizePaginated<Absence>(penR.data, 1).total,
+            });
+        } catch { setAbsences([]); setTotal(0); setTotalPages(1); }
         finally { setLoading(false); }
     };
 
-    useEffect(() => { load(); }, [filter]);
+    useEffect(() => { setPage(1); }, [filter]);
+
+    useEffect(() => { load(); }, [filter, page]);
 
     useAdminFinanceRefresh(load, ['imprevistos']);
 
@@ -587,13 +613,7 @@ export default function AdminImprevistos() {
         setFilter('');
     };
 
-    const stats = {
-        total: absences.length,
-        pending: absences.filter(a => a.status === 'PENDING').length,
-        validated: absences.filter(a => a.status === 'VALIDATED').length,
-        rejected: absences.filter(a => a.status === 'REJECTED').length,
-        penalized: absences.filter(a => a.status === 'PENALIZED').length,
-    };
+    const stats = kpiCounts;
 
     const handleDelete = async () => {
         if (!deleteId) return;
@@ -620,7 +640,7 @@ export default function AdminImprevistos() {
                         { k: 'REJECTED', label: 'Rejeitados' },
                         { k: 'PENALIZED', label: 'Penalizados' },
                     ].map(f => (
-                        <button key={f.k} onClick={() => setFilter(f.k)}
+                        <button key={f.k} onClick={() => { setFilter(f.k); setPage(1); }}
                             style={{ padding: '0.45rem 0.85rem', borderRadius: 9, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.72rem', transition: 'all 0.15s', background: filter === f.k ? '#FFD600' : '#F3F4F6', color: filter === f.k ? '#000' : '#6B7280' }}>
                             {f.label}
                         </button>
@@ -757,6 +777,15 @@ export default function AdminImprevistos() {
                     </table>
                 </div>
             )}
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="imprevisto(s)"
+            />
 
             {/* Modais */}
             {reviewing && (

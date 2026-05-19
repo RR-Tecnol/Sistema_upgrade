@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { trucksApi, CreateTruckDto } from '@/lib/api/trucks';
 import { groupsApi, Group } from '@/lib/api/groups';
+import { unwrapListData } from '@/lib/api/pagination';
 import {
     TruckIcon,
     IdentificationIcon,
@@ -123,7 +124,7 @@ export default function NovaCarretaPage() {
     });
 
     useEffect(() => {
-        groupsApi.getAll().then(setGroups).catch(() => { });
+        groupsApi.getAll({ limit: 500, page: 1 }).then((r) => setGroups(unwrapListData(r))).catch(() => { });
     }, []);
 
     const set = (field: string, value: any) => {

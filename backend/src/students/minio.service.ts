@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Minio from 'minio';
+import { buildStoredObjectUrl } from '../common/minio-browser-url.util';
+import { buildPublicReadBucketPolicy } from '../common/minio-bucket-policy.util';
 
 @Injectable()
 export class MinioService {
@@ -24,16 +26,10 @@ export class MinioService {
             if (!exists) {
                 await this.client.makeBucket(this.bucket, 'us-east-1');
                 // Set bucket policy to public read
-                const policy = JSON.stringify({
-                    Version: '2012-10-17',
-                    Statement: [{
-                        Effect: 'Allow',
-                        Principal: { AWS: ['*'] },
-                        Action: ['s3:GetObject'],
-                        Resource: [`arn:aws:s3:::${this.bucket}/*`],
-                    }],
-                });
-                await this.client.setBucketPolicy(this.bucket, policy);
+                await this.client.setBucketPolicy(
+                    this.bucket,
+                    buildPublicReadBucketPolicy(this.bucket),
+                );
                 this.logger.log(`Bucket '${this.bucket}' created and set to public read`);
             }
         } catch (err) {
@@ -50,9 +46,7 @@ export class MinioService {
             'Content-Type': mimeType,
         });
 
-        const endpoint = process.env.MINIO_ENDPOINT || 'localhost';
-        const port = process.env.MINIO_PORT || '9000';
-        return `http://${endpoint}:${port}/${this.bucket}/${objectName}`;
+        return buildStoredObjectUrl(this.bucket, objectName);
     }
 
     async deleteFile(objectName: string): Promise<void> {

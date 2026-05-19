@@ -11,6 +11,7 @@ import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
+import { unwrapListData } from '@/lib/api/pagination';
 
 type SectionTab = 'cursos' | 'periodos' | 'turmas';
 
@@ -36,14 +37,14 @@ export default function GestaoAcademicaPage() {
     useEffect(() => {
         setLoading(true);
         Promise.all([
-            coursesApi.getAll().catch(() => []),
-            acoesApi.listar().catch(() => []),
-            classesApi.getAll().catch(() => []),
+            coursesApi.getAll({ limit: 500, page: 1 }).catch(() => []),
+            acoesApi.listar({ limit: 500, page: 1 }).catch(() => []),
+            classesApi.getAll({ limit: 500, page: 1 }).catch(() => []),
         ])
             .then(([c, p, t]) => {
-                setCourses(Array.isArray(c) ? c : []);
-                setPeriods(Array.isArray(p) ? p : []);
-                setClasses(Array.isArray(t) ? t : []);
+                setCourses(unwrapListData(c));
+                setPeriods(unwrapListData(p));
+                setClasses(unwrapListData(t));
             })
             .finally(() => setLoading(false));
     }, []);

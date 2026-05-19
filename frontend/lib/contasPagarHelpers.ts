@@ -27,14 +27,69 @@ export type ReimbursementMeta = {
     reimbursementId?: string;
     category?: string;
     reason?: string;
+    perfil?: string;
 };
+
+const USER_ROLE_PERFIL: Record<string, string> = {
+    DRIVER: 'Motorista',
+    TEACHER: 'Professor',
+    COORDINATOR: 'Coordenador',
+    ADMIN: 'Administrador',
+    FINANCIAL: 'Financeiro',
+    STUDENT: 'Aluno',
+    IT_ADMIN: 'Administrador',
+};
+
+const EMPLOYEE_ROLE_PERFIL: Record<string, string> = {
+    DRIVER: 'Motorista',
+    INSTRUCTOR: 'Professor',
+    COORDINATOR: 'Coordenador',
+    NURSE: 'Enfermeiro(a)',
+    TECHNICIAN: 'Técnico',
+    ADMINISTRATIVE: 'Administrativo',
+    OTHER: 'Funcionário',
+};
+
+export function translatePerfilRole(raw?: string | null): string | null {
+    if (!raw) return null;
+    const key = raw.trim().toUpperCase();
+    return USER_ROLE_PERFIL[key] || EMPLOYEE_ROLE_PERFIL[key] || null;
+}
+
+/** BUG-14: rótulo de tipo + perfil real (motorista/professor) em contas a pagar. */
+export function getContaTipoDisplayLabel(conta: {
+    tipo_conta: string;
+    origemPerfilLabel?: string | null;
+    observacoes?: string | null;
+    descricao?: string | null;
+}): string | null {
+    const perfil =
+        conta.origemPerfilLabel ||
+        translatePerfilRole(parseReimbursementMeta(conta).perfil) ||
+        null;
+    const base = conta.tipo_conta;
+
+    if (base === 'funcionario' && perfil) {
+        return `Reembolso · ${perfil}`;
+    }
+    if (base === 'diaria_funcionario') {
+        return perfil ? `Diária · ${perfil}` : 'Diária de funcionário';
+    }
+    if (perfil && /reembolso/i.test(conta.observacoes || '')) {
+        return `Reembolso · ${perfil}`;
+    }
+    return null;
+}
 
 /**
  * Lê a observação da conta e tenta extrair metadados estruturados de uma
  * solicitação de reembolso. Suporta formato legado e formato novo (key=value).
  * Não acessa o backend — toda info já vem em `conta.observacoes`.
  */
-export function parseReimbursementMeta(conta: Pick<ContaPagar, 'observacoes' | 'descricao'>): ReimbursementMeta {
+export function parseReimbursementMeta(conta: {
+    observacoes?: string | null;
+    descricao?: string | null;
+}): ReimbursementMeta {
     const raw = conta.observacoes || '';
     const markerMatch = raw.match(/reimbursementId:([a-f0-9-]{8,})/i);
     const normalizedIdMatch = raw.match(/reimbursementId=([a-f0-9-]{8,})/i);
@@ -61,11 +116,14 @@ export function parseReimbursementMeta(conta: Pick<ContaPagar, 'observacoes' | '
     const reasonFromDescription = (conta.descricao || '').includes(' — ')
         ? (conta.descricao || '').split(' — ').slice(1).join(' — ').trim()
         : undefined;
+    const perfilMatch = raw.match(/perfil\s*=\s*([^|]+)/i);
+    const perfilRaw = perfilMatch?.[1]?.trim();
     return {
         isReimbursement: true,
         reimbursementId,
         category: categoryMatch?.[1]?.trim(),
         reason: reasonMatch?.[1]?.trim() || reasonFromDescription,
+        perfil: translatePerfilRole(perfilRaw) || perfilRaw || undefined,
     };
 }
 

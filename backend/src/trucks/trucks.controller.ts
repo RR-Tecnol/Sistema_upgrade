@@ -23,17 +23,26 @@ export class TrucksController {
     @ApiQuery({ name: 'type', required: false })
     @ApiQuery({ name: 'state', required: false })
     @ApiResponse({ status: 200, description: 'Trucks retrieved successfully' })
+    @ApiQuery({ name: 'search', required: false })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     async findAll(
         @Query('status') status?: TruckStatus,
         @Query('groupId') groupId?: string,
         @Query('type') type?: string,
         @Query('state') state?: string,
+        @Query('search') search?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
         const filters: any = {};
         if (status) filters.status = status;
         if (groupId) filters.groupId = groupId;
         if (type) filters.type = type;
         if (state) filters.state = state;
+        if (search) filters.search = search;
+        if (page) filters.page = parseInt(page, 10);
+        if (limit) filters.limit = parseInt(limit, 10);
 
         return this.trucksService.findAll(filters);
     }

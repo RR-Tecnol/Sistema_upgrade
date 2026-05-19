@@ -9,6 +9,7 @@ import type { CertificateBulkSyncBody } from './certificate-bulk-sync.schema';
 import { PublicCertificateVerificationDto } from './dto/public-certificate-verification.dto';
 import { CertificateNotificationService, type IssuedCertificatePayload } from './certificate-notification.service';
 import { evaluateCertificateEligibilityForEnrollment } from '../common/certificate-enrollment-evaluation.helper';
+import { paginatedResult, resolvePagination } from '../common/pagination.util';
 
 /**
  * CertificateService — REQ-06 (Portal do Aluno)
@@ -273,26 +274,36 @@ export class CertificateService {
     }
 
     /** Lista todos os certificados (admin) */
-    async findAll() {
-        return this.prisma.certificate.findMany({
-            orderBy: { issuedAt: 'desc' },
-            include: {
-                student: {
-                    include: {
-                        user: { select: { name: true, email: true } },
-                        address: { select: { city: true, state: true } },
-                    },
+    async findAll(opts?: { page?: number; limit?: number }) {
+        const { skip, page, limit } = resolvePagination(opts?.page, opts?.limit, 12);
+        const include = {
+            student: {
+                include: {
+                    user: { select: { name: true, email: true } },
+                    address: { select: { city: true, state: true } },
                 },
-                class: {
-                    include: {
-                        course: { select: { name: true, workloadHours: true } },
-                        city: { select: { name: true, state: true } },
-                    },
-                },
-                issuer: { select: { name: true } },
-                templateVersion: { select: { id: true, version: true, title: true, templateId: true, templateType: true } },
             },
-        });
+            class: {
+                include: {
+                    course: { select: { name: true, workloadHours: true } },
+                    city: { select: { name: true, state: true } },
+                },
+            },
+            issuer: { select: { name: true } },
+            templateVersion: {
+                select: { id: true, version: true, title: true, templateId: true, templateType: true },
+            },
+        };
+        const [data, total] = await Promise.all([
+            this.prisma.certificate.findMany({
+                orderBy: { issuedAt: 'desc' },
+                include,
+                skip,
+                take: limit,
+            }),
+            this.prisma.certificate.count(),
+        ]);
+        return paginatedResult(data, total, page, limit);
     }
 
     /** Certificados do próprio aluno */
@@ -424,7 +435,7 @@ export class CertificateService {
      * Alunos elegíveis para certificação.
      * Calcula frequência real de cada enrollment ENROLLED/APPROVED.
      */
-    async findEligible() {
+    async findEligible(opts?: { page?: number; limit?: number }) {
         const enrollments = await this.prisma.enrollment.findMany({
             where: { status: { in: ['ENROLLED', 'APPROVED'] } },
             include: {
@@ -470,7 +481,9 @@ export class CertificateService {
             });
         }
 
-        return eligible;
+        const { skip, page, limit } = resolvePagination(opts?.page, opts?.limit, 12);
+        const total = eligible.length;
+        return paginatedResult(eligible.slice(skip, skip + limit), total, page, limit);
     }
 
     /**

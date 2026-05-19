@@ -16,6 +16,8 @@ import {
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import { computeClassReadinessWarnings } from '@/lib/admin/classReadiness';
 import type { Class } from '@/lib/api/classes';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
     PLANNED:           { label: 'Planejada',          color: '#9CA3AF', bg: '#F9FAFB',                  border: '#E5E7EB' },
@@ -67,6 +69,7 @@ export default function TurmaDetailWorkspace({
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'alunos' | 'frequencia' | 'vinculos' | 'info' | 'periodo'>('alunos');
+    const [enrollPage, setEnrollPage] = useState(1);
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [selectedStatus, setSelectedStatus] = useState('');
     const [savingStatus, setSavingStatus] = useState(false);
@@ -85,6 +88,17 @@ export default function TurmaDetailWorkspace({
     const [periodoPickerAcaoId, setPeriodoPickerAcaoId] = useState('');
     const [linkingPeriodo, setLinkingPeriodo] = useState(false);
     const didAutoOpenEdit = useRef(false);
+    // MEL-06: vínculo professor↔turma
+    const [availableTeachers, setAvailableTeachers] = useState<any[]>([]);
+    const [showTeacherModal, setShowTeacherModal] = useState(false);
+    const [selectedTeacherId, setSelectedTeacherId] = useState('');
+    const [teacherConfirmStep, setTeacherConfirmStep] = useState(false);
+    const [assigningTeacher, setAssigningTeacher] = useState(false);
+    const [removingTeacherId, setRemovingTeacherId] = useState<string | null>(null);
+    const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
+    const [driverAcaoId, setDriverAcaoId] = useState('');
+    const [selectedDriverId, setSelectedDriverId] = useState('');
+    const [assigningDriverTurma, setAssigningDriverTurma] = useState(false);
 
     useEffect(() => { load(); }, [classId]);
     useEffect(() => {
@@ -103,6 +117,19 @@ export default function TurmaDetailWorkspace({
             setCities(ci);
             setTrucks(t);
         }).catch(() => {});
+        // MEL-06: busca professores disponíveis
+        api.get('/users?role=TEACHER')
+            .then(r => {
+                const list = Array.isArray(r.data) ? r.data : r.data?.data || [];
+                setAvailableTeachers(list.filter((u: any) => u.active !== false));
+            })
+            .catch(() => {});
+        api.get('/users?role=DRIVER')
+            .then(r => {
+                const list = Array.isArray(r.data) ? r.data : r.data?.data || [];
+                setAvailableDrivers(list.filter((u: any) => u.active !== false));
+            })
+            .catch(() => {});
     }, []);
 
     useEffect(() => {
@@ -116,7 +143,7 @@ export default function TurmaDetailWorkspace({
             .listar(Object.keys(params).length ? params : undefined)
             .then((list) =>
                 setAcoesParaVincular(
-                    list.filter((a) => !linkedIds.has(a.id) && a.status !== 'CANCELADA'),
+                    list.filter((a: Acao) => !linkedIds.has(a.id) && a.status !== 'CANCELADA'),
                 ),
             )
             .catch(() => setAcoesParaVincular([]))
@@ -130,6 +157,18 @@ export default function TurmaDetailWorkspace({
                 classesApi.getOne(id),
                 classesApi.getStatistics(id).catch(() => null),
             ]);
+
+            // BUG-13 Fallback: Se módulos não vieram populados na turma, buscar do curso diretamente
+            if (cls?.courseId && (!cls.course || !(cls.course as any).modules || (cls.course as any).modules.length === 0)) {
+                try {
+                    const cRes = await api.get(`/courses/${cls.courseId}`);
+                    if (cRes.data && Array.isArray(cRes.data.modules)) {
+                        if (!cls.course) cls.course = { id: cls.courseId, name: cRes.data.name } as any;
+                        (cls.course as any).modules = cRes.data.modules;
+                    }
+                } catch { }
+            }
+
             setTurma(cls);
             setStats(st);
         } catch {
@@ -168,6 +207,29 @@ export default function TurmaDetailWorkspace({
             setStatusError(e?.response?.data?.message || 'Erro ao atualizar status');
         } finally {
             setSavingStatus(false);
+        }
+    }
+
+    async function handleAssignDriverTurma() {
+        const acaoId = driverAcaoId || (turma?.acaoTurmas?.[0] as any)?.acaoId;
+        if (!acaoId || !selectedDriverId) return;
+        setAssigningDriverTurma(true);
+        try {
+            const res = await acoesApi.assignDriverTurma(acaoId, id, selectedDriverId);
+            const n = res?.generated ?? 0;
+            showToast(
+                n > 0
+                    ? `Motorista vinculado — ${n} viagem(ns) gerada(s) para esta turma.`
+                    : res?.message || 'Motorista vinculado à turma.',
+                'success',
+            );
+            setSelectedDriverId('');
+            onUpdated?.();
+            await load();
+        } catch (e: any) {
+            showToast(e?.response?.data?.message || 'Não foi possível vincular o motorista.', 'error');
+        } finally {
+            setAssigningDriverTurma(false);
         }
     }
 
@@ -225,6 +287,48 @@ export default function TurmaDetailWorkspace({
         openEditModalFromTurma(turma);
     }, [openEditOnMount, loading, turma]);
 
+    // MEL-06: vincular professor à turma (com modal de confirmação)
+    async function handleAssignTeacher() {
+        if (!selectedTeacherId || assigningTeacher) return;
+        setAssigningTeacher(true);
+        try {
+            const teacherUser = availableTeachers.find(u => u.id === selectedTeacherId);
+            if (!teacherUser) throw new Error('Professor não encontrado');
+            // Backend aceita User.id ou Teacher.id (BUG-19 / Sprint 3)
+            const res = await api.post(`/classes/${id}/teachers/${selectedTeacherId}`);
+            const synced = res.data?.syncedToCourse || res.data?.academicSync?.courseLinks > 0;
+            showToast(
+                synced
+                    ? 'Professor vinculado à turma e ao curso base.'
+                    : 'Professor vinculado à turma com sucesso!',
+                'success',
+            );
+            setShowTeacherModal(false);
+            setTeacherConfirmStep(false);
+            setSelectedTeacherId('');
+            load();
+            onUpdated?.();
+        } catch (e: any) {
+            showToast(e?.response?.data?.message || 'Não foi possível vincular o professor.', 'error');
+        } finally {
+            setAssigningTeacher(false);
+        }
+    }
+
+    async function handleRemoveTeacher(classTeacherId: string) {
+        setRemovingTeacherId(classTeacherId);
+        try {
+            await api.delete(`/classes/${id}/teachers/${classTeacherId}`);
+            showToast('Professor desvinculado.', 'success');
+            load();
+            onUpdated?.();
+        } catch (e: any) {
+            showToast(e?.response?.data?.message || 'Erro ao desvincular professor.', 'error');
+        } finally {
+            setRemovingTeacherId(null);
+        }
+    }
+
     async function handleEditSave() {
         if (!editForm) return;
         setSavingEdit(true);
@@ -272,6 +376,8 @@ export default function TurmaDetailWorkspace({
     // enrollments reais vêm de turma.enrollments (classesApi.getOne inclui a relação)
     // stats.enrollments é { total, approved, pending } — objeto de métricas, não array
     const enrollments: any[] = Array.isArray(turma?.enrollments) ? turma.enrollments : [];
+    const enrollTotalPages = Math.max(1, Math.ceil(enrollments.length / ADMIN_PAGE_SIZE_TABLE));
+    const enrollmentsPaged = enrollments.slice((enrollPage - 1) * ADMIN_PAGE_SIZE_TABLE, enrollPage * ADMIN_PAGE_SIZE_TABLE);
     const attendanceHistory: any[] = stats?.attendanceHistory || [];
     const totalPresent = stats?.attendance?.present ?? 0;
     const totalAbsent = (stats?.attendance?.total ?? 0) - totalPresent;
@@ -466,6 +572,7 @@ export default function TurmaDetailWorkspace({
                         </p>
                     </div>
                 ) : (
+                    <>
                     <div className="glass-card" style={{ padding:0, overflow:'hidden' }}>
                         <table className="data-table">
                             <thead>
@@ -478,7 +585,7 @@ export default function TurmaDetailWorkspace({
                                 </tr>
                             </thead>
                             <tbody>
-                                {enrollments.map((enr: any) => {
+                                {enrollmentsPaged.map((enr: any) => {
                                     const rate = enr.attendanceRate ?? null;
                                     const statusColors: Record<string, string> = {
                                         ENROLLED:'#059669', PENDING:'#D97706', CANCELLED:'#DC2626',
@@ -521,6 +628,15 @@ export default function TurmaDetailWorkspace({
                             </tbody>
                         </table>
                     </div>
+                    <AdminListPagination
+                        page={enrollPage}
+                        totalPages={enrollTotalPages}
+                        total={enrollments.length}
+                        onPageChange={setEnrollPage}
+                        itemLabel="aluno(s)"
+                        style={{ marginTop: 12 }}
+                    />
+                </>
                 )
             )}
 
@@ -576,7 +692,7 @@ export default function TurmaDetailWorkspace({
                                     <div key={item.id} style={{ border:'1px solid #E5E7EB', borderRadius:10, padding:'0.7rem 0.8rem' }}>
                                         <div style={{ fontSize:'0.82rem', fontWeight:700, color:'#111827' }}>{item.acao?.nome || 'Período'}</div>
                                         <div style={{ fontSize:'0.72rem', color:'#6B7280' }}>
-                                            {item.acao?.cidadeNome || 'Cidade n/d'} • {item.acao?.status || 'Status n/d'}
+                                            {item.acao?.cidadeNome || 'Cidade n/d'} • {ACAO_STATUS_LABEL[item.acao?.status || ''] || item.acao?.status || 'Status n/d'}
                                         </div>
                                     </div>
                                 ))}
@@ -637,7 +753,6 @@ export default function TurmaDetailWorkspace({
                             { label:'Reservas', value: turma.reserveSlots ? `${turma.reserveSlots} reservas` : '—' },
                             { label:'Carreta', value: turma.truck?.identifier || '—' },
                             { label:'Motorista/Veículo', value: turma.truck ? `${turma.truck.identifier}${turma.truck.licensePlate ? ` (${turma.truck.licensePlate})` : ''}` : 'Não vinculado' },
-                            { label:'Professores', value: teacherNames.length ? teacherNames.join(', ') : 'Nenhum vinculado' },
                             { label:'Alunos ativos agora', value: `${enrolledNow} aluno(s)` },
                             { label:'Status', value: STATUS_CFG[turma.status]?.label || turma.status },
                         ].map((item, i) => (
@@ -650,6 +765,61 @@ export default function TurmaDetailWorkspace({
                                 </div>
                             </div>
                         ))}
+                    </div>
+
+                    {/* MEL-06: Seção de Professores com ação de vínculo */}
+                    <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #F3F4F6' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                            <div style={{ fontSize:'0.65rem', fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em' }}>
+                                Professores Vinculados
+                            </div>
+                            <button
+                                onClick={() => { setSelectedTeacherId(''); setTeacherConfirmStep(false); setShowTeacherModal(true); }}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 5,
+                                    padding: '0.35rem 0.8rem', borderRadius: 8,
+                                    background: 'rgba(37,99,235,0.07)', border: '1px solid rgba(37,99,235,0.25)',
+                                    color: '#1E40AF', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer',
+                                }}
+                            >
+                                + Vincular Professor
+                            </button>
+                        </div>
+                        {Array.isArray(turma?.teachers) && turma.teachers.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {turma.teachers.map((ct: any) => {
+                                    const name = ct?.teacher?.user?.name || 'Professor';
+                                    const email = ct?.teacher?.user?.email || '';
+                                    return (
+                                        <div key={ct.id} style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            padding: '0.5rem 0.75rem', borderRadius: 9,
+                                            background: '#F9FAFB', border: '1px solid #E5E7EB',
+                                        }}>
+                                            <div>
+                                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#111827' }}>{name}</div>
+                                                {email && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>{email}</div>}
+                                            </div>
+                                            <button
+                                                onClick={() => handleRemoveTeacher(ct.teacherId)}
+                                                disabled={removingTeacherId === ct.teacherId}
+                                                style={{
+                                                    padding: '0.3rem 0.6rem', borderRadius: 7,
+                                                    background: 'rgba(220,38,38,0.07)', border: '1px solid rgba(220,38,38,0.2)',
+                                                    color: '#DC2626', fontWeight: 700, fontSize: '0.68rem',
+                                                    cursor: removingTeacherId === ct.teacherId ? 'not-allowed' : 'pointer',
+                                                    opacity: removingTeacherId === ct.teacherId ? 0.6 : 1,
+                                                }}
+                                            >
+                                                {removingTeacherId === ct.teacherId ? '...' : '✕ Desvincular'}
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div style={{ fontSize: '0.85rem', color: '#9CA3AF', fontStyle: 'italic' }}>Nenhum professor vinculado</div>
+                        )}
                     </div>
                 </div>
             )}
@@ -796,6 +966,58 @@ export default function TurmaDetailWorkspace({
                             </div>
                         )}
                     </div>
+
+                    {linkedActions.length > 0 && (
+                        <div className="glass-card" style={{ padding: '1.25rem' }}>
+                            <h3 style={{ fontFamily: 'Orbitron', fontSize: '0.72rem', letterSpacing: '0.1em', color: '#6B7280', marginBottom: '0.6rem' }}>
+                                MOTORISTA DESTA TURMA
+                            </h3>
+                            <p style={{ fontSize: '0.82rem', color: '#6B7280', marginBottom: '1rem', lineHeight: 1.5 }}>
+                                Gera viagens só para esta turma. Carreta do período ou da turma. Para todas as turmas, use a ficha do período.
+                            </p>
+                            {linkedActions.length > 1 && (
+                                <select
+                                    className="form-input"
+                                    value={driverAcaoId}
+                                    onChange={(e) => setDriverAcaoId(e.target.value)}
+                                    style={{ marginBottom: '0.65rem', width: '100%' }}
+                                >
+                                    <option value="">Período para vincular motorista…</option>
+                                    {linkedActions.map((item: any) => (
+                                        <option key={item.acaoId} value={item.acaoId}>
+                                            {item.acao?.nome || item.acaoId}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <select
+                                    className="form-input"
+                                    value={selectedDriverId}
+                                    onChange={(e) => setSelectedDriverId(e.target.value)}
+                                    style={{ flex: '1 1 220px', minWidth: 0 }}
+                                >
+                                    <option value="">Escolher motorista…</option>
+                                    {availableDrivers.map((d: any) => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    className="btn-primary"
+                                    disabled={!selectedDriverId || assigningDriverTurma}
+                                    onClick={handleAssignDriverTurma}
+                                >
+                                    {assigningDriverTurma ? 'Vinculando…' : 'Vincular motorista'}
+                                </button>
+                            </div>
+                            {turma?.truck?.identifier && (
+                                <p style={{ marginTop: '0.65rem', fontSize: '0.78rem', color: '#059669' }}>
+                                    Carreta: <strong>{turma.truck.identifier}</strong>
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -1014,6 +1236,83 @@ export default function TurmaDetailWorkspace({
                                 <button className="btn-primary" onClick={handleEditSave} disabled={savingEdit}>
                                     {savingEdit ? 'Salvando...' : 'Salvar alterações'}
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                </ModalPortal>
+            )}
+
+            {/* MEL-06: Modal de Vinculação Professor↔Turma */}
+            {showTeacherModal && (
+                <ModalPortal>
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(5px)', zIndex: MODAL_PORTAL_Z_INDEX, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                        <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.22)', animation: 'fadeIn 0.2s' }}>
+                            <div style={{ padding: '20px 24px 14px', background: 'linear-gradient(135deg,#1E3A8A,#2563EB)', borderRadius: '18px 18px 0 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>🎓</div>
+                                <div>
+                                    <div style={{ fontFamily: 'Orbitron', fontSize: '0.82rem', fontWeight: 900, color: '#fff', letterSpacing: '0.06em' }}>VINCULAR PROFESSOR</div>
+                                    <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>Turma: {turma.classIdentifier}</div>
+                                </div>
+                                <button onClick={() => setShowTeacherModal(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+                            </div>
+                            <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                {!teacherConfirmStep ? (
+                                    <>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280', marginBottom: 6 }}>
+                                                Selecione o Professor *
+                                            </label>
+                                            <select
+                                                value={selectedTeacherId}
+                                                onChange={e => setSelectedTeacherId(e.target.value)}
+                                                style={{ width: '100%', padding: '0.65rem 0.9rem', borderRadius: 9, border: '1.5px solid #E5E7EB', background: '#F9FAFB', fontSize: '0.85rem', color: '#111827', outline: 'none', cursor: 'pointer' }}
+                                            >
+                                                <option value="">Selecione um professor…</option>
+                                                {availableTeachers.map((t: any) => (
+                                                    <option key={t.id} value={t.id}>{t.name} {t.email ? `(${t.email})` : ''}</option>
+                                                ))}
+                                            </select>
+                                            {availableTeachers.length === 0 && (
+                                                <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#F59E0B' }}>⚠ Nenhum professor ativo encontrado no sistema.</div>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                                            <button type="button" onClick={() => setShowTeacherModal(false)} style={{ padding: '0.55rem 1.1rem', borderRadius: 9, background: 'transparent', border: '1px solid #E5E7EB', color: '#6B7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                Cancelar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={!selectedTeacherId}
+                                                onClick={() => setTeacherConfirmStep(true)}
+                                                style={{ padding: '0.55rem 1.25rem', borderRadius: 9, background: !selectedTeacherId ? '#E5E7EB' : 'linear-gradient(135deg,#1E3A8A,#2563EB)', border: 'none', color: '#fff', fontWeight: 700, cursor: !selectedTeacherId ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}
+                                            >
+                                                Continuar →
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div style={{ padding: '12px 14px', borderRadius: 10, background: '#FFF7ED', border: '1px solid rgba(245,158,11,0.35)' }}>
+                                            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#92400E', marginBottom: 4 }}>⚠ Confirmação de vínculo</div>
+                                            <div style={{ fontSize: '0.78rem', color: '#B45309', lineHeight: 1.5 }}>
+                                                Você está prestes a vincular <strong>{availableTeachers.find(t => t.id === selectedTeacherId)?.name}</strong> à turma <strong>{turma.classIdentifier}</strong>. O professor terá acesso para lançar frequência e visualizar os dados desta turma.
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                                            <button type="button" onClick={() => setTeacherConfirmStep(false)} style={{ padding: '0.55rem 1.1rem', borderRadius: 9, background: 'transparent', border: '1px solid #E5E7EB', color: '#6B7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                ← Voltar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleAssignTeacher()}
+                                                disabled={assigningTeacher}
+                                                style={{ padding: '0.55rem 1.25rem', borderRadius: 9, background: assigningTeacher ? '#E5E7EB' : 'linear-gradient(135deg,#059669,#047857)', border: 'none', color: '#fff', fontWeight: 700, cursor: assigningTeacher ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}
+                                            >
+                                                {assigningTeacher ? 'Vinculando…' : '✓ Confirmar Vínculo'}
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>

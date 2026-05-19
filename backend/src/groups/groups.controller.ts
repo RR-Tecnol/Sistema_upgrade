@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -18,8 +18,16 @@ export class GroupsController {
     @Roles('ADMIN', 'COORDINATOR')
     @ApiOperation({ summary: 'List all groups' })
     @ApiResponse({ status: 200, description: 'Groups retrieved successfully' })
-    async findAll() {
-        return this.groupsService.findAll();
+    async findAll(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+    ) {
+        return this.groupsService.findAll({
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+            search,
+        });
     }
 
     @Get(':id')

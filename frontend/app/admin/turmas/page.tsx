@@ -43,6 +43,8 @@ import AdminViewModeToggle from '@/components/admin/AdminViewModeToggle';
 import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { computeClassReadinessWarnings } from '@/lib/admin/classReadiness';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
     PLANNED: { label: 'Planejada', color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.04)', border: 'var(--border-subtle)' },
@@ -62,6 +64,9 @@ const PERIOD_LABELS: Record<string, string> = {
 export default function TurmasPage() {
     const searchParams = useSearchParams();
     const [classes, setClasses] = useState<Class[]>([]);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('all');
     const [stateFilter, setStateFilter] = useState<'all' | 'MA' | 'PI'>('all');
@@ -85,7 +90,9 @@ export default function TurmasPage() {
         return () => window.removeEventListener('keydown', onKey);
     }, [turmaWorkspace]);
 
-    useEffect(() => { loadClasses(); }, [statusFilter]);
+    useEffect(() => { setPage(1); }, [statusFilter, search, stateFilter]);
+
+    useEffect(() => { loadClasses(); }, [statusFilter, search, page, stateFilter]);
 
     useEffect(() => {
         if (!statusModalClass) {
@@ -135,9 +142,19 @@ export default function TurmasPage() {
     const loadClasses = async () => {
         try {
             setLoading(true);
-            const filters = statusFilter !== 'all' ? { status: statusFilter } : undefined;
-            const data = await classesApi.getAll(filters);
-            setClasses(data);
+            const raw = await classesApi.getAll({
+                status: statusFilter !== 'all' ? statusFilter : undefined,
+                search: search.trim() || undefined,
+                page,
+                limit: ADMIN_PAGE_SIZE_TABLE,
+            });
+            const norm = normalizePaginated<Class>(raw, ADMIN_PAGE_SIZE_TABLE);
+            const rows = stateFilter === 'all'
+                ? norm.data
+                : norm.data.filter((c) => c.city?.state === stateFilter);
+            setClasses(rows);
+            setTotal(norm.total);
+            setTotalPages(norm.totalPages);
         } catch (error) {
             /* silencioso — lista vazia exibida ao usuário */
         } finally {
@@ -187,17 +204,10 @@ export default function TurmasPage() {
         }
     };
 
-    const filtered = classes.filter(c => {
-        const matchSearch =
-            c.classIdentifier?.toLowerCase().includes(search.toLowerCase()) ||
-            c.course?.name?.toLowerCase().includes(search.toLowerCase()) ||
-            c.city?.name?.toLowerCase().includes(search.toLowerCase());
-        const matchState = stateFilter === 'all' || c.city?.state === stateFilter;
-        return matchSearch && matchState;
-    });
+    const filtered = classes;
 
     const stats = {
-        total: classes.length,
+        total,
         open: classes.filter(c => c.status === 'ENROLLMENT_OPEN').length,
         active: classes.filter(c => c.status === 'IN_PROGRESS').length,
         done: classes.filter(c => c.status === 'COMPLETED').length,
@@ -596,6 +606,15 @@ export default function TurmasPage() {
                     </div>
                 )}
             </div>
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="turma(s)"
+            />
         </div>
 
         <ConfirmModal

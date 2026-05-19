@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { getPrimaryFrontendUrl } from '../common/cors-origins';
+import { isLocalhostAuthBypassEnabled } from './auth-localhost-bypass.util';
 
 /** Roles que exigem Email OTP + Google Authenticator obrigatórios */
 const STAFF_ROLES = ['IT_ADMIN', 'ADMIN', 'COORDINATOR', 'FINANCIAL', 'TEACHER', 'DRIVER'];
@@ -86,10 +87,9 @@ export class AuthService {
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) throw new UnauthorizedException('Invalid credentials');
 
-        // ── [DEV BYPASS — completo] ────────────────────────────────────────────
-        // AUTH_BYPASS_MFA=true: JWT imediato (sem OTP por e-mail, sem 2FA). Só dev.
-        const isBypassFull = this.configService.get('AUTH_BYPASS_MFA') === 'true';
-        if (isBypassFull) {
+        // ── [LOCALHOST] bypass login completo (JWT direto) — ver auth-localhost-bypass.util.ts
+        // VPS: AUTH_BYPASS_MFA=false no .env do servidor; este bloco nunca corre em produção.
+        if (isLocalhostAuthBypassEnabled(this.configService)) {
             this.logger.warn(
                 `[DEV BYPASS] Login completo sem OTP/2FA: ${user.email} (${user.role}) — desative AUTH_BYPASS_MFA em produção!`,
             );
@@ -101,7 +101,7 @@ export class AuthService {
                 ...(studentDataFull ? { student: studentDataFull } : {}),
             };
         }
-        // ── [/DEV BYPASS — completo] ───────────────────────────────────────────
+        // ── [/LOCALHOST] bypass login completo ───────────────────────────────────
 
         // ── IT_ADMIN: primeiro login — pula OTP (e-mail placeholder não tem caixa) ──
         // Vai direto para a tela de definir e-mail + senha definitivos.
@@ -113,10 +113,11 @@ export class AuthService {
             return { requiresPasswordChange: true, preAuthToken: firstLoginToken };
         }
 
-        // ── [DEV BYPASS — só e-mail OTP] ───────────────────────────────────────
-        // AUTH_BYPASS_EMAIL_OTP=true: não envia e-mail nem exige código; mantém 2FA/setup.
-        // Só actua se AUTH_BYPASS_MFA não estiver true (ver acima).
-        const bypassEmailOtp = this.configService.get('AUTH_BYPASS_EMAIL_OTP') === 'true';
+        // ── [LOCALHOST] bypass só e-mail OTP (mantém 2FA) — alternativa ao MFA completo
+        // VPS: AUTH_BYPASS_EMAIL_OTP=false
+        const bypassEmailOtp =
+            this.configService.get('AUTH_BYPASS_EMAIL_OTP') === 'true' &&
+            (this.configService.get<string>('NODE_ENV') || '').toLowerCase() !== 'production';
         if (bypassEmailOtp) {
             this.logger.warn(
                 `[DEV BYPASS] OTP por e-mail ignorado para ${user.email} (${user.role}) — fluxo 2FA mantido. Desative AUTH_BYPASS_EMAIL_OTP em produção.`,
@@ -134,9 +135,9 @@ export class AuthService {
                 ...(studentData ? { _studentHint: true } : {}),
             };
         }
-        // ── [/DEV BYPASS — só e-mail OTP] ──────────────────────────────────────
+        // ── [/LOCALHOST] bypass só e-mail OTP ──────────────────────────────────
 
-        // ── MFA Step 1: Sempre envia Email OTP ────────────────────────────────
+        // ── [VPS / fluxo real] MFA Step 1: envia Email OTP ─────────────────────
         const { preAuthToken, emailMasked } = await this.sendEmailOtp(user.id, user.email, user.name);
 
         return {

@@ -45,6 +45,11 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
+      # Necessário para presigned PUT/GET validarem atrás do nginx (viagens, comprovantes legados)
+      MINIO_SERVER_URL: https://sistemaupgrade.com.br
+    ports:
+      - "9000:9000"   # API — exposta para o nginx do host acessar /storage
+      - "9001:9001"   # Console admin MinIO
     volumes:
       - upgrade_minio_data:/data
     command: server /data --console-address ":9001"
@@ -75,7 +80,12 @@ services:
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
       MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
       MINIO_PUBLIC_BROWSER_URL: https://sistemaupgrade.com.br/storage
+    volumes:
+      - ./public:/public
+      - ./public:/app/public
     depends_on:
       postgres:
         condition: service_healthy

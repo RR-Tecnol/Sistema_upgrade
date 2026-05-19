@@ -33,6 +33,8 @@ import { trucksApi, Truck } from '@/lib/api/trucks';
 import { toast } from '@/components/ui/Toast';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { exportEstoqueXlsx, exportEstoquePdfGeral, exportEstoquePdfCaminhao, exportEstoquePdfTodosCaminhoes } from '@/lib/exports/estoqueExport';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, unwrapListData, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 
 const TAB_META: { id: EstoqueHubTab; label: string; icon: string }[] = [
     { id: 'solicitacoes', label: 'Solicitações', icon: '🛒' },
@@ -76,6 +78,9 @@ function EstoqueHubInner() {
     const [dash, setDash] = useState<StockDashboard | null>(null);
     const [financialDash, setFinancialDash] = useState<any | null>(null);
     const [items, setItems] = useState<StockItem[]>([]);
+    const [itemsPage, setItemsPage] = useState(1);
+    const [itemsTotal, setItemsTotal] = useState(0);
+    const [itemsTotalPages, setItemsTotalPages] = useState(1);
     const [trucks, setTrucks] = useState<Truck[]>([]);
     const [selectedTruckId, setSelectedTruckId] = useState(truckIdParam);
     const [truckRows, setTruckRows] = useState<ListaInsumosRow[]>([]);
@@ -163,22 +168,29 @@ function EstoqueHubInner() {
     const loadItems = useCallback(async () => {
         try {
             const isCustom = categoria !== 'all' && categoria.includes('-'); // IDs customizados usam UUID (tem '-')
-            const data = await stockApi.items.getAll({
+            const raw = await stockApi.items.getAll({
                 search: search.trim() || undefined,
                 categoria: categoria === 'all' || isCustom ? undefined : (categoria as StockItemCategory),
                 customCategoryId: isCustom ? categoria : undefined,
+                page: itemsPage,
+                limit: ADMIN_PAGE_SIZE_TABLE,
             });
-            setItems(data);
+            const norm = normalizePaginated<StockItem>(raw, ADMIN_PAGE_SIZE_TABLE);
+            setItems(norm.data);
+            setItemsTotal(norm.total);
+            setItemsTotalPages(norm.totalPages);
         } catch (e) {
             console.error(e);
             toast.error('Erro ao carregar itens');
         }
-    }, [search, categoria]);
+    }, [search, categoria, itemsPage]);
+
+    useEffect(() => { setItemsPage(1); }, [search, categoria, statusF, vencF]);
 
     const loadTrucks = useCallback(async () => {
         try {
-            const t = await trucksApi.getAll();
-            setTrucks(t);
+            const t = await trucksApi.getAll({ limit: 500, page: 1 });
+            setTrucks(unwrapListData<Truck>(t));
         } catch {
             setTrucks([]);
         }
@@ -761,6 +773,15 @@ function EstoqueHubInner() {
                         }}
                         onDelete={({ item }) => setDeleteItem(item)}
                         onEdit={({ item }) => setEditItemId(item.id)}
+                    />
+                    <AdminListPagination
+                        page={itemsPage}
+                        totalPages={itemsTotalPages}
+                        total={itemsTotal}
+                        loading={loading}
+                        onPageChange={setItemsPage}
+                        itemLabel="item(ns)"
+                        style={{ marginTop: 12 }}
                     />
                 </>
             )}

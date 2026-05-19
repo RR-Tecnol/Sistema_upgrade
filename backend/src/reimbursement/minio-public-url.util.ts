@@ -8,7 +8,11 @@ export function parseMinioPublicUrlToBucketKey(storedUrl: string): { bucket: str
 
     try {
         const u = new URL(v);
-        const parts = u.pathname.split('/').filter(Boolean);
+        let parts = u.pathname.split('/').filter(Boolean);
+        // VPS: https://dominio/storage/<bucket>/<key...>
+        if (parts[0] === 'storage') {
+            parts = parts.slice(1);
+        }
         if (parts.length < 2) return null;
         return { bucket: parts[0], key: parts.slice(1).join('/') };
     } catch {

@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TripStatus } from '@prisma/client';
 import { MinioService } from '../reimbursement/minio.service';
+import { buildStoredObjectUrl } from '../common/minio-browser-url.util';
 
 // ─── Rotas do MOTORISTA ────────────────────────────────────────────────────────
 @ApiTags('driver/trips')
@@ -88,13 +89,8 @@ export class TripsController {
         const bucket = process.env.MINIO_BUCKET_REPORTS || 'reports';
         const fileKey = `odometer/${req.user.id}/${Date.now()}_${filename}`;
         const uploadUrl = await this.minioService.presignedPutUrl(bucket, fileKey, 900);
-        
-        const minioEndpoint = process.env.MINIO_ENDPOINT || 'localhost';
-        const minioPort = process.env.MINIO_PORT || '9010';
-        const useSSL = process.env.MINIO_USE_SSL === 'true';
-        const protocol = useSSL ? 'https' : 'http';
-        const fileUrl = `${protocol}://${minioEndpoint}:${minioPort}/${bucket}/${fileKey}`;
-        
+        const fileUrl = buildStoredObjectUrl(bucket, fileKey);
+
         return { uploadUrl, fileKey, fileUrl };
     }
 
@@ -122,11 +118,18 @@ export class AdminTripsController {
     @ApiOperation({ summary: '[Admin] Lista todas as viagens com filtros' })
     @ApiQuery({ name: 'status', required: false, enum: TripStatus })
     @ApiQuery({ name: 'driverUserId', required: false })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     async findAll(
         @Query('status') status?: TripStatus,
         @Query('driverUserId') driverUserId?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
-        return this.tripsService.findAllAdmin(status, driverUserId);
+        return this.tripsService.findAllAdmin(status, driverUserId, {
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        });
     }
 
     @Get(':id/odometer-photo-url')
@@ -202,7 +205,8 @@ export class AdminTripsController {
     async generateTripsForClass(
         @Body('classId') classId: string,
         @Body('driverUserId') driverUserId: string,
+        @Body('acaoId') acaoId?: string,
     ) {
-        return this.tripsService.generateTripsForClass(classId, driverUserId);
+        return this.tripsService.generateTripsForClass(classId, driverUserId, acaoId);
     }
 }

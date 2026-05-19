@@ -4,6 +4,7 @@ import { ClassesService } from './classes.service';
 import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { PreviewClassEndDateDto } from './dto/preview-class-end-date.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -44,6 +45,9 @@ export class ClassesController {
     @ApiQuery({ name: 'truckId', required: false })
     @ApiQuery({ name: 'teacherUserId', required: false, description: 'Filtrar turmas do professor pelo userId' })
     @ApiResponse({ status: 200, description: 'Classes retrieved successfully' })
+    @ApiQuery({ name: 'search', required: false })
+    @ApiQuery({ name: 'page', required: false })
+    @ApiQuery({ name: 'limit', required: false })
     async findAll(
         @Query('status') status?: ClassStatus,
         @Query('courseId') courseId?: string,
@@ -51,6 +55,9 @@ export class ClassesController {
         @Query('cityId') cityId?: string,
         @Query('truckId') truckId?: string,
         @Query('teacherUserId') teacherUserId?: string,
+        @Query('search') search?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
         const filters: any = {};
         if (status) filters.status = status;
@@ -59,8 +66,19 @@ export class ClassesController {
         if (cityId) filters.cityId = cityId;
         if (truckId) filters.truckId = truckId;
         if (teacherUserId) filters.teacherUserId = teacherUserId;
+        if (search) filters.search = search;
+        if (page) filters.page = parseInt(page, 10);
+        if (limit) filters.limit = parseInt(limit, 10);
 
         return this.classesService.findAll(filters);
+    }
+
+    @Post('preview-end-date')
+    @Roles('ADMIN', 'COORDINATOR')
+    @ApiOperation({ summary: 'Pré-visualizar data fim com N dias letivos (calendário personalizado)' })
+    @ApiResponse({ status: 200, description: 'Data fim calculada' })
+    async previewEndDate(@Body() dto: PreviewClassEndDateDto) {
+        return this.classesService.previewEndDate(dto);
     }
 
     @Get('teacher/history')

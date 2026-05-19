@@ -12,6 +12,8 @@ import {
     EyeIcon,
     ArrowPathIcon,
 } from '@heroicons/react/24/outline';
+import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { normalizePaginated, ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import { InscricoesSidebarTutorial } from '@/components/admin/adminSidebarTutorials';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
@@ -350,6 +352,10 @@ export default function InscricoesPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalPending, setTotalPending] = useState(0);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<Enrollment | null>(null);
@@ -407,14 +413,31 @@ export default function InscricoesPage() {
     const fetchEnrollments = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await api.get('/enrollments?limit=300');
-            setEnrollments(Array.isArray(res.data) ? res.data : res.data?.data || []);
+            const [res, pendRes] = await Promise.all([
+                api.get('/enrollments', {
+                    params: {
+                        page,
+                        limit: ADMIN_PAGE_SIZE_TABLE,
+                        ...(listStatusFilter ? { status: listStatusFilter } : {}),
+                        ...(search.trim() ? { search: search.trim() } : {}),
+                    },
+                }),
+                api.get('/enrollments', { params: { status: 'PENDING', limit: 1, page: 1 } }),
+            ]);
+            const norm = normalizePaginated<Enrollment>(res.data, ADMIN_PAGE_SIZE_TABLE);
+            setEnrollments(norm.data);
+            setTotal(norm.total);
+            setTotalPages(norm.totalPages);
+            const pend = normalizePaginated<Enrollment>(pendRes.data, 1);
+            setTotalPending(pend.total);
         } catch (e) {
             /* silencioso — estado vazio exibido ao usuário */
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [page, listStatusFilter, search]);
+
+    useEffect(() => { setPage(1); }, [listStatusFilter, search]);
 
     useEffect(() => { fetchEnrollments(); }, [fetchEnrollments]);
 
@@ -763,17 +786,8 @@ export default function InscricoesPage() {
         }
     };
 
-    const searchFiltered = enrollments.filter(e => {
-        if (!search) return true;
-        const s = search.toLowerCase();
-        return getName(e).toLowerCase().includes(s) || e.protocol?.toLowerCase().includes(s) || getCourse(e).toLowerCase().includes(s);
-    });
-
-    const listFiltered = searchFiltered.filter(e =>
-        !listStatusFilter || e.status === listStatusFilter,
-    );
-
-    const totalPending = enrollments.filter(e => e.status === 'PENDING').length;
+    const searchFiltered = enrollments;
+    const listFiltered = searchFiltered;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} className="animate-fade-in">
@@ -1219,6 +1233,15 @@ export default function InscricoesPage() {
                     </div>
                 </div>
             )}
+
+            <AdminListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+                itemLabel="inscrição(ões)"
+            />
 
             {/* Detail Modal */}
             {selected ? (() => {

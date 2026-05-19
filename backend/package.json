@@ -26,7 +26,8 @@
         "seed:full": "npx tsx prisma/seed-desenvolvimento/seed-full.ts",
         "seed:extra": "npx tsx prisma/seed-desenvolvimento/seed-full.ts",
         "seed:prod": "npx tsx prisma/seed-prod.ts",
-        "reset:prod": "npx tsx prisma/reset-db.ts"
+        "reset:prod": "npx tsx prisma/reset-db.ts",
+        "motor:verify": "npx tsx scripts/verify-teaching-motor.ts"
     },
     "keywords": [
         "nestjs",

@@ -13,6 +13,11 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../reimbursement/minio.service';
+import {
+    buildStoredObjectUrl,
+    isVpsStorageMode,
+    resolveBrowserViewUrl,
+} from '../common/minio-browser-url.util';
 
 const BUCKET = process.env.MINIO_BUCKET_CONTAS_PAGAR || 'contas-pagar';
 const MAX_FILENAME = 200;
@@ -57,11 +62,7 @@ export class ContasPagarComprovanteService {
         const fileKey = `${contaId}/${Date.now()}_${safeName}`;
         const uploadUrl = await this.minio.presignedPutUrl(BUCKET, fileKey, 900);
 
-        const endpoint = process.env.MINIO_ENDPOINT || 'localhost';
-        const port = process.env.MINIO_PORT || '9010';
-        const useSSL = process.env.MINIO_USE_SSL === 'true';
-        const protocol = useSSL ? 'https' : 'http';
-        const fileUrl = `${protocol}://${endpoint}:${port}/${BUCKET}/${fileKey}`;
+        const fileUrl = buildStoredObjectUrl(BUCKET, fileKey);
 
         return { uploadUrl, fileKey, fileUrl };
     }
@@ -132,12 +133,17 @@ export class ContasPagarComprovanteService {
             throw new NotFoundException('Comprovante não anexado.');
         }
 
-        // Se o URL salvo seguiu o padrão `${protocol}://${endpoint}:${port}/${bucket}/${key}`,
-        // extraímos a chave e geramos URL assinada. Caso contrário, devolvemos como está
-        // (compatibilidade com URLs externas inseridas via PATCH manual).
+        const browserUrl = resolveBrowserViewUrl(conta.comprovante_url);
+        if (browserUrl) {
+            return { url: browserUrl };
+        }
+
+        if (isVpsStorageMode()) {
+            return { url: conta.comprovante_url };
+        }
+
         try {
             const url = new URL(conta.comprovante_url);
-            // Padrão esperado: /<bucket>/<key>
             const path = url.pathname.replace(/^\/+/, '');
             const [bucketPart, ...keyParts] = path.split('/');
             const key = keyParts.join('/');
