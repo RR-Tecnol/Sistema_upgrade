@@ -5,9 +5,17 @@ import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { toast } from '@/components/ui/Toast';
 import { TripOdometerPhotosPreview } from '@/components/admin/TripOdometerPhotosPreview';
+import {
+    isDepartureDay,
+    isDriverAccepted,
+    isDriverRejected,
+    needsDriverResponse,
+    sortPlannedTripsAsc,
+} from '@/lib/driver-trips';
 
 interface Trip {
     id: string; status: string; notes?: string;
+    driverDecision?: string | null;
     originCity: { name: string; state: string };
     destinationCity: { name: string; state: string };
     departureDate: string; expectedArrivalDate: string;
@@ -86,7 +94,10 @@ export default function DriverViagens() {
 
     useEffect(() => { load(); }, []);
 
-    const filtered = trips.filter(t => t.status === tab);
+    const filtered =
+        tab === 'PLANNED'
+            ? sortPlannedTripsAsc(trips.filter(t => t.status === 'PLANNED'))
+            : trips.filter(t => t.status === tab);
 
     const handleAction = async () => {
         if (!showModal) return;
@@ -135,14 +146,8 @@ export default function DriverViagens() {
         }
     };
 
-    const isDepartureDay = (departureDate: string) => {
-        const dep = new Date(departureDate);
-        const now = new Date();
-        return dep.toDateString() === now.toDateString();
-    };
-
     return (
-        <div className="animate-fade-in" style={{ maxWidth: 720, margin: '0 auto', padding: '0 0.75rem' }}>
+        <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <AdminHeaderHero
                 title="VIAGENS"
@@ -245,28 +250,44 @@ export default function DriverViagens() {
                         )}
 
                         {trip.status === 'PLANNED' && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                                <button
-                                    onClick={() => handleDecision(trip.id, 'ACCEPTED')}
-                                    disabled={respondingId === trip.id}
-                                    style={{ ...btnStyle, background: '#10B981', color: '#fff', width: '100%' }}
-                                >
-                                    {respondingId === trip.id ? '...' : '✅ Aceitar'}
-                                </button>
-                                <button
-                                    onClick={() => setRejectModal({ tripId: trip.id, reason: '' })}
-                                    disabled={respondingId === trip.id}
-                                    style={{ ...btnStyle, background: '#EF4444', color: '#fff', width: '100%' }}
-                                >
-                                    {respondingId === trip.id ? '...' : '❌ Recusar'}
-                                </button>
-                                <button
-                                    onClick={() => { setShowModal({ trip, type: 'start' }); setKmInput(''); setPhotoFile(null); }}
-                                    disabled={!isDepartureDay(trip.departureDate)}
-                                    style={{ ...btnStyle, background: !isDepartureDay(trip.departureDate) ? '#94A3B8' : '#0891B2', color: '#fff', width: '100%', gridColumn: '1 / -1', opacity: !isDepartureDay(trip.departureDate) ? 0.75 : 1, cursor: !isDepartureDay(trip.departureDate) ? 'not-allowed' : 'pointer' }}
-                                >
-                                    {isDepartureDay(trip.departureDate) ? '🚛 Iniciar Viagem' : '🚫 Disponível somente no dia da partida'}
-                                </button>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {needsDriverResponse(trip) && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={() => handleDecision(trip.id, 'ACCEPTED')}
+                                            disabled={respondingId === trip.id}
+                                            style={{ ...btnStyle, background: '#10B981', color: '#fff', width: '100%' }}
+                                        >
+                                            {respondingId === trip.id ? '...' : '✅ Aceitar'}
+                                        </button>
+                                        <button
+                                            onClick={() => setRejectModal({ tripId: trip.id, reason: '' })}
+                                            disabled={respondingId === trip.id}
+                                            style={{ ...btnStyle, background: '#EF4444', color: '#fff', width: '100%' }}
+                                        >
+                                            {respondingId === trip.id ? '...' : '❌ Recusar'}
+                                        </button>
+                                    </div>
+                                )}
+                                {isDriverAccepted(trip) && (
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', padding: '0.45rem 0.65rem', borderRadius: 8, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                                        ✅ Viagem aceita — aguarde o dia da partida para iniciar
+                                    </div>
+                                )}
+                                {isDriverRejected(trip) && (
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#B91C1C', padding: '0.45rem 0.65rem', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                                        Viagem recusada — aguarde reatribuição do administrador
+                                    </div>
+                                )}
+                                {isDriverAccepted(trip) && (
+                                    <button
+                                        onClick={() => { setShowModal({ trip, type: 'start' }); setKmInput(''); setPhotoFile(null); }}
+                                        disabled={!isDepartureDay(trip.departureDate)}
+                                        style={{ ...btnStyle, background: !isDepartureDay(trip.departureDate) ? '#94A3B8' : '#0891B2', color: '#fff', width: '100%', opacity: !isDepartureDay(trip.departureDate) ? 0.75 : 1, cursor: !isDepartureDay(trip.departureDate) ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        {isDepartureDay(trip.departureDate) ? '🚛 Iniciar Viagem' : '🚫 Disponível somente no dia da partida'}
+                                    </button>
+                                )}
                             </div>
                         )}
                         {trip.status === 'IN_TRANSIT' && (

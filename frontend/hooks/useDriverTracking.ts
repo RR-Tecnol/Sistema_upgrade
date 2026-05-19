@@ -63,6 +63,11 @@ async function getCurrentPosition(): Promise<GeolocationPosition> {
     });
 }
 
+/** Envio pontual (início de viagem, chegada, etc.). */
+export async function sendDriverLocationOnce(source: QueuedLocation['source'] = 'checkin') {
+    await sendLocation(source);
+}
+
 async function sendLocation(source: QueuedLocation['source']) {
     try {
         const pos = await getCurrentPosition();
@@ -76,6 +81,7 @@ async function sendLocation(source: QueuedLocation['source']) {
             source,
         };
         await api.post('/driver/location', payload);
+        return true;
     } catch (err: any) {
         // Sem internet ou GPS negado → enfileira para batch posterior
         if (err?.message !== 'Geolocalização não suportada neste dispositivo') {
@@ -90,14 +96,17 @@ async function sendLocation(source: QueuedLocation['source']) {
                 });
             } catch { /* GPS negado — não enfileira */ }
         }
+        return false;
     }
 }
 
 interface UseDriverTrackingOptions {
     enabled: boolean; // true apenas quando Trip está IN_TRANSIT
+    /** Chamado após POST /driver/location bem-sucedido (atualiza KPIs no dashboard). */
+    onLocationSent?: () => void;
 }
 
-export function useDriverTracking({ enabled }: UseDriverTrackingOptions) {
+export function useDriverTracking({ enabled, onLocationSent }: UseDriverTrackingOptions) {
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const stop = useCallback(() => {
@@ -107,15 +116,18 @@ export function useDriverTracking({ enabled }: UseDriverTrackingOptions) {
         }
     }, []);
 
+    const ping = useCallback(async (source: QueuedLocation['source']) => {
+        const ok = await sendLocation(source);
+        if (ok) onLocationSent?.();
+    }, [onLocationSent]);
+
     const start = useCallback(() => {
-        stop(); // limpa intervalo anterior se existia
-        // Envia posição imediatamente ao iniciar
-        sendLocation('checkin');
-        // Polling a cada 3 minutos
+        stop();
+        ping('checkin');
         intervalRef.current = setInterval(() => {
-            sendLocation('polling');
+            ping('polling');
         }, POLL_INTERVAL_MS);
-    }, [stop]);
+    }, [stop, ping]);
 
     // Inicia/para conforme enabled mudar
     useEffect(() => {
@@ -136,5 +148,5 @@ export function useDriverTracking({ enabled }: UseDriverTrackingOptions) {
         return () => window.removeEventListener('online', handleOnline);
     }, []);
 
-    return { start, stop, sendCheckin: () => sendLocation('checkin') };
+    return { start, stop, sendCheckin: () => ping('checkin') };
 }

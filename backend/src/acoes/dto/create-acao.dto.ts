@@ -39,6 +39,14 @@ export class CreateAcaoDto {
     @IsDateString()
     dataFim: string;
 
+    @ApiPropertyOptional({
+        example: '2025-05-18',
+        description: 'Dia da partida da carreta (ida). Opcional — vazio usa início letivo da turma.',
+    })
+    @IsOptional()
+    @IsDateString()
+    driverDepartureDate?: string;
+
     @ApiPropertyOptional({ description: 'Curso de referência do motor letivo' })
     @IsOptional()
     @IsString()

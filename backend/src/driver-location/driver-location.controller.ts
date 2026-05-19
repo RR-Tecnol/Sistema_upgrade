@@ -33,11 +33,7 @@ export class DriverLocationController {
     async saveLocation(@Req() req: any, @Body() dto: CreateDriverLocationDto) {
         const driverUserId = req.user.id; // LIVRO_DE_REGRAS §5: req.user.id SEMPRE
 
-        // Busca trip IN_TRANSIT ativa do motorista
-        const tripAtiva = await this.service['prisma'].trip.findFirst({
-            where: { driverUserId, status: 'IN_TRANSIT' },
-            select: { id: true },
-        });
+        const tripAtiva = await this.service.findActiveTripForDriver(driverUserId);
 
         const saved = await this.service.saveLocation({
             driverUserId,
@@ -57,6 +53,12 @@ export class DriverLocationController {
                 where: { id: driverUserId },
                 select: { name: true },
             });
+            const live = await this.service.getLiveTrackingSnapshot(
+                driverUserId,
+                dto.latitude,
+                dto.longitude,
+                dto.speed,
+            );
             this.notifications.notifyAdmins('driver_location_update', {
                 driverUserId,
                 driverName: motoristaInfo?.name,
@@ -64,8 +66,14 @@ export class DriverLocationController {
                 lng: dto.longitude,
                 speed: dto.speed,
                 heading: dto.heading,
-                tripId: tripAtiva?.id,
+                tripId: live?.tripId ?? tripAtiva?.id,
                 capturedAt: dto.capturedAt,
+                progress: live?.progress,
+                kmRemaining: live?.kmRemaining,
+                kmTraveled: live?.kmTraveled,
+                totalKmPlanned: live?.totalKmPlanned,
+                distanceSource: live?.distanceSource,
+                eta: live?.eta,
             });
             // F2.8: verifica alertas (sem sinal, parada longa, chegada proxima)
             await this.service.verificarAlertas(driverUserId, motoristaInfo?.name ?? '', tripAtiva?.id);
@@ -84,11 +92,41 @@ export class DriverLocationController {
     @ApiOperation({ summary: 'Envia lote de posicoes capturadas offline' })
     async saveBatch(@Req() req: any, @Body() dto: BatchDriverLocationDto) {
         const driverUserId = req.user.id;
-        const tripAtiva = await this.service['prisma'].trip.findFirst({
-            where: { driverUserId, status: 'IN_TRANSIT' },
-            select: { id: true },
-        });
+        const tripAtiva = await this.service.findActiveTripForDriver(driverUserId);
         const result = await this.service.processarBatch(driverUserId, tripAtiva?.id, dto.locations);
+
+        const last = dto.locations[dto.locations.length - 1];
+        if (last) {
+            try {
+                const motoristaInfo = await this.service['prisma'].user.findUnique({
+                    where: { id: driverUserId },
+                    select: { name: true },
+                });
+                const live = await this.service.getLiveTrackingSnapshot(
+                    driverUserId,
+                    last.latitude,
+                    last.longitude,
+                    last.speed,
+                );
+                this.notifications.notifyAdmins('driver_location_update', {
+                    driverUserId,
+                    driverName: motoristaInfo?.name,
+                    lat: last.latitude,
+                    lng: last.longitude,
+                    speed: last.speed,
+                    heading: last.heading,
+                    tripId: live?.tripId ?? tripAtiva?.id,
+                    capturedAt: last.capturedAt,
+                    progress: live?.progress,
+                    kmRemaining: live?.kmRemaining,
+                    kmTraveled: live?.kmTraveled,
+                    totalKmPlanned: live?.totalKmPlanned,
+                    distanceSource: live?.distanceSource,
+                    eta: live?.eta,
+                });
+            } catch { /* WS opcional */ }
+        }
+
         return { ok: true, ...result };
     }
 

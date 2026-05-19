@@ -23,7 +23,7 @@ const CSS = `
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
 
-interface Maintenance { id: string; truckId: string; tipo: string; titulo: string; descricao?: string; status: string; prioridade: string; kmAtual?: number; kmProximo?: number; dataAgendada?: string; dataConclusao?: string; custoEstimado?: number; custoReal?: number; statusPagamento?: string; fornecedor?: string; responsavel?: string; observacoes?: string; contaPagarId?: string; }
+interface Maintenance { id: string; truckId: string; tipo: string; titulo: string; descricao?: string; status: string; prioridade: string; kmAtual?: number; kmProximo?: number; dataAgendada?: string; dataConclusao?: string; custoEstimado?: number; custoReal?: number; statusPagamento?: string; fornecedor?: string; responsavel?: string; cidade?: string; observacoes?: string; contaPagarId?: string; }
 interface Stats { truck: { id: string; identifier: string; licensePlate: string; status: string; modelYear?: string; capacity: number; lastMaintenanceDate?: string }; totalGasto: number; emAndamento: number; concluidas: number; agendadas: number; custosPorMes: { mes: string; custo: number }[]; }
 
 const TIPO: { [k: string]: { label: string; icon: string; color: string; grad: string } } = {
@@ -197,14 +197,19 @@ function Modal({ truckId, editing, onClose, onSaved }: { truckId: string; editin
         kmAtual: editing?.kmAtual?.toString() ?? '', kmProximo: editing?.kmProximo?.toString() ?? '',
         dataAgendada: editing?.dataAgendada?.split('T')[0] ?? '', dataConclusao: editing?.dataConclusao?.split('T')[0] ?? '',
         custoEstimado: editing?.custoEstimado?.toString() ?? '', custoReal: editing?.custoReal?.toString() ?? '',
-        fornecedor: editing?.fornecedor ?? '', responsavel: editing?.responsavel ?? '', observacoes: editing?.observacoes ?? '',
+        fornecedor: editing?.fornecedor ?? '', responsavel: editing?.responsavel ?? '',
+        cidade: editing?.cidade ?? '', observacoes: editing?.observacoes ?? '',
         statusPagamento: editing?.statusPagamento ?? 'pendente',
     });
     const [saving, setSaving] = useState(false); const [err, setErr] = useState('');
     const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+    const valorConta = (b: { custoReal?: number; custoEstimado?: number }) =>
+        Number(b.custoReal ?? b.custoEstimado ?? 0);
+
     const save = async () => {
         if (!form.titulo.trim()) { setErr('Título obrigatório'); return; }
+        if (!form.cidade.trim()) { setErr('Informe a cidade (aparece em Contas a pagar).'); return; }
         setSaving(true);
         try {
             const body: any = {
@@ -212,9 +217,16 @@ function Modal({ truckId, editing, onClose, onSaved }: { truckId: string; editin
                 kmAtual: form.kmAtual ? Number(form.kmAtual) : undefined, kmProximo: form.kmProximo ? Number(form.kmProximo) : undefined,
                 dataAgendada: form.dataAgendada || undefined, dataConclusao: form.dataConclusao || undefined,
                 custoEstimado: form.custoEstimado ? Number(form.custoEstimado) : undefined, custoReal: form.custoReal ? Number(form.custoReal) : undefined,
-                fornecedor: form.fornecedor || undefined, responsavel: form.responsavel || undefined, observacoes: form.observacoes || undefined, statusPagamento: form.statusPagamento,
+                fornecedor: form.fornecedor || undefined, responsavel: form.responsavel || undefined,
+                cidade: form.cidade.trim() || undefined,
+                observacoes: form.observacoes || undefined, statusPagamento: form.statusPagamento,
             };
             editing ? await api.patch(`/truck-maintenance/${editing.id}`, body) : await api.post('/truck-maintenance', body);
+            toast.success(
+                valorConta(body) > 0
+                    ? 'Manutenção salva. Lançamento criado em Contas a pagar (tipo Manutenção carreta).'
+                    : 'Manutenção salva.',
+            );
             onSaved();
         } catch (e: any) { setErr(e?.response?.data?.message || 'Erro ao salvar'); } finally { setSaving(false); }
     };
@@ -337,6 +349,20 @@ function Modal({ truckId, editing, onClose, onSaved }: { truckId: string; editin
                                 </div>
                             </div>
                         ))}
+                    </div>
+
+                    {/* Cidade — espelhada em Contas a pagar */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        <label style={lbl}>Cidade *</label>
+                        <input
+                            value={form.cidade}
+                            onChange={e => set('cidade', e.target.value)}
+                            placeholder="Ex: São Luís — MA"
+                            style={inp}
+                        />
+                        <span style={{ fontSize: '0.68rem', color: '#6B7280' }}>
+                            Obrigatória para o lançamento em Contas a pagar (coluna Cidade).
+                        </span>
                     </div>
 
                     {/* Fornecedor + Responsável */}

@@ -308,7 +308,10 @@ export default function AdminDashboard() {
     // useNotifications já existe e está conectado — ouvimos driver_location_update
     useEffect(() => {
         const handler = (event: CustomEvent) => {
-            const { driverUserId, lat, lng, speed, heading, capturedAt } = event.detail;
+            const {
+                driverUserId, lat, lng, speed, heading, capturedAt,
+                progress, kmRemaining, kmTraveled, totalKmPlanned, distanceSource, eta,
+            } = event.detail;
             setDrivers(prev => prev.map(d => {
                 if (d.userId !== driverUserId) return d;
                 return {
@@ -316,6 +319,12 @@ export default function AdminDashboard() {
                     status: 'online' as const,
                     lastLocation: { lat, lng, speed, heading, capturedAt },
                     trail: [...(d.trail ?? []), { latitude: lat, longitude: lng }],
+                    ...(progress != null ? { progress } : {}),
+                    ...(kmRemaining != null ? { kmRemaining } : {}),
+                    ...(kmTraveled != null ? { kmTraveled } : {}),
+                    ...(totalKmPlanned != null ? { totalKmPlanned } : {}),
+                    ...(distanceSource ? { distanceSource } : {}),
+                    ...(eta ? { eta } : {}),
                 };
             }));
         };

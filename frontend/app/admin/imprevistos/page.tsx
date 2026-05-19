@@ -30,6 +30,24 @@ import { usePersistedAdminViewMode } from '@/hooks/usePersistedAdminViewMode';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
+interface EmployeePenaltyPreview {
+    employeeId: string;
+    employeeName: string;
+    acaoId: string;
+    acaoNome: string;
+    diasCorridosPeriodo: number;
+    diasTrabalhadosAtuais: number;
+    valorDiaria: number;
+    valorTotalAtual: number;
+    suggestedPenalty: number;
+    valorAposDesconto: number;
+    diasAposDesconto: number;
+    contaJaPaga: boolean;
+    reembolsoDevidoSePaga: number | null;
+    usedFallbackAcao?: boolean;
+    financeSync?: { applied: boolean; message: string; reembolsoDevido?: number };
+}
+
 interface StudentPenaltyPreview {
     totalDays: number;
     percent: number;
@@ -300,20 +318,42 @@ function ModalReview({ absence, onClose, onSaved }: { absence: Absence; onClose:
     const [form, setForm] = useState({ status: 'VALIDATED' as 'VALIDATED' | 'REJECTED' | 'PENALIZED', adminNote: '', penalty: '' });
     const [loading, setLoading] = useState(false);
     const [studentPenaltyEst, setStudentPenaltyEst] = useState<StudentPenaltyPreview | null>(null);
+    const [employeePenaltyEst, setEmployeePenaltyEst] = useState<EmployeePenaltyPreview | null>(null);
 
     useEffect(() => {
-        if (absence.user.role !== 'STUDENT') {
-            setStudentPenaltyEst(null);
-            return;
+        if (absence.user.role === 'STUDENT') {
+            setEmployeePenaltyEst(null);
+            let cancelled = false;
+            api
+                .get<StudentPenaltyPreview>(`/admin/absences/${absence.id}/student-penalty-preview`)
+                .then((res) => {
+                    if (!cancelled) setStudentPenaltyEst(res.data);
+                })
+                .catch(() => {
+                    if (!cancelled) setStudentPenaltyEst(null);
+                });
+            return () => {
+                cancelled = true;
+            };
         }
+        setStudentPenaltyEst(null);
         let cancelled = false;
         api
-            .get<StudentPenaltyPreview>(`/admin/absences/${absence.id}/student-penalty-preview`)
+            .get<EmployeePenaltyPreview>(`/admin/absences/${absence.id}/employee-penalty-preview`)
             .then((res) => {
-                if (!cancelled) setStudentPenaltyEst(res.data);
+                if (!cancelled) {
+                    setEmployeePenaltyEst(res.data);
+                    const sug = res.data.suggestedPenalty;
+                    if (sug > 0) {
+                        setForm((f) => ({
+                            ...f,
+                            penalty: f.penalty.trim() ? f.penalty : String(sug),
+                        }));
+                    }
+                }
             })
             .catch(() => {
-                if (!cancelled) setStudentPenaltyEst(null);
+                if (!cancelled) setEmployeePenaltyEst(null);
             });
         return () => {
             cancelled = true;
@@ -331,7 +371,11 @@ function ModalReview({ absence, onClose, onSaved }: { absence: Absence; onClose:
                         ? Number(form.penalty)
                         : undefined,
             });
-            toast.success('Imprevisto revisado com sucesso!');
+            toast.success(
+                form.status === 'PENALIZED' && absence.user.role !== 'STUDENT'
+                    ? 'Imprevisto revisado. Diária em Contas a pagar atualizada (ou reembolso registado se já paga).'
+                    : 'Imprevisto revisado com sucesso!',
+            );
             onSaved(); onClose();
         } catch { toast.error('Erro ao revisar imprevisto.'); }
         finally { setLoading(false); }
@@ -419,9 +463,90 @@ function ModalReview({ absence, onClose, onSaved }: { absence: Absence; onClose:
                         </div>
                     )}
                     {form.status === 'PENALIZED' && absence.user.role !== 'STUDENT' && (
-                        <div>
-                            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#EA580C', display: 'block', marginBottom: 6 }}>Valor da retencao (R$)</label>
-                            <input type="number" step="0.01" value={form.penalty} onChange={e => setForm(f => ({ ...f, penalty: e.target.value }))} placeholder="0.00" style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: 9, border: '1.5px solid #FED7AA', fontSize: '0.85rem', color: '#EA580C', background: '#FFF7ED' }} />
+                        <div
+                            style={{
+                                padding: '0.85rem 1rem',
+                                borderRadius: 10,
+                                border: '1.5px solid #FED7AA',
+                                background: '#FFF7ED',
+                                fontSize: '0.78rem',
+                                color: '#9A3412',
+                                lineHeight: 1.55,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 10,
+                            }}
+                        >
+                            <div style={{ fontWeight: 800, color: '#C2410C' }}>Desconto em diária (colaborador)</div>
+                            {employeePenaltyEst ? (
+                                <>
+                                    <p style={{ margin: 0 }}>
+                                        Período <strong>{employeePenaltyEst.acaoNome}</strong>:{' '}
+                                        <strong>{employeePenaltyEst.diasCorridosPeriodo}</strong> dias corridos; diária{' '}
+                                        <strong>{employeePenaltyEst.diasTrabalhadosAtuais}</strong> ×{' '}
+                                        {employeePenaltyEst.valorDiaria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}{' '}
+                                        ={' '}
+                                        <strong>
+                                            {employeePenaltyEst.valorTotalAtual.toLocaleString('pt-BR', {
+                                                style: 'currency',
+                                                currency: 'BRL',
+                                            })}
+                                        </strong>
+                                        .
+                                    </p>
+                                    <p style={{ margin: 0 }}>
+                                        Motor sugere −1 dia (
+                                        {employeePenaltyEst.suggestedPenalty.toLocaleString('pt-BR', {
+                                            style: 'currency',
+                                            currency: 'BRL',
+                                        })}
+                                        ) →{' '}
+                                        <strong>
+                                            {employeePenaltyEst.valorAposDesconto.toLocaleString('pt-BR', {
+                                                style: 'currency',
+                                                currency: 'BRL',
+                                            })}
+                                        </strong>{' '}
+                                        ({employeePenaltyEst.diasAposDesconto} dia(s)).
+                                    </p>
+                                    {employeePenaltyEst.contaJaPaga && employeePenaltyEst.reembolsoDevidoSePaga != null ? (
+                                        <p style={{ margin: 0, fontWeight: 700, color: '#B45309' }}>
+                                            Diária já paga: registar reembolso de{' '}
+                                            {employeePenaltyEst.reembolsoDevidoSePaga.toLocaleString('pt-BR', {
+                                                style: 'currency',
+                                                currency: 'BRL',
+                                            })}{' '}
+                                            em Contas a pagar.
+                                        </p>
+                                    ) : null}
+                                </>
+                            ) : (
+                                <p style={{ margin: 0, fontStyle: 'italic' }}>A carregar dados do período…</p>
+                            )}
+                            <p style={{ margin: 0, fontSize: '0.72rem' }}>
+                                Providencie substituto quando necessário. Valor final é critério do admin.
+                            </p>
+                            <div>
+                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#EA580C', display: 'block', marginBottom: 6 }}>
+                                    Valor a descontar (R$)
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={form.penalty}
+                                    onChange={e => setForm(f => ({ ...f, penalty: e.target.value }))}
+                                    placeholder="0.00"
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.55rem 0.75rem',
+                                        borderRadius: 9,
+                                        border: '1.5px solid #FED7AA',
+                                        fontSize: '0.85rem',
+                                        color: '#EA580C',
+                                        background: '#fff',
+                                    }}
+                                />
+                            </div>
                         </div>
                     )}
                     <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>

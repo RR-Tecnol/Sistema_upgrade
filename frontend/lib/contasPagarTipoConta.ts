@@ -79,7 +79,14 @@ export const ORIGEM_TIPO_CONTA: Record<string, { modulo: string; notas: string }
     },
     pneu_furado: { modulo: 'admin / CRUD', notas: 'Manual ou seed' },
     troca_oleo: { modulo: 'admin / CRUD', notas: 'Manual ou seed' },
-    abastecimento: { modulo: 'admin / CRUD', notas: 'Combustível — manual ou seed' },
+    abastecimento: {
+        modulo: 'acoes.service',
+        notas: 'Abastecimento no período (+ AcaoCusto) ou CRUD manual',
+    },
+    outros: {
+        modulo: 'acoes.service | admin / CRUD',
+        notas: 'Despesa geral do período ou lançamento manual',
+    },
     manutencao_mecanica: { modulo: 'admin / CRUD', notas: 'Manual' },
     reboque: { modulo: 'admin / CRUD', notas: 'Manual' },
     lavagem: { modulo: 'admin / CRUD', notas: 'Manual' },
@@ -95,7 +102,6 @@ export const ORIGEM_TIPO_CONTA: Record<string, { modulo: string; notas: string }
     internet: { modulo: 'admin / CRUD', notas: 'Manual' },
     telefone: { modulo: 'admin / CRUD', notas: 'Manual' },
     espontaneo: { modulo: 'admin / CRUD', notas: 'Usa tipo_espontaneo' },
-    outros: { modulo: 'admin / CRUD', notas: 'Manual' },
 };
 
 /** Ordem dos cartões KPI: integrações → estrada → habituais → genéricos (dedupe final). */

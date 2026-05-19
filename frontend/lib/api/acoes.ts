@@ -28,6 +28,7 @@ export interface Acao {
     status: AcaoStatus;
     dataInicio: string;
     dataFim: string;
+    driverDepartureDate?: string | null;
     motorCourseId?: string;
     period?: 'MORNING' | 'AFTERNOON' | 'EVENING';
     startTime?: string;
@@ -342,7 +343,7 @@ export const acoesApi = {
 
     addFuncionario: (
         acaoId: string,
-        data: { employeeId: string; valorDiaria: number; diasTrabalhados?: number; classIds?: string[] },
+        data: { employeeId: string; valorDiaria?: number; diasTrabalhados?: number; classIds?: string[] },
     ) =>
         api
             .post<{

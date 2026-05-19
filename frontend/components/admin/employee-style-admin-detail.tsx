@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api/client';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import { normalizePreviewUrl } from '@/components/ui/UnifiedDocumentPreview';
+import { resolveMediaUrl } from '@/lib/resolve-media-url';
 
 /** Presigned GET: reembolso (titular/admin), documento imprevisto (admin ou portal /absences). */
 export type EmployeeAttachmentPresign =
@@ -123,6 +124,7 @@ export function EmployeeStyleAdminDetailShell({
     accentColor,
     accentGlow = 'rgba(255,214,0,0.25)',
     initials,
+    photoUrl,
     statusBadge,
     headline,
     headerTags,
@@ -133,6 +135,8 @@ export function EmployeeStyleAdminDetailShell({
     accentColor: string;
     accentGlow?: string;
     initials: string;
+    /** URL da foto (MinIO/storage) — se falhar, mostra iniciais. */
+    photoUrl?: string | null;
     /** Badge de status livre no mesmo lugar do funcionário (“ATIVO”, “Aguardando…”, etc.). */
     statusBadge?: ReactNode;
     headline: string;
@@ -140,6 +144,10 @@ export function EmployeeStyleAdminDetailShell({
     children: ReactNode;
     footer: ReactNode;
 }) {
+    const [photoFailed, setPhotoFailed] = useState(false);
+    const resolvedPhoto = photoUrl ? resolveMediaUrl(photoUrl) || photoUrl : null;
+    const showPhoto = !!resolvedPhoto && !photoFailed;
+
     return (
         <ModalPortal>
             <div
@@ -249,9 +257,19 @@ export function EmployeeStyleAdminDetailShell({
                                     fontSize: '1.6rem',
                                     color: accentColor,
                                     boxShadow: `0 0 30px ${accentGlow}, inset 0 1px 0 rgba(255,255,255,0.1)`,
+                                    overflow: 'hidden',
                                 }}
                             >
-                                {initials.slice(0, 2)}
+                                {showPhoto ? (
+                                    <img
+                                        src={resolvedPhoto!}
+                                        alt=""
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        onError={() => setPhotoFailed(true)}
+                                    />
+                                ) : (
+                                    initials.slice(0, 2)
+                                )}
                             </div>
 
                             <div style={{ flex: 1, minWidth: 0 }}>

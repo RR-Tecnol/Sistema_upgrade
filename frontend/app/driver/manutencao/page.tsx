@@ -124,7 +124,7 @@ function ModalDetalhes({ m, onClose }: { m: Maintenance; onClose: () => void }) 
 
 // Modal Nova Manutenção
 function ModalNovaManutencao({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-    const [form, setForm] = useState({ tipo: 'corretiva', descricao: '', km: '', custo: '', prioridade: 'alta' });
+    const [form, setForm] = useState({ tipo: 'corretiva', descricao: '', km: '', custo: '', prioridade: 'alta', cidade: '' });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
@@ -145,7 +145,12 @@ function ModalNovaManutencao({ onClose, onSaved }: { onClose: () => void; onSave
             const active = trips.find((t: any) => t.status === 'IN_TRANSIT');
             const lastCompleted = trips.find((t: any) => t.status === 'COMPLETED' && t.truckId);
             const kmSugerido = active?.kmStart || lastCompleted?.kmEnd;
+            const tripRef = active || lastCompleted;
+            const cidadeSugerida = tripRef?.destinationCity
+                ? `${tripRef.destinationCity.name}${tripRef.destinationCity.state ? ` — ${tripRef.destinationCity.state}` : ''}`
+                : '';
             if (kmSugerido) setForm(f => ({ ...f, km: String(kmSugerido) }));
+            if (cidadeSugerida) setForm(f => ({ ...f, cidade: f.cidade || cidadeSugerida }));
             
             const autoId = active?.truckId || lastCompleted?.truckId || null;
             if (autoId) setTruckId(autoId);
@@ -155,12 +160,14 @@ function ModalNovaManutencao({ onClose, onSaved }: { onClose: () => void; onSave
 
     const handleSave = async () => {
         if (!form.descricao.trim()) { setError('Informe a descrição do problema.'); return; }
+        if (!form.cidade.trim()) { setError('Informe a cidade do serviço (aparece em Contas a pagar).'); return; }
         setSaving(true); setError('');
         try {
             if (truckId) {
                 await api.post('/truck-maintenance', {
                     truckId, tipo: form.tipo, titulo: `Ocorrência — ${TYPE_MAP[form.tipo]?.label || form.tipo}`,
                     descricao: form.descricao, status: 'agendada', prioridade: form.prioridade,
+                    cidade: form.cidade.trim(),
                     custoEstimado: form.custo ? parseFloat(form.custo) : undefined,
                     dataAgendada: new Date().toISOString(),
                 });
@@ -238,6 +245,16 @@ function ModalNovaManutencao({ onClose, onSaved }: { onClose: () => void; onSave
                                 {['baixa','media','alta','critica'].map(k => <option key={k} value={k}>{PRIORITY_MAP[k]?.label}</option>)}
                             </select>
                         </div>
+                    </div>
+                    <div>
+                        <label style={{ display: 'block', fontSize: '0.63rem', fontWeight: 800, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 5 }}>Cidade *</label>
+                        <input
+                            type="text"
+                            style={INPUT}
+                            placeholder="Ex: Caxias — MA"
+                            value={form.cidade}
+                            onChange={e => setForm(f => ({ ...f, cidade: e.target.value }))}
+                        />
                     </div>
                     <div>
                         <label style={{ display: 'block', fontSize: '0.63rem', fontWeight: 800, textTransform: 'uppercase' as const, color: '#6B7280', marginBottom: 5 }}>Descrição do Problema *</label>

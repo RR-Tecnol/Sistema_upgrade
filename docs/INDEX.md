@@ -1,6 +1,6 @@
 # Índice da documentação — Sistema UPGRADE
 
-**Última reorganização:** 2026-05-08 · **Caminhos:** `docs/sistema-atual/` (incl. **11-modulo-viagens-logistica.md**), `docs/mapeamentos/`, `docs/SEEDS_GUIDE.md`.
+**Última reorganização:** 2026-05-08 · **Atualização README/changelog:** 2026-05-20 (CLT/diária, fotos MinIO, manutenção+cidade, rastreamento/OSRM). **Caminhos:** `docs/sistema-atual/`, `docs/mapeamentos/`, `docs/SEEDS_GUIDE.md`, [`../README.md`](../README.md) (changelog operacional).
 
 ---
 
@@ -56,7 +56,7 @@ O [`README.md`](../README.md) na raiz contém visão geral, quick start e tabela
 
 | Serviço | URL típica |
 |---------|------------|
-| Frontend | http://localhost:3000 |
+| Frontend | http://localhost:3010 |
 | Backend | `http://localhost:<PORT>` com `PORT` no ambiente; omissão no código: **3001** |
 | Swagger | `http://localhost:<PORT>/api/docs` |
 | PostgreSQL | localhost:**5432** (utilizador `cursos_user`, ver `docker-compose.yml`) |

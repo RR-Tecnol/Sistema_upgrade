@@ -151,9 +151,15 @@ function InfoItem({ label, value, wide }: { label: string; value: string; wide?:
 
 function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
     const [editing, setEditing] = useState(false);
+    const toDateInput = (iso?: string | null) => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+    };
     const [form, setForm] = useState({
         nome: acao.nome, localExecucao: acao.localExecucao || '',
         observacoes: acao.observacoes || '',
+        driverDepartureDate: toDateInput(acao.driverDepartureDate),
         distanciaKm: String(acao.distanciaKm || ''),
         precoCombustivelL: String(acao.precoCombustivelL || ''),
         autonomiaKmL: String(acao.autonomiaKmL || ''),
@@ -172,6 +178,9 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
         setLoading(true);
         await acoesApi.atualizar(acao.id, {
             ...form,
+            driverDepartureDate: form.driverDepartureDate?.trim()
+                ? `${form.driverDepartureDate.trim()}T12:00:00.000Z`
+                : null,
             distanciaKm: Number(form.distanciaKm) || undefined,
             precoCombustivelL: Number(form.precoCombustivelL) || undefined,
             autonomiaKmL: Number(form.autonomiaKmL) || undefined,
@@ -211,6 +220,15 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                 {editing ? (
                     <div style={{ padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                         <div style={{ gridColumn: '1/-1' }}><label style={LABEL}>Nome</label><input style={INPUT} value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} /></div>
+                        <div>
+                            <label style={LABEL}>Dia da partida (ida)</label>
+                            <input
+                                type="date"
+                                style={INPUT}
+                                value={form.driverDepartureDate}
+                                onChange={e => setForm(f => ({ ...f, driverDepartureDate: e.target.value }))}
+                            />
+                        </div>
                         <div><label style={LABEL}>Distância (km)</label><input type="number" style={INPUT} value={form.distanciaKm} onChange={e => setForm(f => ({ ...f, distanciaKm: e.target.value }))} /></div>
                         <div><label style={LABEL}>Combustível (R$/L)</label><input type="number" step="0.01" style={INPUT} value={form.precoCombustivelL} onChange={e => setForm(f => ({ ...f, precoCombustivelL: e.target.value }))} /></div>
                         <div><label style={LABEL}>Autonomia (km/L)</label><input type="number" step="0.1" style={INPUT} value={form.autonomiaKmL} onChange={e => setForm(f => ({ ...f, autonomiaKmL: e.target.value }))} /></div>
@@ -256,6 +274,10 @@ function TabGeral({ acao, onUpdate }: { acao: Acao; onUpdate: () => void }) {
                         )}
                         <InfoItem label="Início" value={fmtDate(acao.dataInicio)} />
                         <InfoItem label="Fim" value={fmtDate(acao.dataFim)} />
+                        <InfoItem
+                            label="Partida carreta (ida)"
+                            value={acao.driverDepartureDate ? fmtDate(acao.driverDepartureDate) : 'Início letivo da turma'}
+                        />
                         <InfoItem label="Inscrições Online" value={acao.permitirInscricoes ? '✅ Ativas' : '❌ Desativadas'} />
                         {acao.observacoes && <InfoItem label="Observações" value={acao.observacoes} wide />}
                     </div>

@@ -6,6 +6,15 @@ import { EmployeeRole, EmployeeDepartment, NotificationType, Prisma } from '@pri
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { paginatedResult, resolvePagination } from '../common/pagination.util';
+import { resolveStoredMediaUrl } from '../common/resolve-stored-media-url.util';
+import { ApproveContractTypeDto } from './dto/approve-registration.dto';
+
+export type ApproveRegistrationOptions = {
+    contractType?: ApproveContractTypeDto;
+    dailyCost?: number;
+    monthlySalaryCLT?: number;
+    travelRuleKm?: number;
+};
 
 @Injectable()
 export class EmployeesService {
@@ -25,6 +34,12 @@ export class EmployeesService {
     private isMissingCheckoutAtColumn(error: unknown): boolean {
         const msg = (error as { message?: string })?.message || '';
         return msg.includes('checkoutAt') || msg.includes('checkout_at');
+    }
+
+    private withResolvedPhoto<T extends { photoUrl?: string | null }>(row: T): T {
+        if (!row.photoUrl) return row;
+        const resolved = resolveStoredMediaUrl(row.photoUrl);
+        return resolved ? { ...row, photoUrl: resolved } : row;
     }
 
     /**
@@ -266,7 +281,7 @@ export class EmployeesService {
     async approveRegistrationRequest(
         id: string,
         adminId: string,
-        options?: { dailyCost?: number },
+        options?: ApproveRegistrationOptions,
     ) {
         const request = await this.prisma.employeeRegistrationRequest.findUnique({
             where: { id },
@@ -307,10 +322,35 @@ export class EmployeesService {
             userId = user.id;
         }
 
-        const dailyCostFromAdmin = options?.dailyCost;
-        if (dailyCostFromAdmin == null || Number.isNaN(Number(dailyCostFromAdmin)) || Number(dailyCostFromAdmin) <= 0) {
-            throw new BadRequestException('Defina um valor de diária válido para aprovar o cadastro.');
+        const contractType =
+            options?.contractType ||
+            (data.contractType as ApproveContractTypeDto | undefined) ||
+            ApproveContractTypeDto.CLT;
+
+        const isClt = contractType === ApproveContractTypeDto.CLT;
+        let dailyCostValue: number | null = null;
+        let monthlySalaryCLT: number | null = null;
+
+        if (isClt) {
+            const salary = options?.monthlySalaryCLT;
+            if (salary == null || Number.isNaN(Number(salary)) || Number(salary) <= 0) {
+                throw new BadRequestException(
+                    'Defina o salário mensal CLT válido para aprovar este cadastro.',
+                );
+            }
+            monthlySalaryCLT = Number(salary);
+        } else {
+            const daily = options?.dailyCost;
+            if (daily == null || Number.isNaN(Number(daily)) || Number(daily) <= 0) {
+                throw new BadRequestException(
+                    'Defina um valor de diária válido para aprovar o cadastro (PJ/Freelance).',
+                );
+            }
+            dailyCostValue = Number(daily);
         }
+
+        const selfieRaw = data.documents?.selfieUrl || data.photoUrl;
+        const photoUrlResolved = selfieRaw ? resolveStoredMediaUrl(String(selfieRaw)) : null;
 
         const employee = await this.prisma.employee.create({
             data: {
@@ -321,10 +361,12 @@ export class EmployeesService {
                 role: request.token.role,
                 department: request.token.department,
                 active: true,
-                dailyCost: Number(dailyCostFromAdmin),
-                photoUrl: data.documents?.selfieUrl || data.photoUrl,
+                dailyCost: dailyCostValue,
+                monthlySalaryCLT,
+                travelRuleKm: isClt ? (options?.travelRuleKm ?? 200) : undefined,
+                photoUrl: photoUrlResolved || selfieRaw || null,
                 specialty: data.teacher?.fieldOfStudy || data.driver?.cnhCategory || data.coordinator?.formation || data.specialty, 
-                contractType: data.contractType || 'CLT',
+                contractType,
                 userId: userId,
                 hireDate: new Date(),
                 documents: {
@@ -344,13 +386,13 @@ export class EmployeesService {
                     userId: userId,
                     cpf: request.cpf,
                     birthDate: request.birthDate || new Date(),
-                    photoUrl: data.photoUrl,
+                    photoUrl: photoUrlResolved || selfieRaw || data.photoUrl,
                     education: data.teacher?.education || data.education || 'Não informada',
                     specialties: data.teacher?.fieldOfStudy || data.specialty || 'Geral',
                     experience: data.teacher?.experienceTime || data.experience,
                     certifications: data.teacher?.professionalReg || data.certifications,
                     resumeUrl: data.teacher?.experienceUrl || data.resumeUrl,
-                    contractType: (data.contractType || 'CLT') as any,
+                    contractType: contractType as any,
                     hireDate: new Date(),
                     documents: {
                         diplomaUrl: data.teacher?.diplomaUrl,
@@ -420,13 +462,22 @@ export class EmployeesService {
         ]);
 
         const totalPages = Math.max(1, Math.ceil(total / limit));
-        return { employees, total, page, limit, totalPages, activeCount, byRole, byDept };
+        return {
+            employees: employees.map(e => this.withResolvedPhoto(e)),
+            total,
+            page,
+            limit,
+            totalPages,
+            activeCount,
+            byRole,
+            byDept,
+        };
     }
 
     async findOne(id: string) {
         const emp = await this.prisma.employee.findUnique({ where: { id } });
         if (!emp) throw new NotFoundException('Funcionário não encontrado');
-        return emp;
+        return this.withResolvedPhoto(emp);
     }
 
     async update(id: string, dto: Partial<CreateEmployeeDto>) {

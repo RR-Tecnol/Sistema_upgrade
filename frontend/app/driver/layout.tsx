@@ -7,6 +7,7 @@ import DriverHeader from '@/components/driver/Header';
 import { ToastContainer } from '@/components/ui/Toast';
 import Tutorial, { TutorialButton } from '@/components/ui/Tutorial';
 import { useAnimacoes } from '@/hooks/useAnimacoes';
+import DriverLocationSync from '@/components/driver/DriverLocationSync';
 
 const DRIVER_STEPS = [
     { icon: '🚛', title: 'Bem-vindo ao Portal do Motorista', description: 'Gerencie suas viagens, solicite reembolsos, registre imprevistos e acompanhe a manutenção da carreta.' },
@@ -52,6 +53,7 @@ export default function DriverLayout({ children }: { children: ReactNode }) {
     return (
         <>
             <ToastContainer />
+            <DriverLocationSync />
             <Tutorial storageKey="tutorial-driver-v1" steps={DRIVER_STEPS} portalName="Portal do Motorista" forceOpen={showTutorial} onClose={() => setShowTutorial(false)} />
             <TutorialButton onClick={() => setShowTutorial(true)} />
             <div className="admin-layout">

@@ -3,13 +3,14 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api/client';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { useDriverTracking } from '@/hooks/useDriverTracking';
+import { sendDriverLocationOnce } from '@/hooks/useDriverTracking';
 import { toast } from '@/components/ui/Toast';
+import { isDepartureDay, isDriverAccepted, pickActiveInTransitTrip, pickNextPlannedTrip } from '@/lib/driver-trips';
 import AdminHeaderHero from '@/components/admin/AdminHeaderHero';
 import AnimatedKpiCard from '@/components/admin/AnimatedKpiCard';
 
 interface Trip {
-    id: string; status: string; notes?: string;
+    id: string; classId?: string | null; status: string; notes?: string; driverDecision?: string | null;
     originCity: { name: string; state: string };
     destinationCity: { name: string; state: string };
     departureDate: string; expectedArrivalDate: string; actualArrivalDate?: string;
@@ -22,6 +23,10 @@ interface Performance {
         destination: string;
         eta: { distanciaKm: number; minutos: number; fonte: 'haversine' | 'google' };
         kmRemaining: number;
+        kmTraveled?: number;
+        totalKmPlanned?: number;
+        progress?: number;
+        distanceSource?: 'acao' | 'haversine' | 'none';
         speed: number | null;
     } | null;
     ranking: {
@@ -128,12 +133,6 @@ function formatETA(minutos: number): string {
     return m > 0 ? `${h}h${m}min` : `${h}h`;
 }
 
-function isDepartureDay(departureDate: string): boolean {
-    const dep = new Date(departureDate);
-    const now = new Date();
-    return dep.toDateString() === now.toDateString();
-}
-
 export default function DriverDashboard() {
     const router = useRouter();
     const { user } = useAuthStore();
@@ -152,8 +151,12 @@ export default function DriverDashboard() {
     const [photoFile,    setPhotoFile]    = useState<File | null>(null);
     const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
 
-    // F3.1: Hook de rastreamento — ativo apenas quando Trip está IN_TRANSIT
-    const { sendCheckin } = useDriverTracking({ enabled: gpsActive && !!activeTrip });
+    const refreshPerformance = useCallback(async () => {
+        try {
+            const perfRes = await api.get('/driver/me/performance');
+            if (perfRes.data) setPerformance(perfRes.data);
+        } catch { /* silencioso */ }
+    }, []);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -166,8 +169,8 @@ export default function DriverDashboard() {
             ]);
 
             const allTrips: Trip[] = Array.isArray(tripsRes.data) ? tripsRes.data : [];
-            const active = allTrips.find(t => t.status === 'IN_TRANSIT') || null;
-            const next   = allTrips.find(t => t.status === 'PLANNED')    || null;
+            const active = pickActiveInTransitTrip(allTrips);
+            const next   = pickNextPlannedTrip(allTrips);
             const done   = allTrips.filter(t => t.status === 'COMPLETED');
 
             const now = new Date();
@@ -198,6 +201,12 @@ export default function DriverDashboard() {
     useEffect(() => { load(); }, [load]);
 
     useEffect(() => {
+        const onLoc = () => { refreshPerformance(); };
+        window.addEventListener('driver:location-sent', onLoc);
+        return () => window.removeEventListener('driver:location-sent', onLoc);
+    }, [refreshPerformance]);
+
+    useEffect(() => {
         if (!photoFile) {
             setPhotoPreviewUrl(null);
             return;
@@ -212,6 +221,10 @@ export default function DriverDashboard() {
         if (!nextTrip || !photoFile) return;
         setSaving(true);
         try {
+            if (!isDriverAccepted(nextTrip)) {
+                toast.error('Aceite a viagem em Viagens → Planejadas antes de iniciar.');
+                return;
+            }
             if (!isDepartureDay(nextTrip.departureDate)) {
                 toast.error('A viagem só pode ser iniciada no dia da partida.');
                 return;
@@ -266,7 +279,8 @@ export default function DriverDashboard() {
         setSaving(true);
         try {
             // Bate check-in de chegada (posição final)
-            sendCheckin();
+            await sendDriverLocationOnce('checkin');
+            refreshPerformance();
             
             // 1. Obter URL pre-assinada
             const ext = photoFile.name.split('.').pop();
@@ -385,7 +399,13 @@ export default function DriverDashboard() {
                                         🕐 {formatETA(performance.currentTrip.eta.minutos)}
                                     </span>
                                     <span style={{ fontSize:'.68rem', color:'#6B7280' }}>
-                                        {Math.round(performance.currentTrip.kmRemaining)}km restantes
+                                        {Math.round(performance.currentTrip.kmRemaining)} km restantes
+                                        {performance.currentTrip.totalKmPlanned != null &&
+                                            performance.currentTrip.totalKmPlanned > 0 && (
+                                            <> · {Math.round(performance.currentTrip.totalKmPlanned)} km total
+                                                {performance.currentTrip.distanceSource === 'acao' ? ' (período)' : ''}
+                                            </>
+                                        )}
                                     </span>
                                     {performance.currentTrip.speed != null && (
                                         <span style={{ fontSize:'.68rem', color:'#059669', fontWeight:700 }}>
@@ -397,22 +417,10 @@ export default function DriverDashboard() {
                                     via {performance.currentTrip.eta.fonte === 'google' ? '🗺️ Maps' : '📐 estimativa'}
                                 </span>
                             </div>
-                            {/* Progresso calculado no backend */}
-                            {(() => {
-                                const totalKm = performance.currentTrip.kmRemaining +
-                                    (performance.ranking.mes.kmRodados > 0 ? 0 : 0); // backend já calcula
-                                // Estimativa simples de progresso: 100 - (restante/total * 100)
-                                // O progresso real vem do GET /driver/location/active (para o admin)
-                                // Aqui usamos uma estimativa baseada no km restante vs km da viagem
-                                const kmInicio = activeTrip.kmStart ?? 0;
-                                const kmFimEst = kmInicio + (performance.currentTrip.kmRemaining * 1.3);
-                                return (
-                                    <div className="drv-progress-bar">
-                                        <div className="drv-progress-fill"
-                                            style={{ width: `${Math.max(5, 100 - Math.min(100, (performance.currentTrip.kmRemaining / Math.max(1, performance.currentTrip.kmRemaining + 50)) * 100))}%` }} />
-                                    </div>
-                                );
-                            })()}
+                            <div className="drv-progress-bar">
+                                <div className="drv-progress-fill"
+                                    style={{ width: `${Math.min(100, Math.max(performance.currentTrip.progress ?? 0, performance.currentTrip.totalKmPlanned ? 2 : 5))}%` }} />
+                            </div>
                         </div>
                     )}
 
@@ -459,12 +467,26 @@ export default function DriverDashboard() {
                     </div>
                     <div style={{ fontSize:'.72rem', color:'#6B7280', marginBottom:'.85rem' }}>
                         🗓️ Partida: {fmt(nextTrip.departureDate)} · {nextTrip.truck.licensePlate}
+                        {nextTrip.notes && (
+                            <span style={{ display:'block', marginTop:'.25rem', color:'#92400E', fontWeight:700 }}>
+                                {nextTrip.notes.split('—')[0]?.trim()}
+                            </span>
+                        )}
                     </div>
-                    <div style={{ fontSize:'.72rem', color:'#6B7280', marginBottom:'.85rem',
-                        padding:'.5rem .75rem', borderRadius:8, background:'rgba(8,145,178,.08)',
-                        border:'1px solid rgba(8,145,178,.15)' }}>
-                        📍 Ao iniciar, o GPS será ativado automaticamente para rastreamento da rota.
-                    </div>
+                    {!isDriverAccepted(nextTrip) && (
+                        <div style={{ fontSize:'.75rem', fontWeight:700, color:'#92400E', marginBottom:'.75rem',
+                            padding:'.55rem .75rem', borderRadius:8, background:'#FFFBEB', border:'1px solid #FDE68A' }}>
+                            Confirme a viagem em <strong>Viagens → Planejadas</strong> (Aceitar) antes de iniciar.
+                        </div>
+                    )}
+                    {isDriverAccepted(nextTrip) && (
+                        <div style={{ fontSize:'.72rem', color:'#6B7280', marginBottom:'.85rem',
+                            padding:'.5rem .75rem', borderRadius:8, background:'rgba(8,145,178,.08)',
+                            border:'1px solid rgba(8,145,178,.15)' }}>
+                            📍 Ao iniciar, o GPS será ativado automaticamente para rastreamento da rota.
+                        </div>
+                    )}
+                    {isDriverAccepted(nextTrip) && (
                     <button
                         className="drv-btn"
                         style={{
@@ -482,6 +504,7 @@ export default function DriverDashboard() {
                             ? '🚛 Iniciar Viagem'
                             : '🚫 Disponível somente no dia da partida'}
                     </button>
+                    )}
                 </div>
             )}
 

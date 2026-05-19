@@ -20,6 +20,7 @@ import { ADMIN_PAGE_SIZE_TABLE } from '@/lib/api/pagination';
 import {
     getContaTipoDisplayLabel,
     parseReimbursementMeta,
+    parseAbsencePenaltyMeta,
     type ReimbursementMeta,
     REIMBURSEMENT_CATEGORY_LABELS,
     STATUS_CFG,
@@ -434,6 +435,7 @@ function LancamentoCarretaCard({
 }) {
     const accentColor = st.color;
     const [hov, setHov] = useState(false);
+    const absencePenalty = parseAbsencePenaltyMeta(c);
     return (
         <div
             className="adm-kpi-card"
@@ -563,6 +565,32 @@ function LancamentoCarretaCard({
                         display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
                     }}>
                         ⚠️ Vencimento ultrapassado — revisar pagamento
+                    </div>
+                )}
+                {absencePenalty.reembolsoDevido != null && absencePenalty.reembolsoDevido > 0 && (
+                    <div style={{
+                        padding: '8px 12px', borderRadius: 10,
+                        background: '#FFF7ED', border: '1px solid #FED7AA',
+                        color: '#9A3412', fontSize: '0.7rem', fontWeight: 700,
+                        lineHeight: 1.45, marginTop: 8,
+                    }}>
+                        ⚠️ Imprevisto penalizado: o funcionário deve reembolsar{' '}
+                        {fmtCur(absencePenalty.reembolsoDevido)} (diária já paga).
+                    </div>
+                )}
+                {absencePenalty.penalidadeImprevisto != null &&
+                    absencePenalty.penalidadeImprevisto > 0 &&
+                    !(absencePenalty.reembolsoDevido != null && absencePenalty.reembolsoDevido > 0) && (
+                    <div style={{
+                        padding: '8px 12px', borderRadius: 10,
+                        background: '#F0FDF4', border: '1px solid #BBF7D0',
+                        color: '#166534', fontSize: '0.7rem', fontWeight: 600,
+                        lineHeight: 1.45, marginTop: 8,
+                    }}>
+                        Desconto por imprevisto: −{fmtCur(absencePenalty.penalidadeImprevisto)}
+                        {absencePenalty.valorAntesPenalidade != null
+                            ? ` (antes ${fmtCur(absencePenalty.valorAntesPenalidade)})`
+                            : ''}
                     </div>
                 )}
             </div>

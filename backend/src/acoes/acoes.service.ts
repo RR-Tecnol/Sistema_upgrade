@@ -36,6 +36,17 @@ import {
 import { EmployeeRole } from '@prisma/client';
 import { TripsService } from '../trips/trips.service';
 import { CoursesService } from '../courses/courses.service';
+import {
+    createContaPagarForAcaoCusto,
+    deactivateContaPagarForAcaoCusto,
+    syncMissingContasForAcaoCustos,
+} from '../common/acao-custo-conta-pagar.util';
+import {
+    computeFuncionarioPeriodPayment,
+    funcionarioAcaoCustoDescricao,
+    isCltContract,
+} from '../common/employee-period-payment.util';
+import { resolveStoredMediaUrl } from '../common/resolve-stored-media-url.util';
 
 @Injectable()
 export class AcoesService {
@@ -152,16 +163,51 @@ export class AcoesService {
             throw new NotFoundException(`Ação com ID ${id} não encontrada`);
         }
 
+        const acaoCtx = {
+            id,
+            cidadeNome: (acao as any).cidadeNome,
+            dataFim: (acao as any).dataFim,
+        };
+        let contaPagarFinanceiroSync = 0;
+        contaPagarFinanceiroSync += await syncMissingContasForAcaoCustos(
+            this.prisma,
+            acaoCtx,
+            (acao as any).custos ?? [],
+        );
+
         // Auto-sync: criar AcaoCusto para funcionários que ainda não têm lançamento
         let contaPagarDiariaCriada = false;
         if ((acao as any).funcionarios?.length) {
+            const finSettings = this.settingsService.get();
             for (const f of (acao as any).funcionarios) {
-                const descricao = `Diária - ${f.employee.name}`;
+                const emp = f.employee;
+                const descricao = funcionarioAcaoCustoDescricao(emp.name, emp.contractType);
+                const legacyDescricoes = [descricao, `Diária - ${emp.name}`, `CLT - ${emp.name}`];
                 const jaExiste = await this.prisma.acaoCusto.findFirst({
-                    where: { acaoId: id, tipo: 'DIARIA_FUNCIONARIO', descricao },
+                    where: { acaoId: id, tipo: 'DIARIA_FUNCIONARIO', descricao: { in: legacyDescricoes } },
                 });
+                let paymentObs = '';
+                let valor = 0;
+                try {
+                    const payment = computeFuncionarioPeriodPayment({
+                        contractType: emp.contractType,
+                        valorDiaria: Number(f.valorDiaria) || Number(emp.dailyCost) || 0,
+                        diasTrabalhados: f.diasTrabalhados,
+                        monthlySalaryCLT: emp.monthlySalaryCLT ? Number(emp.monthlySalaryCLT) : null,
+                        travelRuleKm: emp.travelRuleKm,
+                        settings: {
+                            diasUteisReferenciaMes: finSettings.diasUteisReferenciaMes,
+                            kmLimitePassagemSemanal: finSettings.kmLimitePassagemSemanal,
+                            valorPassagemViagem: finSettings.valorPassagemViagem,
+                        },
+                    });
+                    valor = payment.valorTotal;
+                    paymentObs = payment.observacoes;
+                } catch {
+                    valor = Number(f.valorDiaria) * f.diasTrabalhados;
+                    paymentObs = `${f.diasTrabalhados} dia(s) × R$ ${Number(f.valorDiaria).toFixed(2)}/dia`;
+                }
                 if (!jaExiste) {
-                    const valor = Number(f.valorDiaria) * f.diasTrabalhados;
                     await this.prisma.acaoCusto.create({
                         data: {
                             acaoId: id,
@@ -169,16 +215,19 @@ export class AcoesService {
                             descricao,
                             valor,
                             data: (acao as any).dataInicio || new Date(),
-                            observacoes: `${f.diasTrabalhados} dia(s) × R$ ${Number(f.valorDiaria).toFixed(2)}/dia`,
+                            observacoes: paymentObs,
                         },
                     });
                 }
                 // Criar ContaPagar se também não existir
                 const contaExiste = await this.prisma.contaPagar.findFirst({
-                    where: { acaoId: id, tipo_conta: 'diaria_funcionario', descricao },
+                    where: {
+                        acaoId: id,
+                        tipo_conta: 'diaria_funcionario',
+                        descricao: { in: legacyDescricoes },
+                    },
                 });
                 if (!contaExiste) {
-                    const valor = Number(f.valorDiaria) * f.diasTrabalhados;
                     await this.prisma.contaPagar.create({
                         data: {
                             tipo_conta: 'diaria_funcionario',
@@ -189,7 +238,7 @@ export class AcoesService {
                             recorrente: false,
                             acaoId: id,
                             cidade: (acao as any).cidadeNome || undefined,
-                            observacoes: `${f.diasTrabalhados} dia(s) × R$ ${Number(f.valorDiaria).toFixed(2)}/dia`,
+                            observacoes: paymentObs,
                         },
                     });
                     contaPagarDiariaCriada = true;
@@ -207,11 +256,66 @@ export class AcoesService {
                 },
             });
             if (acaoAtualizada) {
-                if (contaPagarDiariaCriada) {
-                    this.emitFinanceiroListagemRefresh('acao_find_one_sync_diaria', { acaoId: id });
+                if (contaPagarDiariaCriada || contaPagarFinanceiroSync > 0) {
+                    this.emitFinanceiroListagemRefresh('acao_find_one_sync_financeiro', { acaoId: id });
                 }
                 const resumoFinanceiro = this.calcularResumoFinanceiro(acaoAtualizada);
                 return { ...acaoAtualizada, resumoFinanceiro };
+            }
+        }
+
+        if (contaPagarFinanceiroSync > 0) {
+            this.emitFinanceiroListagemRefresh('acao_find_one_sync_custos', { acaoId: id });
+            const acaoAtualizadaCustos = await this.prisma.acao.findUnique({
+                where: { id },
+                include: {
+                    cidade: true,
+                    grupo: true,
+                    carreta: true,
+                    turmas: {
+                        include: {
+                            turma: {
+                                include: {
+                                    course: { select: { id: true, name: true } },
+                                    _count: { select: { enrollments: true } },
+                                },
+                            },
+                        },
+                    },
+                    custos: {
+                        include: { funcionario: { select: { id: true, name: true } } },
+                        orderBy: { data: 'desc' },
+                    },
+                    equipe: {
+                        include: { user: { select: { id: true, name: true, email: true, role: true } } },
+                    },
+                    funcionarios: {
+                        include: {
+                            employee: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    role: true,
+                                    department: true,
+                                    phone: true,
+                                    email: true,
+                                    specialty: true,
+                                    dailyCost: true,
+                                    photoUrl: true,
+                                    active: true,
+                                    contractType: true,
+                                    monthlySalaryCLT: true,
+                                    travelRuleKm: true,
+                                },
+                            },
+                        },
+                        orderBy: { createdAt: 'asc' },
+                    },
+                },
+            });
+            if (acaoAtualizadaCustos) {
+                const resumoFinanceiro = this.calcularResumoFinanceiro(acaoAtualizadaCustos);
+                return { ...acaoAtualizadaCustos, resumoFinanceiro };
             }
         }
 
@@ -301,6 +405,9 @@ export class AcoesService {
                 status: data.status ?? AcaoStatus.PLANEJADA,
                 dataInicio: new Date(data.dataInicio),
                 dataFim: new Date(data.dataFim),
+                driverDepartureDate: data.driverDepartureDate
+                    ? new Date(data.driverDepartureDate)
+                    : undefined,
                 motorCourseId: data.motorCourseId || undefined,
                 period: data.period,
                 startTime: data.startTime,
@@ -338,12 +445,20 @@ export class AcoesService {
 
     async update(id: string, data: Partial<CreateAcaoDto>) {
         await this.findOne(id);
-        return this.prisma.acao.update({
+        const { driverDepartureDate: rawDriverDeparture, ...rest } = data;
+        const driverDepartureTouched = rawDriverDeparture !== undefined;
+        const updated = await this.prisma.acao.update({
             where: { id },
             data: {
-                ...data,
+                ...rest,
                 dataInicio: data.dataInicio ? new Date(data.dataInicio) : undefined,
                 dataFim: data.dataFim ? new Date(data.dataFim) : undefined,
+                driverDepartureDate:
+                    rawDriverDeparture === undefined
+                        ? undefined
+                        : rawDriverDeparture
+                          ? new Date(rawDriverDeparture)
+                          : null,
                 weekendExtraDates:
                     data.weekendExtraDates === undefined
                         ? undefined
@@ -357,6 +472,30 @@ export class AcoesService {
                 carreta: true,
             },
         });
+
+        if (driverDepartureTouched) {
+            const drivers = await this.prisma.acaoFuncionario.findMany({
+                where: { acaoId: id, employee: { role: EmployeeRole.DRIVER, userId: { not: null } } },
+                select: { employee: { select: { userId: true } } },
+            });
+            for (const d of drivers) {
+                if (!d.employee.userId) continue;
+                try {
+                    await syncDriverForEmployeeOnAcao(
+                        this.prisma,
+                        this.tripsService,
+                        id,
+                        d.employee.userId,
+                    );
+                } catch (e: any) {
+                    this.logger.warn(
+                        `Regenerar viagens após driverDepartureDate (${id}): ${e?.message}`,
+                    );
+                }
+            }
+        }
+
+        return updated;
     }
 
     async updateStatus(id: string, status: AcaoStatus) {
@@ -694,21 +833,40 @@ export class AcoesService {
 
     // ── Custos ───────────────────────────────────────────────────
     async addCusto(acaoId: string, data: CreateAcaoCustoDto) {
-        await this.findOne(acaoId);
-        const novoCusto = await this.prisma.acaoCusto.create({
-            data: {
-                acaoId,
-                tipo: data.tipo,
-                descricao: data.descricao,
-                valor: data.valor,
-                data: new Date(data.data),
-                litros: data.litros,
-                funcionarioId: data.funcionarioId,
-                observacoes: data.observacoes,
-            },
-            include: {
-                funcionario: { select: { id: true, name: true } },
-            },
+        const acao = await this.prisma.acao.findUnique({
+            where: { id: acaoId },
+            select: { id: true, cidadeNome: true, dataFim: true, nome: true },
+        });
+        if (!acao) throw new NotFoundException(`Ação com ID ${acaoId} não encontrada`);
+
+        const novoCusto = await this.prisma.$transaction(async (tx) => {
+            const created = await tx.acaoCusto.create({
+                data: {
+                    acaoId,
+                    tipo: data.tipo,
+                    descricao: data.descricao,
+                    valor: data.valor,
+                    data: new Date(data.data),
+                    litros: data.litros,
+                    funcionarioId: data.funcionarioId,
+                    observacoes: data.observacoes,
+                },
+                include: {
+                    funcionario: { select: { id: true, name: true } },
+                },
+            });
+
+            if (data.tipo === 'ABASTECIMENTO' || data.tipo === 'DESPESA_GERAL') {
+                await createContaPagarForAcaoCusto(tx, acao, created);
+            }
+
+            return created;
+        });
+
+        this.emitFinanceiroListagemRefresh('acao_add_custo', {
+            acaoId,
+            custoId: novoCusto.id,
+            tipo: data.tipo,
         });
 
         // GAP-F3: alerta quando custo real > estimado × (percentualAlertaCusto/100) (Sprint 2)
@@ -754,7 +912,19 @@ export class AcoesService {
     async removeCusto(custoId: string) {
         const custo = await this.prisma.acaoCusto.findUnique({ where: { id: custoId } });
         if (!custo) throw new NotFoundException('Custo não encontrado');
-        return this.prisma.acaoCusto.delete({ where: { id: custoId } });
+
+        await this.prisma.$transaction(async (tx) => {
+            await deactivateContaPagarForAcaoCusto(tx, custoId);
+            await tx.acaoCusto.delete({ where: { id: custoId } });
+        });
+
+        this.emitFinanceiroListagemRefresh('acao_remove_custo', {
+            acaoId: custo.acaoId,
+            custoId,
+            tipo: custo.tipo,
+        });
+
+        return { message: 'Custo removido com sucesso' };
     }
 
     async getResumoFinanceiro(id: string) {
@@ -813,6 +983,9 @@ export class AcoesService {
                     role: true,
                     department: true,
                     dailyCost: true,
+                    contractType: true,
+                    monthlySalaryCLT: true,
+                    travelRuleKm: true,
                     userId: true,
                     specialty: true,
                     phone: true,
@@ -823,8 +996,13 @@ export class AcoesService {
             this.prisma.employee.count({ where }),
         ]);
 
+        const mapped = employees.map(e => ({
+            ...e,
+            photoUrl: e.photoUrl ? resolveStoredMediaUrl(e.photoUrl) ?? e.photoUrl : e.photoUrl,
+        }));
+
         return {
-            employees,
+            employees: mapped,
             total,
             page,
             limit,
@@ -886,7 +1064,21 @@ export class AcoesService {
             );
         }
 
-        const valorDiariaFinal = dto.valorDiaria ?? (emp.dailyCost ? Number(emp.dailyCost) : 0);
+        const settings = this.settingsService.get();
+        const empIsClt = isCltContract(emp.contractType);
+        const valorDiariaInput =
+            dto.valorDiaria ?? (emp.dailyCost ? Number(emp.dailyCost) : 0);
+
+        if (!empIsClt && (!valorDiariaInput || valorDiariaInput <= 0)) {
+            throw new BadRequestException(
+                'Informe o valor da diária ou cadastre o custo diário do funcionário.',
+            );
+        }
+        if (empIsClt && (!emp.monthlySalaryCLT || Number(emp.monthlySalaryCLT) <= 0)) {
+            throw new BadRequestException(
+                'Funcionário CLT sem salário mensal. Defina o salário em Funcionários antes de vincular.',
+            );
+        }
 
         const dataInicio = new Date((acao as any).dataInicio);
         const dataFim = new Date((acao as any).dataFim);
@@ -914,13 +1106,34 @@ export class AcoesService {
             `(de ${dataInicio.toISOString().slice(0, 10)} até ${dataFim.toISOString().slice(0, 10)})`,
         );
 
+        let payment: ReturnType<typeof computeFuncionarioPeriodPayment>;
+        try {
+            payment = computeFuncionarioPeriodPayment({
+                contractType: emp.contractType,
+                valorDiaria: valorDiariaInput,
+                diasTrabalhados: diasFinal,
+                monthlySalaryCLT: emp.monthlySalaryCLT ? Number(emp.monthlySalaryCLT) : null,
+                travelRuleKm: emp.travelRuleKm,
+                settings: {
+                    diasUteisReferenciaMes: settings.diasUteisReferenciaMes,
+                    kmLimitePassagemSemanal: settings.kmLimitePassagemSemanal,
+                    valorPassagemViagem: settings.valorPassagemViagem,
+                },
+            });
+        } catch (err: any) {
+            throw new BadRequestException(err?.message || 'Não foi possível calcular o custo do funcionário.');
+        }
+
+        const descricao = funcionarioAcaoCustoDescricao(emp.name, emp.contractType);
+        const valorTotal = payment.valorTotal;
+
         let vinculo: any;
         try {
             vinculo = await this.prisma.acaoFuncionario.create({
                 data: {
                     acaoId,
                     employeeId: dto.employeeId,
-                    valorDiaria: valorDiariaFinal,
+                    valorDiaria: payment.valorDiariaRecord,
                     diasTrabalhados: diasFinal,
                 },
                 include: {
@@ -933,34 +1146,41 @@ export class AcoesService {
             throw new ConflictException('Funcionário já vinculado a esta ação');
         }
 
-        // Criar AcaoCusto imediatamente ao vincular
-        const valorTotal = valorDiariaFinal * diasFinal;
+        // Criar AcaoCusto imediatamente ao vincular (CLT ou diária)
         await this.prisma.acaoCusto.create({
             data: {
                 acaoId,
                 tipo: 'DIARIA_FUNCIONARIO',
-                descricao: `Diária - ${emp.name}`,
+                descricao,
                 valor: valorTotal,
                 data: dataInicio,
-                observacoes: `${diasFinal} dia(s) × R$ ${valorDiariaFinal.toFixed(2)}/dia`,
+                observacoes: payment.observacoes,
             },
         });
 
         // Criar/atualizar ContaPagar vinculada
         await this.prisma.contaPagar.deleteMany({
-            where: { acaoId, tipo_conta: 'diaria_funcionario', descricao: `Diária - ${emp.name}` },
+            where: {
+                acaoId,
+                tipo_conta: 'diaria_funcionario',
+                OR: [
+                    { descricao },
+                    { descricao: `Diária - ${emp.name}` },
+                    { descricao: `CLT - ${emp.name}` },
+                ],
+            },
         });
         await this.prisma.contaPagar.create({
             data: {
                 tipo_conta: 'diaria_funcionario',
-                descricao: `Diária - ${emp.name}`,
+                descricao,
                 valor: valorTotal,
                 data_vencimento: dataFim,
                 status: 'pendente',
                 recorrente: false,
                 acaoId,
                 cidade: (acao as any).cidadeNome || undefined,
-                observacoes: `${diasFinal} dia(s) × R$ ${valorDiariaFinal.toFixed(2)}/dia`,
+                observacoes: payment.observacoes,
             },
         });
         this.emitFinanceiroListagemRefresh('acao_add_funcionario_diaria', { acaoId, employeeId: dto.employeeId });
@@ -1076,7 +1296,18 @@ export class AcoesService {
     async updateFuncionarioDias(acaoId: string, employeeId: string, diasTrabalhados: number) {
         const vinculo = await this.prisma.acaoFuncionario.findFirst({
             where: { acaoId, employeeId },
-            include: { employee: { select: { id: true, name: true } } },
+            include: {
+                employee: {
+                    select: {
+                        id: true,
+                        name: true,
+                        contractType: true,
+                        monthlySalaryCLT: true,
+                        travelRuleKm: true,
+                        dailyCost: true,
+                    },
+                },
+            },
         });
         if (!vinculo) throw new NotFoundException('Vínculo de funcionário não encontrado');
 
@@ -1086,26 +1317,49 @@ export class AcoesService {
             `BUG-05: atualizar dias ${vinculo.employee.name}: informado=${diasTrabalhados}, calc=${diasCalc}, final=${diasFinal}`,
         );
 
-        const novoValor = Number(vinculo.valorDiaria) * diasFinal;
-        const descricao = `Diária - ${vinculo.employee.name}`;
+        const settings = this.settingsService.get();
+        const emp = vinculo.employee;
+        let payment: ReturnType<typeof computeFuncionarioPeriodPayment>;
+        try {
+            payment = computeFuncionarioPeriodPayment({
+                contractType: emp.contractType,
+                valorDiaria: Number(vinculo.valorDiaria) || Number(emp.dailyCost) || 0,
+                diasTrabalhados: diasFinal,
+                monthlySalaryCLT: emp.monthlySalaryCLT ? Number(emp.monthlySalaryCLT) : null,
+                travelRuleKm: emp.travelRuleKm,
+                settings: {
+                    diasUteisReferenciaMes: settings.diasUteisReferenciaMes,
+                    kmLimitePassagemSemanal: settings.kmLimitePassagemSemanal,
+                    valorPassagemViagem: settings.valorPassagemViagem,
+                },
+            });
+        } catch (err: any) {
+            throw new BadRequestException(err?.message || 'Não foi possível recalcular o custo.');
+        }
+
+        const novoValor = payment.valorTotal;
+        const descricao = funcionarioAcaoCustoDescricao(emp.name, emp.contractType);
+        const obs = payment.observacoes;
 
         // 1. Atualizar AcaoFuncionario
         await this.prisma.acaoFuncionario.updateMany({
             where: { acaoId, employeeId },
-            data: { diasTrabalhados: diasFinal },
+            data: { diasTrabalhados: diasFinal, valorDiaria: payment.valorDiariaRecord },
         });
 
         // 2. Upsert AcaoCusto — cria se não existir (funcionários vinculados antes do auto-create)
+        const legacyDescricoes = [
+            descricao,
+            `Diária - ${emp.name}`,
+            `CLT - ${emp.name}`,
+        ];
         const acaoCusto = await this.prisma.acaoCusto.findFirst({
-            where: { acaoId, tipo: 'DIARIA_FUNCIONARIO', descricao },
+            where: { acaoId, tipo: 'DIARIA_FUNCIONARIO', descricao: { in: legacyDescricoes } },
         });
         if (acaoCusto) {
             await this.prisma.acaoCusto.update({
                 where: { id: acaoCusto.id },
-                data: {
-                    valor: novoValor,
-                    observacoes: `${diasFinal} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
-                },
+                data: { valor: novoValor, descricao, observacoes: obs },
             });
         } else {
             const acao = await this.prisma.acao.findUnique({ where: { id: acaoId } });
@@ -1116,22 +1370,23 @@ export class AcoesService {
                     descricao,
                     valor: novoValor,
                     data: acao?.dataInicio || new Date(),
-                    observacoes: `${diasFinal} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
+                    observacoes: obs,
                 },
             });
         }
 
         // 3. Upsert ContaPagar
         const conta = await this.prisma.contaPagar.findFirst({
-            where: { acaoId, tipo_conta: 'diaria_funcionario', descricao },
+            where: {
+                acaoId,
+                tipo_conta: 'diaria_funcionario',
+                descricao: { in: legacyDescricoes },
+            },
         });
         if (conta) {
             await this.prisma.contaPagar.update({
                 where: { id: conta.id },
-                data: {
-                    valor: novoValor,
-                    observacoes: `${diasFinal} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
-                },
+                data: { valor: novoValor, descricao, observacoes: obs },
             });
         } else {
             const acao = await this.prisma.acao.findUnique({ where: { id: acaoId } });
@@ -1145,7 +1400,7 @@ export class AcoesService {
                     recorrente: false,
                     acaoId,
                     cidade: acao?.cidadeNome || undefined,
-                    observacoes: `${diasFinal} dia(s) × R$ ${Number(vinculo.valorDiaria).toFixed(2)}/dia`,
+                    observacoes: obs,
                 },
             });
         }
@@ -1167,11 +1422,14 @@ export class AcoesService {
         });
 
         if (vinculo) {
-            const descricao = `Diária - ${vinculo.employee.name}`;
-            // Remover AcaoCusto relacionado
-            await this.prisma.acaoCusto.deleteMany({ where: { acaoId, tipo: 'DIARIA_FUNCIONARIO', descricao } });
-            // Remover ContaPagar relacionada
-            await this.prisma.contaPagar.deleteMany({ where: { acaoId, tipo_conta: 'diaria_funcionario', descricao } });
+            const name = vinculo.employee.name;
+            const descricoes = [`Diária - ${name}`, `CLT - ${name}`];
+            await this.prisma.acaoCusto.deleteMany({
+                where: { acaoId, tipo: 'DIARIA_FUNCIONARIO', descricao: { in: descricoes } },
+            });
+            await this.prisma.contaPagar.deleteMany({
+                where: { acaoId, tipo_conta: 'diaria_funcionario', descricao: { in: descricoes } },
+            });
             this.emitFinanceiroListagemRefresh('acao_remove_funcionario_diaria', { acaoId, employeeId });
         }
 

@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import {
+    buildContaObservacoesFromMaintenance,
+    mapMaintenancePaymentToContaStatus,
+} from '../common/truck-maintenance-conta-pagar.util';
 import { CreateTruckMaintenanceDto } from './dto/create-truck-maintenance.dto';
 import { UpdateTruckMaintenanceDto } from './dto/update-truck-maintenance.dto';
 
@@ -17,14 +22,67 @@ export class TruckMaintenanceService {
         } catch { /* WS nunca bloqueia */ }
     }
 
+    private resolveContaValor(
+        custoReal?: number | Prisma.Decimal | null,
+        custoEstimado?: number | Prisma.Decimal | null,
+    ): number {
+        const v = Number(custoReal ?? custoEstimado ?? 0);
+        return Math.round(Math.max(0, v) * 100) / 100;
+    }
+
+    private resolveContaVencimento(
+        dataConclusao?: Date | string | null,
+        dataAgendada?: Date | string | null,
+    ): Date {
+        if (dataConclusao) return new Date(dataConclusao);
+        if (dataAgendada) return new Date(dataAgendada);
+        return new Date();
+    }
+
+    private async createContaPagarForMaintenance(
+        prisma: Prisma.TransactionClient | PrismaService,
+        maintenance: {
+            id: string;
+            tipo: string;
+            titulo: string;
+            fornecedor?: string | null;
+            responsavel?: string | null;
+            cidade?: string | null;
+            observacoes?: string | null;
+        },
+        truck: { identifier?: string | null; licensePlate?: string | null },
+        valor: number,
+        statusPagamento: string | undefined,
+        dataVencimento: Date,
+    ) {
+        return prisma.contaPagar.create({
+            data: {
+                tipo_conta: 'manutencao',
+                tipo_espontaneo: maintenance.tipo,
+                descricao: `[MANUTENÇÃO] ${maintenance.titulo} — ${truck.identifier || truck.licensePlate || 'Carreta'}`,
+                valor,
+                data_vencimento: dataVencimento,
+                status: mapMaintenancePaymentToContaStatus(statusPagamento),
+                recorrente: false,
+                cidade: maintenance.cidade?.trim() || undefined,
+                observacoes: buildContaObservacoesFromMaintenance({
+                    maintenanceId: maintenance.id,
+                    fornecedor: maintenance.fornecedor,
+                    responsavel: maintenance.responsavel,
+                    observacoes: maintenance.observacoes,
+                }),
+            },
+        });
+    }
+
     private async syncTruckDates(truckId: string) {
         const all = await this.prisma.truckMaintenance.findMany({ where: { truckId } });
-        
+
         const concluidaDates = all
             .filter(m => m.status === 'concluida' && m.dataConclusao)
             .map(m => new Date(m.dataConclusao!).getTime());
-        const lastMaintenanceDate = concluidaDates.length > 0 
-            ? new Date(Math.max(...concluidaDates)) 
+        const lastMaintenanceDate = concluidaDates.length > 0
+            ? new Date(Math.max(...concluidaDates))
             : null;
 
         const agendadaDates = all
@@ -36,14 +94,12 @@ export class TruckMaintenanceService {
 
         await this.prisma.truck.update({
             where: { id: truckId },
-            data: { 
-                lastMaintenanceDate: lastMaintenanceDate, 
-                nextMaintenanceDate: nextMaintenanceDate 
-            }
+            data: {
+                lastMaintenanceDate: lastMaintenanceDate,
+                nextMaintenanceDate: nextMaintenanceDate,
+            },
         });
     }
-
-    // ── CRUD ──────────────────────────────────────────────────────────────────
 
     async findAll(truckId?: string) {
         return this.prisma.truckMaintenance.findMany({
@@ -66,124 +122,158 @@ export class TruckMaintenanceService {
         const truck = await this.prisma.truck.findUnique({ where: { id: dto.truckId } });
         if (!truck) throw new NotFoundException('Carreta não encontrada');
 
-        const data: any = {
-            truckId: dto.truckId,
-            tipo: dto.tipo,
-            titulo: dto.titulo,
-            descricao: dto.descricao,
-            status: dto.status ?? 'agendada',
-            prioridade: dto.prioridade ?? 'media',
-            kmAtual: dto.kmAtual,
-            kmProximo: dto.kmProximo,
-            dataAgendada: dto.dataAgendada ? new Date(dto.dataAgendada) : undefined,
-            dataConclusao: dto.dataConclusao ? new Date(dto.dataConclusao) : undefined,
-            custoEstimado: dto.custoEstimado,
-            custoReal: dto.custoReal,
-            fornecedor: dto.fornecedor,
-            responsavel: dto.responsavel,
-            observacoes: dto.observacoes,
-        };
-
-        const maintenance = await this.prisma.truckMaintenance.create({ data });
-
-        // Atualizar status da carreta
-        if (['em_andamento', 'agendada'].includes(maintenance.status)) {
-            await this.prisma.truck.update({
-                where: { id: dto.truckId },
-                data: { status: 'MAINTENANCE' },
-            });
+        const valor = this.resolveContaValor(dto.custoReal, dto.custoEstimado);
+        const dataVencimento = this.resolveContaVencimento(dto.dataConclusao, dto.dataAgendada);
+        const cidade = dto.cidade?.trim() || '';
+        if (valor > 0 && !cidade) {
+            throw new BadRequestException(
+                'Informe a cidade da manutenção para gerar o lançamento em Contas a pagar.',
+            );
         }
 
-        // Criar ContaPagar imediatamente ao registrar com o status de pagamento escolhido
-        const valor = Number(dto.custoReal ?? dto.custoEstimado ?? 0);
-        if (valor > 0) {
-            const statusPag = dto.statusPagamento ?? 'pendente';
-            const conta = await this.prisma.contaPagar.create({
+        const result = await this.prisma.$transaction(async (tx) => {
+            const maintenance = await tx.truckMaintenance.create({
                 data: {
-                    tipo_conta: 'manutencao',
-                    tipo_espontaneo: dto.tipo,
-                    descricao: `[MANUTENÇÃO] ${dto.titulo} — ${truck.identifier || truck.licensePlate}`,
-                    valor,
-                    data_vencimento: dto.dataConclusao
-                        ? new Date(dto.dataConclusao)
-                        : dto.dataAgendada
-                            ? new Date(dto.dataAgendada)
-                            : new Date(),
-                    status: statusPag,
-                    recorrente: false,
+                    truckId: dto.truckId,
+                    tipo: dto.tipo,
+                    titulo: dto.titulo,
+                    descricao: dto.descricao,
+                    status: dto.status ?? 'agendada',
+                    prioridade: dto.prioridade ?? 'media',
+                    kmAtual: dto.kmAtual,
+                    kmProximo: dto.kmProximo,
+                    dataAgendada: dto.dataAgendada ? new Date(dto.dataAgendada) : undefined,
+                    dataConclusao: dto.dataConclusao ? new Date(dto.dataConclusao) : undefined,
+                    custoEstimado: dto.custoEstimado,
+                    custoReal: dto.custoReal,
+                    fornecedor: dto.fornecedor,
+                    responsavel: dto.responsavel,
+                    cidade: dto.cidade?.trim() || undefined,
                     observacoes: dto.observacoes,
-                    fornecedor: dto.fornecedor || undefined,
-                } as any,
+                    statusPagamento: dto.statusPagamento ?? 'pendente',
+                },
             });
-            await this.prisma.truckMaintenance.update({
-                where: { id: maintenance.id },
-                data: { contaPagarId: conta.id },
-            });
+
+            let contaPagarId: string | undefined;
+            if (valor > 0) {
+                const conta = await this.createContaPagarForMaintenance(
+                    tx,
+                    maintenance,
+                    truck,
+                    valor,
+                    dto.statusPagamento,
+                    dataVencimento,
+                );
+                contaPagarId = conta.id;
+                await tx.truckMaintenance.update({
+                    where: { id: maintenance.id },
+                    data: { contaPagarId: conta.id },
+                });
+            }
+
+            if (['em_andamento', 'agendada'].includes(maintenance.status)) {
+                await tx.truck.update({
+                    where: { id: dto.truckId },
+                    data: { status: 'MAINTENANCE' },
+                });
+            }
+
+            return { maintenance, contaPagarId };
+        });
+
+        if (result.contaPagarId) {
             this.emitFinanceiroListagemRefresh('truck_maintenance_create_conta', {
-                truckMaintenanceId: maintenance.id,
-                contaPagarId: conta.id,
+                truckMaintenanceId: result.maintenance.id,
+                contaPagarId: result.contaPagarId,
             });
         }
 
         await this.syncTruckDates(dto.truckId);
-        return maintenance;
+        return this.findOne(result.maintenance.id);
     }
 
     async update(id: string, dto: UpdateTruckMaintenanceDto) {
         const existing = await this.findOne(id);
-        const existingAny = existing as any;
 
-        const data: any = { ...dto };
+        const data: Record<string, unknown> = { ...dto };
         if (dto.dataAgendada) data.dataAgendada = new Date(dto.dataAgendada);
         if (dto.dataConclusao) data.dataConclusao = new Date(dto.dataConclusao);
 
-        const updated = await this.prisma.truckMaintenance.update({ where: { id }, data });
-
-        // Sincronizar ContaPagar
-        if (existingAny.contaPagarId) {
-            const novoValor = Number(dto.custoReal ?? dto.custoEstimado ?? existing.custoReal ?? existing.custoEstimado ?? 0);
-            const updateData: any = {};
-            if (novoValor > 0) updateData.valor = novoValor;
-            if ((dto as any).statusPagamento) updateData.status = (dto as any).statusPagamento;
-            if (dto.dataConclusao) updateData.data_vencimento = new Date(dto.dataConclusao);
-            if (dto.observacoes !== undefined) updateData.observacoes = dto.observacoes;
-            if (Object.keys(updateData).length > 0) {
-                await this.prisma.contaPagar.update({
-                    where: { id: existingAny.contaPagarId },
-                    data: updateData,
-                }).catch(() => { });
-                this.emitFinanceiroListagemRefresh('truck_maintenance_update_conta', {
-                    truckMaintenanceId: id,
-                    contaPagarId: existingAny.contaPagarId as string,
-                });
-            }
-        } else {
-            // Criar ContaPagar se ainda não existia e agora há um custo informado
-            const valor = Number(dto.custoReal ?? dto.custoEstimado ?? 0);
-            if (valor > 0) {
-                const truck = existing.truck as any;
-                const conta = await this.prisma.contaPagar.create({
-                    data: {
-                        tipo_conta: 'manutencao',
-                        tipo_espontaneo: existing.tipo,
-                        descricao: `[MANUTENÇÃO] ${existing.titulo} — ${truck?.identifier || truck?.licensePlate || ''}`,
-                        valor,
-                        data_vencimento: updated.dataConclusao ?? updated.dataAgendada ?? new Date(),
-                        status: (dto as any).statusPagamento ?? 'pendente',
-                        recorrente: false,
-                        observacoes: updated.observacoes,
-                        fornecedor: updated.fornecedor || undefined,
-                    } as any,
-                });
-                await this.prisma.truckMaintenance.update({ where: { id }, data: { contaPagarId: conta.id } });
-                this.emitFinanceiroListagemRefresh('truck_maintenance_update_create_conta', {
-                    truckMaintenanceId: id,
-                    contaPagarId: conta.id,
-                });
-            }
+        const valor = this.resolveContaValor(
+            dto.custoReal ?? existing.custoReal,
+            dto.custoEstimado ?? existing.custoEstimado,
+        );
+        const dataVencimento = this.resolveContaVencimento(
+            dto.dataConclusao ?? existing.dataConclusao,
+            dto.dataAgendada ?? existing.dataAgendada,
+        );
+        const cidadeNova =
+            dto.cidade !== undefined ? dto.cidade?.trim() || '' : existing.cidade?.trim() || '';
+        if (valor > 0 && !cidadeNova) {
+            throw new BadRequestException(
+                'Informe a cidade da manutenção para gerar o lançamento em Contas a pagar.',
+            );
         }
 
-        // Se concluída → liberar carreta se não houver outras abertas
+        const updated = await this.prisma.$transaction(async (tx) => {
+            const row = await tx.truckMaintenance.update({ where: { id }, data });
+
+            if (existing.contaPagarId) {
+                const updateData: Prisma.ContaPagarUpdateInput = {};
+                if (valor > 0) updateData.valor = valor;
+                if (dto.statusPagamento != null) {
+                    updateData.status = mapMaintenancePaymentToContaStatus(dto.statusPagamento);
+                }
+                if (dto.dataConclusao || dto.dataAgendada) {
+                    updateData.data_vencimento = dataVencimento;
+                }
+                if (dto.cidade !== undefined) {
+                    updateData.cidade = dto.cidade?.trim() || null;
+                }
+                if (
+                    dto.observacoes !== undefined ||
+                    dto.fornecedor !== undefined ||
+                    dto.responsavel !== undefined
+                ) {
+                    updateData.observacoes = buildContaObservacoesFromMaintenance({
+                        maintenanceId: id,
+                        fornecedor: dto.fornecedor ?? row.fornecedor,
+                        responsavel: dto.responsavel ?? row.responsavel,
+                        observacoes: dto.observacoes ?? row.observacoes,
+                    });
+                }
+                if (Object.keys(updateData).length > 0) {
+                    await tx.contaPagar.update({
+                        where: { id: existing.contaPagarId },
+                        data: updateData,
+                    });
+                }
+            } else if (valor > 0) {
+                const truck = existing.truck;
+                const conta = await this.createContaPagarForMaintenance(
+                    tx,
+                    row,
+                    truck,
+                    valor,
+                    dto.statusPagamento ?? row.statusPagamento ?? undefined,
+                    dataVencimento,
+                );
+                await tx.truckMaintenance.update({
+                    where: { id },
+                    data: { contaPagarId: conta.id },
+                });
+            }
+
+            return row;
+        });
+
+        if (existing.contaPagarId || (valor > 0 && !existing.contaPagarId)) {
+            this.emitFinanceiroListagemRefresh('truck_maintenance_update_conta', {
+                truckMaintenanceId: id,
+                contaPagarId: updated.contaPagarId ?? existing.contaPagarId,
+            });
+        }
+
         if (dto.status === 'concluida' && existing.status !== 'concluida') {
             const openCount = await this.prisma.truckMaintenance.count({
                 where: { truckId: updated.truckId, id: { not: id }, status: { in: ['agendada', 'em_andamento'] } },
@@ -196,7 +286,6 @@ export class TruckMaintenanceService {
             }
         }
 
-        // Se cancelada → verificar se deve liberar carreta
         if (dto.status === 'cancelada' && existing.status !== 'cancelada') {
             const openCount = await this.prisma.truckMaintenance.count({
                 where: { truckId: updated.truckId, id: { not: id }, status: { in: ['agendada', 'em_andamento'] } },
@@ -207,18 +296,15 @@ export class TruckMaintenanceService {
         }
 
         await this.syncTruckDates(updated.truckId);
-        return updated;
+        return this.findOne(id);
     }
 
     async remove(id: string) {
         const existing = await this.findOne(id);
-        // Soft delete via status cancelada (LIVRO_DE_REGRAS §3)
         const updated = await this.prisma.truckMaintenance.update({ where: { id }, data: { status: 'cancelada' } });
         await this.syncTruckDates(existing.truckId);
         return updated;
     }
-
-    // ── STATS ─────────────────────────────────────────────────────────────────
 
     async stats(truckId: string) {
         const truck = await this.prisma.truck.findUnique({

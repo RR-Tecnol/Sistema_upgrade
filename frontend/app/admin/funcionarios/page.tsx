@@ -12,6 +12,7 @@ import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 import { EmployeeDocumentsPreview } from '@/components/admin/EmployeeDocumentsPreview';
 import { toast } from '@/components/ui/Toast';
 import { AdminListPagination } from '@/components/admin/AdminListPagination';
+import { resolveMediaUrl } from '@/lib/resolve-media-url';
 
 /* ── Types ─────────────────────────────────────────── */
 type EmployeeRole = 'INSTRUCTOR' | 'DRIVER' | 'COORDINATOR' | 'TECHNICIAN' | 'ADMINISTRATIVE' | 'OTHER';
@@ -376,7 +377,12 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete, onDetails }: { emp: Emp
                             letterSpacing: '-0.02em',
                         }}>
                             {emp.photoUrl ? (
-                                <img src={emp.photoUrl} alt={emp.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16 }} />
+                                <img
+                                    src={resolveMediaUrl(emp.photoUrl) || emp.photoUrl}
+                                    alt={emp.name}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16 }}
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
                             ) : initials}
                         </div>
                         {/* Status pulse */}
@@ -448,7 +454,15 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete, onDetails }: { emp: Emp
                             <span style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 500 }}>{emp.specialty}</span>
                         </div>
                     )}
-                    {emp.dailyCost != null && (
+                    {emp.contractType === 'CLT' && emp.monthlySalaryCLT != null ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <span style={{ fontSize: '0.78rem', width: 18, textAlign: 'center' }}>📋</span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#7C3AED', fontFamily: 'JetBrains Mono, monospace' }}>
+                                CLT · R$ {Number(emp.monthlySalaryCLT).toFixed(2)}
+                                <span style={{ fontWeight: 500, color: '#9CA3AF' }}>/mês</span>
+                            </span>
+                        </div>
+                    ) : emp.dailyCost != null ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                             <span style={{ fontSize: '0.78rem', width: 18, textAlign: 'center' }}>💰</span>
                             <span style={{
@@ -456,8 +470,8 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete, onDetails }: { emp: Emp
                                 fontFamily: 'JetBrains Mono, monospace',
                             }}>R$ {Number(emp.dailyCost).toFixed(2)}<span style={{ fontWeight: 500, color: '#9CA3AF' }}>/dia</span></span>
                         </div>
-                    )}
-                    {!emp.phone && !emp.email && !emp.specialty && emp.dailyCost == null && (
+                    ) : null}
+                    {!emp.phone && !emp.email && !emp.specialty && emp.dailyCost == null && emp.monthlySalaryCLT == null && (
                         <div style={{ fontSize: '0.76rem', color: '#D1D5DB', fontStyle: 'italic' }}>Sem dados de contato</div>
                     )}
                 </div>
@@ -1659,6 +1673,8 @@ export default function FuncionariosPage() {
     const [loadingPending, setLoadingPending] = useState(false);
     const [pendingAction, setPendingAction] = useState<string | null>(null);
     const [pendingDailyCost, setPendingDailyCost] = useState<Record<string, string>>({});
+    const [pendingContractType, setPendingContractType] = useState<Record<string, 'CLT' | 'FREELANCE'>>({});
+    const [pendingMonthlySalaryCLT, setPendingMonthlySalaryCLT] = useState<Record<string, string>>({});
     const [pendingToast, setPendingToast] = useState<{ msg: string; ok: boolean } | null>(null);
     const [expandedPendingId, setExpandedPendingId] = useState<string | null>(null);
     const [adminInviteLink, setAdminInviteLink] = useState('');
@@ -1774,21 +1790,93 @@ export default function FuncionariosPage() {
         return docs;
     };
 
+    const getPendingContractType = (id: string) => pendingContractType[id] ?? 'FREELANCE';
+
+    const renderPendingFinanceBanner = (reqId: string) => {
+        const contractType = getPendingContractType(reqId);
+        const isClt = contractType === 'CLT';
+        return (
+            <div style={{ marginBottom: '1rem', background: isClt ? '#EDE9FE' : '#ECFDF5', border: `1px solid ${isClt ? '#C4B5FD' : '#BBF7D0'}`, borderRadius: 12, padding: '0.85rem 1rem' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: isClt ? '#5B21B6' : '#065F46', letterSpacing: '0.05em', marginBottom: '0.65rem' }}>
+                    DEFINIR CONTRATO PARA APROVAÇÃO
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                        {(['CLT', 'FREELANCE'] as const).map(opt => (
+                            <button
+                                key={opt}
+                                type="button"
+                                onClick={() => setPendingContractType(prev => ({ ...prev, [reqId]: opt }))}
+                                style={{
+                                    padding: '0.4rem 0.85rem',
+                                    borderRadius: 8,
+                                    border: contractType === opt ? '2px solid #111827' : '1px solid #D1D5DB',
+                                    background: contractType === opt ? '#111827' : '#fff',
+                                    color: contractType === opt ? '#FFD600' : '#374151',
+                                    fontWeight: 800,
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                {opt === 'CLT' ? 'CLT' : 'Diária'}
+                            </button>
+                        ))}
+                    </div>
+                    {isClt ? (
+                        <input
+                            value={pendingMonthlySalaryCLT[reqId] ?? ''}
+                            onChange={(e) => setPendingMonthlySalaryCLT(prev => ({ ...prev, [reqId]: maskCurrency(e.target.value) }))}
+                            placeholder="Salário mensal"
+                            className="form-input"
+                            style={{ width: 150, fontSize: '0.8rem', fontWeight: 700, color: '#5B21B6', background: '#fff' }}
+                        />
+                    ) : (
+                        <input
+                            value={pendingDailyCost[reqId] ?? ''}
+                            onChange={(e) => setPendingDailyCost(prev => ({ ...prev, [reqId]: maskCurrency(e.target.value) }))}
+                            placeholder="Valor diária"
+                            className="form-input"
+                            style={{ width: 130, fontSize: '0.8rem', fontWeight: 700, color: '#065F46', background: '#fff' }}
+                        />
+                    )}
+                    <span style={{ fontSize: '0.75rem', color: isClt ? '#6D28D9' : '#047857' }}>
+                        {isClt
+                            ? 'Salário mensal CLT — no período de curso entra proporcional + passagens.'
+                            : 'Diária — no período de curso conta dias × valor/dia.'}
+                    </span>
+                </div>
+            </div>
+        );
+    };
+
     const handleApprove = async (id: string, name: string) => {
-        const dailyCostValue = parseCurrency(pendingDailyCost[id] || '');
-        if (!dailyCostValue || dailyCostValue <= 0) {
-            showPendingToast('Informe a diária para aprovar este cadastro.', false);
-            return;
+        const contractType = getPendingContractType(id);
+        const payload: Record<string, unknown> = { contractType };
+        if (contractType === 'CLT') {
+            const salary = parseCurrency(pendingMonthlySalaryCLT[id] || '');
+            if (!salary || salary <= 0) {
+                showPendingToast('Informe o salário mensal CLT para aprovar.', false);
+                return;
+            }
+            payload.monthlySalaryCLT = salary;
+        } else {
+            const dailyCostValue = parseCurrency(pendingDailyCost[id] || '');
+            if (!dailyCostValue || dailyCostValue <= 0) {
+                showPendingToast('Informe a diária para aprovar este cadastro.', false);
+                return;
+            }
+            payload.dailyCost = dailyCostValue;
         }
         setPendingAction(id + 'approve');
         try {
-            await api.post(`/employees/registration-requests/${id}/approve`, { dailyCost: dailyCostValue });
+            await api.post(`/employees/registration-requests/${id}/approve`, payload);
             showPendingToast(`✅ ${name} aprovado com sucesso!`, true);
             setPendingDailyCost(prev => ({ ...prev, [id]: '' }));
+            setPendingMonthlySalaryCLT(prev => ({ ...prev, [id]: '' }));
             fetchPending();
             fetchEmployees();
-        } catch {
-            showPendingToast('Erro ao aprovar usuário', false);
+        } catch (err: any) {
+            showPendingToast(err?.response?.data?.message || 'Erro ao aprovar usuário', false);
         } finally { setPendingAction(null); }
     };
 
@@ -2033,17 +2121,7 @@ export default function FuncionariosPage() {
                                 if (!req) return null;
                                 return (
                                     <div className="glass-card animate-fade-in" style={{ padding: '1.5rem', border: '1px solid #E5E7EB' }}>
-                                        <div style={{ marginBottom: '1rem', background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: 12, padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', letterSpacing: '0.05em' }}>DEFINIR DIÁRIA PARA APROVAÇÃO</div>
-                                            <input
-                                                value={pendingDailyCost[req.id] ?? ''}
-                                                onChange={(e) => setPendingDailyCost(prev => ({ ...prev, [req.id]: maskCurrency(e.target.value) }))}
-                                                placeholder="0,00"
-                                                className="form-input"
-                                                style={{ width: 130, fontSize: '0.8rem', fontWeight: 700, color: '#065F46', background: '#fff' }}
-                                            />
-                                            <span style={{ fontSize: '0.75rem', color: '#047857' }}>Obrigatório para liberar a aprovação e manter consistência financeira.</span>
-                                        </div>
+                                        {renderPendingFinanceBanner(req.id)}
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
                                             <div>
                                                 <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6B7280', letterSpacing: '0.1em', marginBottom: '0.75rem' }}>📋 DADOS DO CADASTRO</div>
@@ -2146,21 +2224,7 @@ export default function FuncionariosPage() {
                                 {/* EXPANDED DETAILS */}
                                 {expandedPendingId === req.id && (
                                     <div className="animate-fade-in" style={{ padding: '1.5rem', borderTop: '1px solid #F3F4F6', background: '#FAFAFA' }}>
-                                        <div style={{ marginBottom: '1rem', background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: 12, padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', letterSpacing: '0.05em' }}>
-                                                DEFINIR DIÁRIA PARA APROVAÇÃO
-                                            </div>
-                                            <input
-                                                value={pendingDailyCost[req.id] ?? ''}
-                                                onChange={(e) => setPendingDailyCost(prev => ({ ...prev, [req.id]: maskCurrency(e.target.value) }))}
-                                                placeholder="0,00"
-                                                className="form-input"
-                                                style={{ width: 130, fontSize: '0.8rem', fontWeight: 700, color: '#065F46', background: '#fff' }}
-                                            />
-                                            <span style={{ fontSize: '0.75rem', color: '#047857' }}>
-                                                Obrigatório para liberar a aprovação e manter consistência financeira.
-                                            </span>
-                                        </div>
+                                        {renderPendingFinanceBanner(req.id)}
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
                                             
                                             {/* Dados Cadastrais Adicionais */}

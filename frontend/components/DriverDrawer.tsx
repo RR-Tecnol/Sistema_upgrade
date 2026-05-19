@@ -139,7 +139,13 @@ export default function DriverDrawer({ driver, onClose }: DriverDrawerProps) {
                         <div style={{ height: '100%', width: `${driver.progress}%`, background: isCompleted ? 'linear-gradient(90deg,#94A3B8,#CBD5E1)' : 'linear-gradient(90deg,#22C55E,#86EFAC)', borderRadius: 3, transition: 'width 1s' }} />
                     </div>
                     <div style={{ fontSize: '.7rem', color: '#64748B' }}>
-                        {isCompleted ? '100% — Viagem concluída' : `${driver.progress}% do trajeto concluído`}
+                        {isCompleted
+                            ? '100% — Viagem concluída'
+                            : `${driver.progress}% do trajeto · ${Math.round(driver.kmRemaining ?? driver.eta?.distanciaKm ?? 0)} km restantes${
+                                driver.totalKmPlanned
+                                    ? ` (de ${Math.round(driver.totalKmPlanned)} km${driver.distanceSource === 'acao' ? ' do período' : ''})`
+                                    : ''
+                              }`}
                     </div>
                 </div>
 
@@ -158,9 +164,9 @@ export default function DriverDrawer({ driver, onClose }: DriverDrawerProps) {
                         </div>
                         <div>
                             <div style={{ fontSize: '.6rem', color: '#64748B', fontWeight: 700,
-                                textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.25rem' }}>Distância</div>
+                                textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.25rem' }}>Restante</div>
                             <div style={{ fontFamily: 'Orbitron,sans-serif', fontWeight: 900,
-                                fontSize: '1.2rem', color: '#22C55E' }}>{Math.round(driver.eta.distanciaKm)}km</div>
+                                fontSize: '1.2rem', color: '#22C55E' }}>{Math.round(driver.kmRemaining ?? driver.eta.distanciaKm)}km</div>
                         </div>
                     </div>
                 )}

@@ -9,6 +9,7 @@
  * userId NÃO é usado como key pois pode duplicar em ambiente de teste.
  */
 import { useEffect, useRef, useCallback } from 'react';
+import api from '@/lib/api/client';
 
 export interface DriverMarker {
     userId: string;
@@ -31,6 +32,10 @@ export interface DriverMarker {
     };
     eta: { distanciaKm: number; minutos: number; fonte: 'haversine' | 'google' } | null;
     progress: number;
+    kmRemaining?: number;
+    kmTraveled?: number;
+    totalKmPlanned?: number;
+    distanceSource?: 'acao' | 'haversine' | 'none';
     trail?: { latitude: number; longitude: number }[];
     isCompleted?: boolean;  // F5.15: true = motorista concluiu viagem, pin cinza
 }
@@ -54,40 +59,40 @@ function fmtETA(min: number) {
     return m ? `${h}h${m}min` : `${h}h`;
 }
 
-// ── OSRM: rota A→B pelas estradas reais ──────────────────────────────────────
-async function routeOSRM(
+/** Rota pelas ruas via backend (OSRM). Retorna [] se indisponível — nunca linha reta “fake”. */
+async function routeDriving(
     from: [number, number],
-    to:   [number, number],
+    to: [number, number],
 ): Promise<[number, number][]> {
     const [fLat, fLng] = from;
     const [tLat, tLng] = to;
-    const url = `https://router.project-osrm.org/route/v1/driving/${fLng},${fLat};${tLng},${tLat}?overview=full&geometries=geojson`;
     try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (!res.ok) return [from, to];
-        const data = await res.json();
-        if (data.code !== 'Ok' || !data.routes?.length) return [from, to];
-        // GeoJSON retorna [lon, lat] — invertemos para [lat, lon] (Leaflet)
-        return data.routes[0].geometry.coordinates.map(
-            ([lon, lat]: [number, number]) => [lat, lon] as [number, number]
-        );
+        const { data } = await api.get<{ coordinates?: [number, number][] }>('/routing/driving', {
+            params: { fromLat: fLat, fromLng: fLng, toLat: tLat, toLng: tLng },
+            timeout: 18_000,
+        });
+        const coords = data?.coordinates;
+        if (Array.isArray(coords) && coords.length > 2) return coords;
+        return [];
     } catch {
-        return [from, to]; // fallback: linha reta
+        return [];
     }
 }
 
-// ── Trilha GPS → estradas: OSRM Route entre cada par consecutivo de pontos ────
-// Com 2+ pontos GPS reais, cada segmento vira a rota completa pelas ruas.
+function isRoadRoute(pts: [number, number][]): boolean {
+    return pts.length > 2;
+}
+
+// Trilha GPS: cada par de pontos vira segmento rodoviário (OSRM).
 async function buildRoadTrail(pts: [number, number][]): Promise<[number, number][]> {
-    if (pts.length < 2) return pts;
-    const segments = await Promise.all(
-        pts.slice(0, -1).map((p, i) => routeOSRM(p, pts[i + 1]))
-    );
+    if (pts.length < 2) return [];
     const result: [number, number][] = [];
-    segments.forEach((seg, i) => {
-        if (i === 0) result.push(...seg);
-        else result.push(...seg.slice(1)); // remove ponto de junção duplicado
-    });
+    for (let i = 0; i < pts.length - 1; i++) {
+        const seg = await routeDriving(pts[i], pts[i + 1]);
+        if (!isRoadRoute(seg)) continue;
+        if (result.length === 0) result.push(...seg);
+        else result.push(...seg.slice(1));
+    }
     return result;
 }
 
@@ -209,7 +214,11 @@ export default function MapaMotoristas({ drivers, selectedDriverId, onDriverClic
                         ${driver.trip.origin} → ${driver.trip.destination}
                     </div>
                     ${driver.eta ? `<div style="font-size:.75rem;color:#0891B2;font-weight:700;">
-                        ETA: ${fmtETA(driver.eta.minutos)} · ${Math.round(driver.eta.distanciaKm)}km
+                        ETA: ${fmtETA(driver.eta.minutos)} · ${Math.round(driver.kmRemaining ?? driver.eta.distanciaKm)} km restantes
+                        ${driver.totalKmPlanned ? ` / ${Math.round(driver.totalKmPlanned)} km` : ''}
+                    </div>` : ''}
+                    ${driver.progress != null ? `<div style="font-size:.72rem;color:#059669;margin-top:.2rem;">
+                        ${driver.progress}% percorrido
                     </div>` : ''}
                     ${driver.lastLocation.speed != null ? `<div style="font-size:.72rem;color:#059669;">
                         ${Math.round(driver.lastLocation.speed)} km/h
@@ -236,12 +245,12 @@ export default function MapaMotoristas({ drivers, selectedDriverId, onDriverClic
             let fullRoute: [number, number][] = fullRouteCacheRef.current.get(tripKey) ?? [];
 
             if (!fullRoute.length && hasOrigin && hasDest) {
-                fullRoute = await routeOSRM(
-                    [driver.trip.originLat!,      driver.trip.originLng!],
-                    [driver.trip.destinationLat!, driver.trip.destinationLng!]
+                fullRoute = await routeDriving(
+                    [driver.trip.originLat!, driver.trip.originLng!],
+                    [driver.trip.destinationLat!, driver.trip.destinationLng!],
                 );
-                if (!mapRef.current) return; // BUG-LEAFLET-ASYNC: componente desmontado durante await OSRM
-                if (fullRoute.length > 2) fullRouteCacheRef.current.set(tripKey, fullRoute);
+                if (!mapRef.current) return;
+                if (isRoadRoute(fullRoute)) fullRouteCacheRef.current.set(tripKey, fullRoute);
             }
 
             // ── F5.17: LÓGICA DE 3 MODOS DE VISUALIZAÇÃO ─────────────────────
@@ -253,38 +262,46 @@ export default function MapaMotoristas({ drivers, selectedDriverId, onDriverClic
 
             const mode = routeMode;
 
-            if (fullRoute.length > 1) {
-                // Encontra o ponto da malha viária mais próximo da posição atual do motorista
-                let closestIdx = 0;
+            let closestIdx = 0;
+            if (isRoadRoute(fullRoute)) {
                 let minDist = Infinity;
                 for (let i = 0; i < fullRoute.length; i++) {
-                    // Calculo de distância euclidiana simples serve p/ achar vizinho geografico
                     const d = Math.pow(fullRoute[i][0] - lat, 2) + Math.pow(fullRoute[i][1] - lng, 2);
                     if (d < minDist) {
                         minDist = d;
                         closestIdx = i;
                     }
                 }
-
                 if (isCompleted || driver.progress >= 100) {
                     closestIdx = fullRoute.length - 1;
                 }
+            }
 
-                if ((mode === 'trail' || mode === 'both') && !isCompleted) {
-                    // OSRM perfeito cortado até o ponto mais próximo da malha viária,
-                    // + coordenada GPS real como âncora final → linha termina no pin.
+            if ((mode === 'trail' || mode === 'both') && !isCompleted && hasOrigin) {
+                trailPts = await routeDriving(
+                    [driver.trip.originLat!, driver.trip.originLng!],
+                    [lat, lng],
+                );
+                if (!isRoadRoute(trailPts) && isRoadRoute(fullRoute)) {
                     trailPts = [...fullRoute.slice(0, closestIdx + 1), [lat, lng]];
                 }
+            }
 
-                if ((mode === 'remaining' || mode === 'both') && driver.progress < 100 && !isCompleted && hasDest) {
-                    // Coordenada GPS real como âncora inicial → linha começa no pin.
+            if ((mode === 'remaining' || mode === 'both') && driver.progress < 100 && !isCompleted && hasDest) {
+                remainPts = await routeDriving(
+                    [lat, lng],
+                    [driver.trip.destinationLat!, driver.trip.destinationLng!],
+                );
+                if (!isRoadRoute(remainPts) && isRoadRoute(fullRoute)) {
                     remainPts = [[lat, lng], ...fullRoute.slice(closestIdx)];
                 }
-            } else {
-                // sem rota completa — fallback: only trail from GPS points
-                if ((mode === 'trail' || mode === 'both') && (driver.trail?.length ?? 0) >= 2) {
-                    trailPts = driver.trail!.map(p => [p.latitude, p.longitude]);
-                }
+            }
+
+            if (!isRoadRoute(trailPts) && (mode === 'trail' || mode === 'both') && (driver.trail?.length ?? 0) >= 2) {
+                const roadTrail = await buildRoadTrail(
+                    driver.trail!.map(p => [p.latitude, p.longitude] as [number, number]),
+                );
+                if (isRoadRoute(roadTrail)) trailPts = roadTrail;
             }
 
             // ── DESENHA TRILHA PERCORRIDA ─────────────────────────────────────

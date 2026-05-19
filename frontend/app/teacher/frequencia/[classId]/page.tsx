@@ -311,7 +311,7 @@ export default function TeacherFrequenciaClass() {
     }
 
     return (
-        <div style={{ maxWidth: 880, margin: '0 auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }} className="animate-fade-in">
             {/* Toast */}
             {toast && (
                 <div style={{

@@ -17,6 +17,10 @@ import {
 } from '../reimbursement/minio-public-url.util';
 import { isVpsStorageMode, resolveBrowserViewUrl } from '../common/minio-browser-url.util';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import {
+    applyEmployeePenaltyToFinance,
+    computeEmployeePenaltyPreview,
+} from '../common/absence-employee-penalty.util';
 
 /** `YYYY-MM-DD` em JS vira meia-noite UTC → em fusos atrás do UTC aparece dia anterior na UI. Normaliza como «dia civil» (meio-dia UTC). */
 function parseCalendarDateOnlyOrThrow(dateInput: string): Date {
@@ -200,6 +204,58 @@ export class AbsencesService {
             },
             data: { justified: true },
         });
+    }
+
+    /** [Admin] Estimativa de desconto em diária (colaborador vinculado a período). */
+    async employeePenaltyPreviewByAbsenceId(absenceId: string) {
+        const absence = await this.prisma.absence.findFirst({
+            where: { id: absenceId, active: true },
+            include: { user: { select: { id: true, role: true } } },
+        });
+        if (!absence) throw new NotFoundException('Imprevisto não encontrado');
+        if (absence.user.role === 'STUDENT') {
+            throw new ForbiddenException(
+                'Esta pré-visualização é para colaboradores — alunos usam percentual pedagógico.',
+            );
+        }
+        const preview = await computeEmployeePenaltyPreview(this.prisma, {
+            userId: absence.userId,
+            date: absence.date,
+        });
+        if (!preview) {
+            throw new BadRequestException(
+                'Colaborador sem vínculo em período de curso — não há diária para descontar.',
+            );
+        }
+
+        let financeSync: { applied: boolean; message: string; reembolsoDevido?: number } | undefined;
+        if (
+            absence.status === AbsenceStatus.PENALIZED &&
+            absence.penalty != null &&
+            Number(absence.penalty) > 0
+        ) {
+            financeSync = await applyEmployeePenaltyToFinance(this.prisma, {
+                absenceId: absence.id,
+                userId: absence.userId,
+                absenceDate: absence.date,
+                penaltyAmount: Number(absence.penalty),
+            });
+            if (financeSync.applied) {
+                this.notifications.notifyFinanceiroListagemRefresh({
+                    source: 'absence_penalty_finance_sync',
+                    absenceId: absence.id,
+                });
+            }
+            const refreshed = await computeEmployeePenaltyPreview(this.prisma, {
+                userId: absence.userId,
+                date: absence.date,
+            });
+            if (refreshed) {
+                return { ...refreshed, financeSync };
+            }
+        }
+
+        return preview;
     }
 
     /** [Admin] Estimativa antes de aplicar PENALIZED a aluno. */
@@ -407,33 +463,56 @@ export class AbsencesService {
                 penalidadeNotificacaoExtra =
                     faltaMatricula +
                     `Equivale a 1 dia face a ${est.totalDays} dias do período${turmaOuCurso ? ` (${turmaOuCurso})` : ''}: ${pctStr}% da carga prevista entre início e fim da turma.`;
-            } else if (
-                data.penalty != null &&
-                Number.isFinite(Number(data.penalty)) &&
-                Number(data.penalty) > 0
-            ) {
-                penaltyResolved = Number(data.penalty);
-                penalidadeNotificacaoExtra =
-                    penaltyResolved !== null ? `Valor de retenção registrado: R$ ${penaltyResolved.toFixed(2).replace('.', ',')}.` : undefined;
             } else {
-                penaltyResolved = null;
+                const preview = await computeEmployeePenaltyPreview(this.prisma, {
+                    userId: absence.userId,
+                    date: absence.date,
+                });
+                const manual =
+                    data.penalty != null &&
+                    Number.isFinite(Number(data.penalty)) &&
+                    Number(data.penalty) > 0
+                        ? Number(data.penalty)
+                        : null;
+                penaltyResolved = manual ?? preview?.suggestedPenalty ?? null;
+                if (penaltyResolved != null && penaltyResolved > 0) {
+                    penalidadeNotificacaoExtra = `Desconto em diária: R$ ${penaltyResolved.toFixed(2).replace('.', ',')}.`;
+                }
             }
         } else {
             penaltyResolved = null;
         }
 
-        const updated = await this.prisma.absence.update({
-            where: { id },
-            data: {
-                status,
-                adminNote: data.adminNote ?? null,
-                penalty: penaltyResolved,
-                reviewedBy: adminId,
-                reviewedAt: new Date(),
-            },
-            include: {
-                user: { select: { id: true, name: true, role: true, email: true } },
-            },
+        const updated = await this.prisma.$transaction(async (tx) => {
+            const row = await tx.absence.update({
+                where: { id },
+                data: {
+                    status,
+                    adminNote: data.adminNote ?? null,
+                    penalty: penaltyResolved,
+                    reviewedBy: adminId,
+                    reviewedAt: new Date(),
+                },
+                include: {
+                    user: { select: { id: true, name: true, role: true, email: true } },
+                },
+            });
+
+            if (
+                status === AbsenceStatus.PENALIZED &&
+                absence.user.role !== UserRole.STUDENT &&
+                penaltyResolved != null &&
+                penaltyResolved > 0
+            ) {
+                await applyEmployeePenaltyToFinance(tx, {
+                    absenceId: id,
+                    userId: absence.userId,
+                    absenceDate: absence.date,
+                    penaltyAmount: penaltyResolved,
+                });
+            }
+
+            return row;
         });
 
         if (status === AbsenceStatus.VALIDATED && absence.user.role === UserRole.STUDENT) {

@@ -6,10 +6,14 @@ export class CreateAcaoFuncionarioDto {
     @IsString()
     employeeId: string;
 
-    @ApiProperty({ description: 'Valor da diária do funcionário nesta ação', example: 250.00 })
+    @ApiPropertyOptional({
+        description: 'Valor da diária (obrigatório para PJ/Freelance; ignorado se funcionário CLT)',
+        example: 250.0,
+    })
+    @IsOptional()
     @IsNumber()
     @IsPositive()
-    valorDiaria: number;
+    valorDiaria?: number;
 
     @ApiPropertyOptional({ description: 'Quantidade de dias trabalhados', default: 1 })
     @IsOptional()

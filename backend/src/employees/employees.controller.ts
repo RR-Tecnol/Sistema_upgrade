@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { EmployeesService } from './employees.service';
+import { ApproveRegistrationDto } from './dto/approve-registration.dto';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { AdminOverrideAttendanceDto } from './dto/admin-override-attendance.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -74,9 +75,14 @@ export class EmployeesController {
     approveRegistrationRequest(
         @Request() req: any,
         @Param('id') id: string,
-        @Body() body?: { dailyCost?: number },
+        @Body() body?: ApproveRegistrationDto,
     ) {
-        return this.service.approveRegistrationRequest(id, req.user.id, { dailyCost: body?.dailyCost });
+        return this.service.approveRegistrationRequest(id, req.user.id, {
+            contractType: body?.contractType,
+            dailyCost: body?.dailyCost,
+            monthlySalaryCLT: body?.monthlySalaryCLT,
+            travelRuleKm: body?.travelRuleKm,
+        });
     }
 
     @Get()

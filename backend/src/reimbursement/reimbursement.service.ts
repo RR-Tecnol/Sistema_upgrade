@@ -21,6 +21,7 @@ import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { NotificationsSenderService } from '../notifications/notifications-sender.service';
 import { MailService } from '../mail/mail.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { resolveRequesterPhotoUrl } from '../common/requester-photo.util';
 
 /**
  * ReimbursementService — REQ-10
@@ -47,6 +48,51 @@ export class ReimbursementService {
       private mail: MailService,
       private whatsapp: WhatsAppService,
   ) {}
+
+  private userToEmployeeBase(user: {
+    name: string;
+    role: string;
+    email: string | null;
+  }): { name: string; role: string; email: string | null } {
+    return { name: user.name, role: user.role, email: user.email };
+  }
+
+  private enrichEmployeeDisplay(
+    employee: { name: string; role?: string; email?: string | null; photoUrl?: string | null } | null,
+    user?: {
+      name: string;
+      role: string;
+      email?: string | null;
+      employee?: { photoUrl?: string | null } | null;
+      teacher?: { photoUrl?: string | null } | null;
+    } | null,
+  ) {
+    if (employee) {
+      const photoUrl = resolveRequesterPhotoUrl({
+        employeePhotoUrl: employee.photoUrl,
+        teacherPhotoUrl: user?.teacher?.photoUrl,
+      });
+      return {
+        name: employee.name,
+        role: employee.role,
+        email: employee.email ?? undefined,
+        ...(photoUrl ? { photoUrl } : {}),
+      };
+    }
+    if (user) {
+      const photoUrl = resolveRequesterPhotoUrl({
+        employeePhotoUrl: user.employee?.photoUrl,
+        teacherPhotoUrl: user.teacher?.photoUrl,
+      });
+      return {
+        name: user.name,
+        role: user.role,
+        email: user.email ?? undefined,
+        ...(photoUrl ? { photoUrl } : {}),
+      };
+    }
+    return null;
+  }
 
   /**
    * Gera uma Presigned URL do MinIO para o professor/motorista
@@ -156,7 +202,7 @@ export class ReimbursementService {
         orderBy: { createdAt: 'desc' },
         include: {
           acao: { select: { nome: true, cidadeNome: true } },
-          employee: { select: { name: true, role: true } },
+          employee: { select: { name: true, role: true, photoUrl: true, email: true } },
         },
       }),
       this.prisma.reimbursement.count({ where }),
@@ -166,14 +212,22 @@ export class ReimbursementService {
     const userIds = [...new Set(items.map(i => i.requestedBy))];
     const users = await this.prisma.user.findMany({
       where: { id: { in: userIds } },
-      select: { id: true, name: true, role: true },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        email: true,
+        employee: { select: { photoUrl: true } },
+        teacher: { select: { photoUrl: true } },
+      },
     });
 
     const enrichedItems = items.map(item => {
       const user = users.find(u => u.id === item.requestedBy);
+      const baseEmployee = item.employee ?? (user ? this.userToEmployeeBase(user) : null);
       return {
         ...item,
-        employee: item.employee || (user ? { name: user.name, role: user.role } : null) as any,
+        employee: this.enrichEmployeeDisplay(baseEmployee, user ?? null),
       };
     });
 
@@ -189,21 +243,24 @@ export class ReimbursementService {
       where: { id, active: true },
       include: {
         acao: { select: { nome: true, cidadeNome: true, dataInicio: true } },
-        employee: { select: { name: true, role: true, email: true } },
+        employee: { select: { name: true, role: true, email: true, photoUrl: true } },
       },
     });
 
     if (!item) throw new NotFoundException(`Reembolso ${id} não encontrado`);
 
-    if (!item.employee) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: item.requestedBy },
-        select: { name: true, role: true, email: true },
-      });
-      if (user) {
-        item.employee = { name: user.name, role: user.role, email: user.email } as any;
-      }
-    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: item.requestedBy },
+      select: {
+        name: true,
+        role: true,
+        email: true,
+        employee: { select: { photoUrl: true } },
+        teacher: { select: { photoUrl: true } },
+      },
+    });
+    const baseEmployee = item.employee ?? (user ? this.userToEmployeeBase(user) : null);
+    item.employee = this.enrichEmployeeDisplay(baseEmployee, user) as any;
 
     return item;
   }

@@ -2,6 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import {
+    computeTripProgressMetrics,
+    etaMinutesFromKmRemaining,
+    pickBestInTransitTrip,
+    resolveTripPlannedDistanceKm,
+    TripProgressMetrics,
+} from '../common/trip-planned-distance.util';
+
+const TRIP_TRACKING_INCLUDE = {
+    originCity: { select: { name: true, state: true, latitude: true, longitude: true } },
+    destinationCity: { select: { name: true, state: true, latitude: true, longitude: true } },
+    truck: { select: { identifier: true, licensePlate: true } },
+    driverUser: { select: { id: true, name: true } },
+} as const;
 
 @Injectable()
 export class DriverLocationService {
@@ -117,6 +131,105 @@ export class DriverLocationService {
         };
     }
 
+    /** Progresso e km restantes com base na distância do período de curso (Acao.distanciaKm). */
+    private async buildTripProgress(
+        trip: {
+            classId?: string | null;
+            originCity?: { latitude: number | null; longitude: number | null } | null;
+            destinationCity?: { latitude: number | null; longitude: number | null } | null;
+        },
+        driverUserId: string,
+        currentLat?: number | null,
+        currentLng?: number | null,
+    ): Promise<{ metrics: TripProgressMetrics; eta: { distanciaKm: number; minutos: number; fonte: 'google' | 'haversine' } | null }> {
+        const { totalKm, distanceSource } = await resolveTripPlannedDistanceKm(
+            this.prisma,
+            trip,
+            (a, b, c, d) => this.haversineKm(a, b, c, d),
+        );
+
+        let eta: { distanciaKm: number; minutos: number; fonte: 'google' | 'haversine' } | null = null;
+        if (
+            currentLat != null &&
+            currentLng != null &&
+            trip.destinationCity?.latitude != null &&
+            trip.destinationCity?.longitude != null
+        ) {
+            eta = await this.calcularETA(
+                driverUserId,
+                currentLat,
+                currentLng,
+                trip.destinationCity.latitude,
+                trip.destinationCity.longitude,
+            );
+        }
+
+        const metrics = computeTripProgressMetrics(
+            totalKm,
+            distanceSource,
+            (a, b, c, d) => this.haversineKm(a, b, c, d),
+            {
+                originCity: trip.originCity,
+                currentLat,
+                currentLng,
+                etaToDestinationKm: eta?.distanciaKm,
+            },
+        );
+
+        if (metrics.totalKmPlanned > 0) {
+            const speed = await this.getVelocidadeMediaHoje(driverUserId);
+            const minutos = etaMinutesFromKmRemaining(metrics.kmRemaining, speed);
+            eta = {
+                distanciaKm: metrics.kmRemaining,
+                minutos,
+                fonte: eta?.fonte ?? 'haversine',
+            };
+        }
+
+        return { metrics, eta };
+    }
+
+    /** Viagem IN_TRANSIT prioritária (turma/período real). */
+    async findActiveTripForDriver(driverUserId: string) {
+        const trips = await this.prisma.trip.findMany({
+            where: { driverUserId, status: 'IN_TRANSIT' },
+            include: TRIP_TRACKING_INCLUDE,
+            orderBy: { departureDate: 'asc' },
+        });
+        return pickBestInTransitTrip(trips);
+    }
+
+    /**
+     * Métricas ao vivo para admin/motorista após cada posição GPS.
+     * Km restantes = total do período − percorrido desde a origem (posição atual).
+     */
+    async getLiveTrackingSnapshot(
+        driverUserId: string,
+        lat: number,
+        lng: number,
+        speedKmh?: number | null,
+    ) {
+        const trip = await this.findActiveTripForDriver(driverUserId);
+        if (!trip) return null;
+
+        const { metrics, eta } = await this.buildTripProgress(trip, driverUserId, lat, lng);
+        const speed = speedKmh ?? (await this.getVelocidadeMediaHoje(driverUserId));
+
+        return {
+            tripId: trip.id,
+            progress: metrics.progress,
+            kmRemaining: metrics.kmRemaining,
+            kmTraveled: metrics.kmTraveled,
+            totalKmPlanned: metrics.totalKmPlanned,
+            distanceSource: metrics.distanceSource,
+            eta: eta ?? {
+                distanciaKm: metrics.kmRemaining,
+                minutos: etaMinutesFromKmRemaining(metrics.kmRemaining, speed),
+                fonte: 'haversine' as const,
+            },
+        };
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Salvar posição do motorista
     // Chamado por POST /driver/location e POST /driver/location/batch
@@ -143,24 +256,19 @@ export class DriverLocationService {
         // Busca todas as trips IN_TRANSIT com motorista vinculado
         const trips = await this.prisma.trip.findMany({
             where: { status: 'IN_TRANSIT', driverUserId: { not: null } },
-            include: {
-                driverUser: { select: { id: true, name: true } },
-                originCity: { select: { name: true, state: true, latitude: true, longitude: true } },
-                destinationCity: { select: { name: true, state: true, latitude: true, longitude: true } },
-                truck: { select: { identifier: true, licensePlate: true } },
-            },
-            orderBy: { updatedAt: 'desc' }, // mais recentes primeiro
+            include: TRIP_TRACKING_INCLUDE,
+            orderBy: { updatedAt: 'desc' },
         });
 
-        // DEDUP: mantém apenas a trip mais recente por motorista
-        // Um motorista pode ter múltiplas trips IN_TRANSIT em ambiente de teste
-        const uniqueTrips = trips.reduce((acc, trip) => {
-            if (!acc.has(trip.driverUserId!)) {
-                acc.set(trip.driverUserId!, trip);
-            }
-            return acc;
-        }, new Map<string, typeof trips[0]>());
-        const dedupedTrips = Array.from(uniqueTrips.values());
+        const byDriver = new Map<string, typeof trips>();
+        for (const trip of trips) {
+            const uid = trip.driverUserId!;
+            if (!byDriver.has(uid)) byDriver.set(uid, []);
+            byDriver.get(uid)!.push(trip);
+        }
+        const dedupedTrips = [...byDriver.values()]
+            .map(driverTrips => pickBestInTransitTrip(driverTrips))
+            .filter((t): t is NonNullable<typeof t> => !!t);
 
         const activeDriverIds = dedupedTrips.map(t => t.driverUserId!);
 
@@ -193,22 +301,41 @@ export class DriverLocationService {
             }
             // ── FIM BYPASS-DEMO-STATUS ─────────────────────────────────────────────────────────────────────────────
 
-            let eta = null;
+            let eta: { distanciaKm: number; minutos: number; fonte: 'google' | 'haversine' } | null = null;
             let progress = 0;
-            if (ultima && trip.destinationCity.latitude && trip.destinationCity.longitude) {
-                eta = await this.calcularETA(
+            let kmRemaining = 0;
+            let kmTraveled = 0;
+            let totalKmPlanned = 0;
+            let distanceSource: 'acao' | 'haversine' | 'none' = 'none';
+
+            if (ultima) {
+                const { metrics, eta: etaCalc } = await this.buildTripProgress(
+                    trip,
                     trip.driverUserId!,
-                    ultima.latitude, ultima.longitude,
-                    trip.destinationCity.latitude, trip.destinationCity.longitude,
+                    ultima.latitude,
+                    ultima.longitude,
                 );
-                // Progresso: distância percorrida / distância total
-                if (trip.originCity.latitude && trip.originCity.longitude) {
-                    const totalKm = this.haversineKm(
-                        trip.originCity.latitude, trip.originCity.longitude,
-                        trip.destinationCity.latitude, trip.destinationCity.longitude,
-                    );
-                    const restanteKm = eta.distanciaKm;
-                    progress = totalKm > 0 ? Math.min(100, Math.round(((totalKm - restanteKm) / totalKm) * 100)) : 0;
+                progress = metrics.progress;
+                kmRemaining = metrics.kmRemaining;
+                kmTraveled = metrics.kmTraveled;
+                totalKmPlanned = metrics.totalKmPlanned;
+                distanceSource = metrics.distanceSource;
+                eta = etaCalc;
+            } else {
+                const planned = await resolveTripPlannedDistanceKm(
+                    this.prisma,
+                    trip,
+                    (a, b, c, d) => this.haversineKm(a, b, c, d),
+                );
+                totalKmPlanned = planned.totalKm;
+                distanceSource = planned.distanceSource;
+                kmRemaining = planned.totalKm;
+                if (planned.totalKm > 0) {
+                    eta = {
+                        distanciaKm: planned.totalKm,
+                        minutos: 0,
+                        fonte: 'haversine',
+                    };
                 }
             }
 
@@ -238,6 +365,10 @@ export class DriverLocationService {
                 } : null,
                 eta,
                 progress,
+                kmRemaining,
+                kmTraveled,
+                totalKmPlanned,
+                distanceSource,
                 status,
             };
         }));
@@ -321,13 +452,7 @@ export class DriverLocationService {
         inicioSemana.setDate(hoje.getDate() - hoje.getDay());
         const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
 
-        // Trip ativa
-        const tripAtiva = await this.prisma.trip.findFirst({
-            where: { driverUserId, status: 'IN_TRANSIT' },
-            include: {
-                destinationCity: { select: { name: true, state: true, latitude: true, longitude: true } },
-            },
-        });
+        const tripAtiva = await this.findActiveTripForDriver(driverUserId);
 
         // Última localização
         const ultimaLoc = await this.prisma.driverLocation.findFirst({
@@ -336,18 +461,47 @@ export class DriverLocationService {
         });
 
         let currentTrip = null;
-        if (tripAtiva && ultimaLoc && tripAtiva.destinationCity.latitude && tripAtiva.destinationCity.longitude) {
-            const eta = await this.calcularETA(
-                driverUserId,
-                ultimaLoc.latitude, ultimaLoc.longitude,
-                tripAtiva.destinationCity.latitude, tripAtiva.destinationCity.longitude,
+        if (tripAtiva) {
+            const { totalKm, distanceSource: plannedSource } = await resolveTripPlannedDistanceKm(
+                this.prisma,
+                tripAtiva,
+                (a, b, c, d) => this.haversineKm(a, b, c, d),
             );
-            currentTrip = {
-                destination: `${tripAtiva.destinationCity.name}/${tripAtiva.destinationCity.state}`,
-                eta,
-                kmRemaining: eta.distanciaKm,
-                speed: ultimaLoc.speed,
-            };
+
+            if (ultimaLoc) {
+                const { metrics, eta } = await this.buildTripProgress(
+                    tripAtiva,
+                    driverUserId,
+                    ultimaLoc.latitude,
+                    ultimaLoc.longitude,
+                );
+                const speed = ultimaLoc.speed ?? (await this.getVelocidadeMediaHoje(driverUserId));
+                currentTrip = {
+                    destination: `${tripAtiva.destinationCity.name}/${tripAtiva.destinationCity.state}`,
+                    eta: eta ?? {
+                        distanciaKm: metrics.kmRemaining,
+                        minutos: etaMinutesFromKmRemaining(metrics.kmRemaining, speed),
+                        fonte: 'haversine' as const,
+                    },
+                    kmRemaining: metrics.kmRemaining,
+                    kmTraveled: metrics.kmTraveled,
+                    totalKmPlanned: metrics.totalKmPlanned,
+                    progress: metrics.progress,
+                    distanceSource: metrics.distanceSource,
+                    speed: ultimaLoc.speed,
+                };
+            } else if (totalKm > 0) {
+                currentTrip = {
+                    destination: `${tripAtiva.destinationCity.name}/${tripAtiva.destinationCity.state}`,
+                    eta: { distanciaKm: totalKm, minutos: 0, fonte: 'haversine' as const },
+                    kmRemaining: totalKm,
+                    kmTraveled: 0,
+                    totalKmPlanned: totalKm,
+                    progress: 0,
+                    distanceSource: plannedSource,
+                    speed: null,
+                };
+            }
         }
 
         // Viagens da semana — pontualidade

@@ -101,6 +101,15 @@ export class AdminAbsencesController {
         return this.absencesService.studentPenaltyPreviewByAbsenceId(id);
     }
 
+    @Get(':id/employee-penalty-preview')
+    @ApiOperation({
+        summary:
+            '[Admin] Estima desconto em diária do colaborador (motor do período) e sincroniza Contas a pagar se já penalizado',
+    })
+    async employeePenaltyPreview(@Param('id') id: string) {
+        return this.absencesService.employeePenaltyPreviewByAbsenceId(id);
+    }
+
     @Get(':id/document-presigned-url')
     @ApiOperation({ summary: '[Admin] URL assinada para visualizar documento / atestado (MinIO privado)' })
     async getDocumentPresignedAdmin(

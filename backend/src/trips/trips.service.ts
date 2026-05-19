@@ -7,7 +7,11 @@ import { resolveBrowserViewUrl } from '../common/minio-browser-url.util';
 import { parseMinioPublicUrlToBucketKey } from '../reimbursement/minio-public-url.util';
 import { paginatedResult, resolvePagination } from '../common/pagination.util';
 import { dateKeyUTC, startOfUTCDay } from '../common/class-teaching-days.util';
-import { combineDateAndTime, resolveClassTripOriginCityId } from '../common/class-trip-origin.util';
+import {
+    combineDateAndTime,
+    resolveClassTripOriginCityId,
+    resolveIdaDepartureBaseDate,
+} from '../common/class-trip-origin.util';
 
 /** Include compartilhado: lista admin + retorno de validação de auditoria. */
 const TRIP_ADMIN_LIST_INCLUDE = {
@@ -69,7 +73,7 @@ export class TripsService {
 
         return this.prisma.trip.findMany({
             where,
-            orderBy: { departureDate: 'desc' },
+            orderBy: { departureDate: 'asc' },
             include: {
                 originCity:      { select: { name: true, state: true } },
                 destinationCity: { select: { name: true, state: true } },
@@ -158,8 +162,9 @@ export class TripsService {
         if (trip.status !== TripStatus.PLANNED) {
             throw new BadRequestException('Apenas viagens PLANEJADAS podem ser iniciadas');
         }
-        const today = new Date();
-        if (trip.departureDate.toDateString() !== today.toDateString()) {
+        const todayKey = dateKeyUTC(startOfUTCDay(new Date()));
+        const depKey = dateKeyUTC(startOfUTCDay(new Date(trip.departureDate)));
+        if (depKey !== todayKey) {
             throw new BadRequestException('A viagem só pode ser iniciada no dia da partida agendada');
         }
         if (trip.driverDecision === 'REJECTED') {
@@ -460,7 +465,8 @@ export class TripsService {
         const originCityId = await resolveClassTripOriginCityId(this.prisma, classData, acaoId);
         const destCityId = classData.cityId;
 
-        const startDay = startOfUTCDay(new Date(classData.startDate));
+        const idaBase = await resolveIdaDepartureBaseDate(this.prisma, classData, acaoId);
+        const startDay = startOfUTCDay(idaBase);
         const endDay = startOfUTCDay(new Date(classData.endDate));
         const rangeEnd = new Date(endDay);
         rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
@@ -545,7 +551,7 @@ export class TripsService {
 
         if (!hasIda) {
             toCreate.push(
-                buildPayload('IDA', originCityId, destCityId, new Date(classData.startDate), startTime, endTime),
+                buildPayload('IDA', originCityId, destCityId, idaBase, startTime, endTime),
             );
         }
         if (!hasVolta) {

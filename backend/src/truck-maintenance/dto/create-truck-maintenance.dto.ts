@@ -64,10 +64,14 @@ export class CreateTruckMaintenanceDto {
 
     @IsOptional()
     @IsString()
+    cidade?: string;
+
+    @IsOptional()
+    @IsString()
     observacoes?: string;
 
     @IsOptional()
     @IsString()
-    @IsIn(['pendente', 'pago', 'vencido'])
+    @IsIn(['pendente', 'pago', 'paga', 'vencido', 'vencida', 'cancelada'])
     statusPagamento?: string;
 }

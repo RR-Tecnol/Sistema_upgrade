@@ -1,10 +1,12 @@
-# 🚀 Sistema UPGRADE — Gestão de Cursos Itinerantes
+# Sistema UPGRADE — Gestão de Cursos Itinerantes
 
-Sistema completo de gestão WEB para os programas **Qualifica Maranhão** e **Qualifica Piauí** — projetos de capacitação profissional itinerantes operados pela empresa Upgrade através de unidades móveis (carretas/caminhões).
+Sistema completo de gestão WEB para os programas **Qualifica Maranhão** e **Qualifica Piauí** — capacitação profissional itinerante em unidades móveis (carretas).
+
+**Branch de trabalho atual:** `nuevo` · último commit: `Correcoes-para-vps` (2026-05-19) + alterações locais (atualizado **maio/2026** — ver changelog abaixo).
 
 ---
 
-## 🎯 Visão Geral
+## Visão geral
 
 Sistema **multi-portal** com 4 perfis de acesso:
 
@@ -12,235 +14,378 @@ Sistema **multi-portal** com 4 perfis de acesso:
 |--------|--------|-----------|
 | `/admin/*` | ADMIN | Gestão completa do sistema |
 | `/teacher/*` | PROFESSOR | Frequência, reembolsos, certificados |
-| `/driver/*` | MOTORISTA | Viagens, manutenção, imprevistos |
-| `/student/*` | ALUNO | Turmas, frequência, certificados |
+| `/driver/*` | MOTORISTA | Viagens, ponto, manutenção, imprevistos |
+| `/student/*` | ALUNO | Turmas, frequência, inscrições, certificados |
 
 ---
 
-## 🛠️ Stack Tecnológica
+## Stack tecnológica
 
 | Camada | Tecnologia |
-|--------|-----------|
+|--------|------------|
 | **Backend** | NestJS (TypeScript) + Prisma ORM |
-| **Banco de Dados** | PostgreSQL 15 (via Docker) |
-| **Cache** | Redis 7 (via Docker) |
-| **Auth** | JWT + Passport (access + refresh token) |
+| **Banco de dados** | PostgreSQL 15 (Docker) |
+| **Cache** | Redis 7 (Docker) |
+| **Auth** | JWT + Passport (access + refresh) + 2FA |
 | **Frontend** | Next.js 14 App Router + React 18 + TypeScript |
-| **Estilo** | Vanilla CSS + Orbitron + Inter |
-| **Container** | Docker + Docker Compose |
+| **Estilo** | CSS + Orbitron + Inter (tema Upgrade amarelo `#FFD600`) |
+| **Armazenamento** | MinIO (fotos, anexos, hodômetro) |
+| **Deploy** | Docker Compose + Nginx (`docker-compose.prod.yml`) |
 
 ---
 
-## 🚀 Quick Start — Instalação Completa
+## Quick start — instalação local
 
 ### 1. Pré-requisitos
 
 - [Node.js 18+](https://nodejs.org/)
-- [Docker Desktop](https://www.docker.com/)
+- [Docker](https://www.docker.com/) (PostgreSQL + Redis)
 - [Git](https://git-scm.com/)
 
-### 2. Clone o repositório
+### 2. Clone e branch
 
-```powershell
+```bash
 git clone https://github.com/RR-Tecnol/Sistema_upgrade.git
 cd Sistema_upgrade
+git checkout nuevo
 ```
 
-### 3. Suba o banco de dados (Docker)
+### 3. Banco (Docker)
 
-```powershell
-docker-compose up -d
+```bash
+docker compose up -d
 ```
 
-Inicia: **PostgreSQL** (porta 5432) · **Redis** (porta 6379)
+PostgreSQL `5432` · Redis `6379` · MinIO `9010` / consola `9011` (se configurado no compose).
 
-### 4. Configure o Backend
+### 4. Backend
 
-```powershell
+```bash
 cd backend
-
-# Instalar dependências
+cp .env.example .env   # ajustar DATABASE_URL, JWT, MinIO, etc.
 npm install
-
-# Gerar o Prisma Client
 npx prisma generate
-
-# Aplicar migrations (cria todas as tabelas)
-npx prisma migrate deploy
-
-# Seed principal — cria admin, cursos, turmas, grupos, cidades
-npm run prisma:seed
+# Se o banco já existir sem histórico Prisma: npx nest start --watch
+# Banco novo: npx prisma migrate deploy && npm run prisma:seed
+npm run start:dev      # ou: npx nest start --watch (pula migrate automático)
 ```
 
-### 5. Seed de Dados de Teste (OBRIGATÓRIO para ver dados no sistema)
+Porta padrão no código: **3001** (use `PORT=3002` no `.env` se preferir alinhar ao frontend example).
 
-```powershell
-# Ainda dentro de backend/
-# Seed extra — viagens, manutenções, reembolsos, ausências, notificações
-npm run seed:extra
-```
+### 5. Frontend
 
-> 📖 Veja [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) para entender os seeds e criar novos.
-
-### 6. Inicie o Backend
-
-```powershell
-# Windows PowerShell
-$env:PORT=3002; npm run start:dev
-
-# Linux/Mac
-PORT=3002 npm run start:dev
-```
-
-Saída esperada:
-```
-✅ Database connected successfully
-🚀 Server running on http://localhost:3002
-📚 API Docs: http://localhost:3002/api/docs
-```
-
-> ⚠️ Erro de MinIO é **esperado** e não afeta o funcionamento do sistema.
-
-### 7. Inicie o Frontend
-
-```powershell
-cd ../frontend
+```bash
+cd frontend
+cp .env.example .env.local
+# NEXT_PUBLIC_API_URL=http://localhost:3001/api  (ou 3002, conforme PORT do backend)
 npm install
-npm run dev
+npm run dev    # http://localhost:3010
 ```
 
-### 8. Acesse o sistema
+### 6. URLs locais
 
-| URL | Descrição |
-|-----|-----------|
-| [http://localhost:3000](http://localhost:3000) | **Sistema (Frontend)** |
-| [http://localhost:3002/api/docs](http://localhost:3002/api/docs) | Swagger / API Docs |
-| [http://localhost:5555](http://localhost:5555) | Prisma Studio (`npx prisma studio`) |
+| Serviço | URL |
+|---------|-----|
+| **Frontend** | http://localhost:3010 |
+| **API** | http://localhost:3001/api (ou porta do `PORT` no backend) |
+| **Swagger** | http://localhost:3001/api/docs |
+| **Prisma Studio** | `cd backend && npx prisma studio` |
+
+### 7. Validação antes de commit/deploy
+
+```bash
+cd backend && npm run validate:vps
+```
+
+Executa: `prisma validate` + `generate` + build backend + scripts de verificação + build frontend + `migrate status`.
+
+Scripts individuais (`cd backend`):
+
+| Comando | O que valida |
+|---------|----------------|
+| `npm run motor:verify` | Motor letivo (carga horária → dias letivos → fim de turma) |
+| `npm run penalty:verify` | Imprevisto colaborador → diária / próxima viagem motorista |
+| `npm run acao-custo:verify` | Custos do período (abastecimento/despesa) → Contas a pagar |
+| `npm run maintenance:verify` | Manutenção de carreta → Contas a pagar (incl. campo **cidade**) |
+| `npm run acoes:verify` | API de períodos de curso (`GET /acoes`) + estatísticas |
+| `npm run tracking:verify` | Rastreamento motorista + km/progresso alinhados ao período |
+| `npm run employee-contract:verify` | CLT vs diária (aprovação RH + custo no período) |
+| `npm run db:baseline:local` | Baseline Prisma em DB legado (P3005) |
+| `npm run db:hotfix:acao-departure` | Hotfix coluna `driverDepartureDate` |
+
+Guia de deploy: [`docs/AUDITORIA/DEPLOY-BRANCH-NUEVO.md`](docs/AUDITORIA/DEPLOY-BRANCH-NUEVO.md)
 
 ---
 
-## 🔑 Credenciais de Acesso (Criadas pelo Seed)
+## Credenciais de teste (seed)
 
-| Perfil | Email | Senha | Rota de entrada |
-|--------|-------|-------|-----------------|
-| **Administrador** | `admin@qualifica.com` | `RR@@Upgrade` | `/admin/dashboard` |
+| Perfil | Email | Senha | Entrada |
+|--------|-------|-------|---------|
+| **Admin** | `admin@qualifica.com` | `RR@@Upgrade` | `/admin/dashboard` |
 | **Professor** | `maria.professora.visual@qualifica.com` | `RR@@Upgrade` | `/teacher/dashboard` |
 | **Motorista** | `joao.driver.test99@qualifica.com` | `RR@@Upgrade` | `/driver/dashboard` |
 | **Aluno** | `aluno@qualifica.com` | `RR@@Upgrade` | `/student/dashboard` |
 
-> 🔐 Todas as contas usam a **mesma senha**: `RR@@Upgrade`
+Detalhes e outros utilizadores: [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md)
 
 ---
 
-## 📁 Estrutura do Projeto
+## Changelog — branch `nuevo`
+
+### Commit `ae9eef6` — *Correcoes-para-vps* (19/05/2026)
+
+Pacote principal de correções mapeadas na auditoria VPS (BUG/MEL). Destaques:
+
+#### Infraestrutura, auth e anexos
+
+- URLs públicas MinIO via nginx (`/storage/`) — `minio-browser-url.util`, políticas de bucket, upload público (`public-upload`)
+- Reembolsos, imprevistos, estoque e alunos: presigned URLs e pré-visualização no browser
+- Bypass MFA só em localhost (`auth-localhost-bypass.util`); examples de produção com bypass desligado
+- Paginação admin padronizada (`pagination.util`) — doc em `docs/AUDITORIA/PAGINACAO-ADMIN.md`
+
+#### Período de curso (Ação), turma e motor letivo
+
+- Wizard de período (`AcaoPeriodWizard`, passos básico/localização/logística/turma)
+- Motor letivo: carga horária → N encontros → data fim (`teaching-calendar`, `course-workload-audit`, `class-teaching-end-date`)
+- Sincronia curso ↔ período ↔ turma ↔ professores (`academic-ecosystem-sync`, `teacher-academic-link`, `resolve-teacher`)
+- Feriados: catálogo nacional/estadual, vínculo à ação (`holiday-catalog`, `brazil-national-holidays`)
+- Painel calendário letivo no admin (`TeachingCalendarMotorPanel`)
+- Migrations: checkout motorista (MEL-07), `trip.classId`, feriados globais, feriado por ação, motor de ensino na ação, estoque mínimo por carreta
+
+#### Viagens e motorista
+
+- Geração ida/volta por turma com datas canónicas (`class-trip-origin`, `generateTripsForClass`)
+- Fotos de hodômetro (presign driver/admin), auditoria de viagem no admin
+- Portal motorista: reembolsos, imprevistos, manutenção, rota — layout e uploads alinhados ao admin
+
+#### Estoque
+
+- Hub de estoque (GSR), movimentações, solicitações, auditoria de item
+- **Kit de insumos** e **baixa de estoque** por ação (`KitInsumosEditor`, `BaixaEstoqueEditor`)
+- Página `/admin/estoque/baixa-acao` (lista de períodos para fechamento)
+
+#### Financeiro e RH
+
+- Contas a pagar: perfis, tipos de conta, comprovantes, notificações de listagem
+- Diárias de funcionários no período, vínculo equipe (`AcaoEquipeVinculoPanel`)
+- Certificados: templates, coordenadas, fluxo de emissão
+
+#### Documentação de auditoria
+
+- `docs/AUDITORIA/` — mapa BUG-01…21, sprints, arquitetura API, sincronia curso/período/turma, deploy branch nuevo
+
+---
+
+### Alterações locais (após `ae9eef6`, pendentes de commit)
+
+Integrações financeiras, UX motorista e validação automatizada:
+
+| Área | Implementação |
+|------|----------------|
+| **Custos do período → Contas a pagar** | `acao-custo-conta-pagar.util` + `acoes.service` (criar/remover abastecimento e despesa gera/desativa `ContaPagar`; backfill ao abrir ação) |
+| **Imprevisto colaborador → diária** | `absence-employee-penalty.util` — penalidade reduz conta `diaria_funcionario` ou regista reembolso devido se já paga; preview no admin |
+| **Manutenção carreta → Contas a pagar** | Corrige erro 500 (`fornecedor` inválido no Prisma); `truck-maintenance-conta-pagar.util`; conta ao salvar com custo |
+| **Motorista — próxima viagem** | `frontend/lib/driver-trips.ts` — ida antes da volta (`pickNextPlannedTrip`); API lista viagens por data ASC |
+| **Motorista — aceite de viagem** | Botões Aceitar/Recusar somem após `driverDecision=ACCEPTED`; Iniciar só após aceite e no dia da partida |
+| **Data de partida ida** | `Acao.driverDepartureDate` + migration `20260519130000`; wizard/logística; `generateTripsForClass` usa ida correta |
+| **Layout portal motorista/professor** | Frequência, viagens e chamada de turma em **largura total** (sem `max-width` centralizado) |
+| **Baixa de estoque — UI Upgrade** | `BaixaEstoqueEditor` com `EstoqueSection`, KPIs, Orbitron, botões amarelo/ciano |
+| **Validação CI local** | `backend/scripts/validate-vps-deploy.sh` + `npm run validate:vps` + scripts `*:verify` |
+
+**Migration nova (aplicar na VPS após deploy):** `20260519130000_acao_driver_departure_date`
+
+**Reparo operacional:** períodos antigos podem precisar regenerar viagens PLANNED após deploy — ver [`docs/AUDITORIA/SINCRONIA-CURSO-PERIODO-TURMA.md`](docs/AUDITORIA/SINCRONIA-CURSO-PERIODO-TURMA.md)
+
+---
+
+### Maio/2026 — RH, fotos, manutenção, mapa e rastreamento
+
+| Área | Implementação |
+|------|----------------|
+| **Funcionários — CLT vs diária** | Na aprovação do cadastro (`/admin/funcionarios` → pendentes): escolher **CLT** (salário mensal) ou **Diária** (PJ/Freelance). Backend: `approve-registration.dto`, `employee-period-payment.util`. No período de curso, vínculo usa salário proporcional + passagens (CLT) ou dias × diária. Painel `AcaoEquipeVinculoPanel` adaptado. |
+| **Fotos de perfil (MinIO)** | URLs normalizadas para browser/VPS: `resolve-stored-media-url.util` (backend), `resolve-media-url.ts` (frontend). Lista de funcionários, aprovação (selfie → `Employee` + `Teacher.photoUrl`) e **detalhe de reembolso** (`requester-photo.util` + `photoUrl` no modal). |
+| **Manutenção — cidade** | Campo **Cidade** obrigatório no formulário (admin e motorista). Migration `20260520160000_truck_maintenance_cidade`; preenche `ContaPagar.cidade` (evita `--` na tabela). |
+| **Rastreamento e mapa** | Progresso/km do motorista alinhados ao período (`trip-planned-distance.util`, `driver-location`). Proxy OSRM `GET /api/routing/driving` — rotas no mapa admin seguem ruas (não linha reta). GPS ao abrir portal motorista (`DriverLocationSync`). |
+| **Data partida ida** | `Acao.driverDepartureDate` — ver migration `20260519130000` e troubleshooting abaixo. |
+
+**Migrations novas (aplicar na VPS após deploy):**
+
+- `20260519130000_acao_driver_departure_date`
+- `20260520160000_truck_maintenance_cidade`
+
+**Variáveis VPS importantes para fotos/anexos:**
+
+- `MINIO_PUBLIC_BROWSER_URL` — ex.: `https://seudominio.com.br/storage` (nginx → MinIO)
+- Frontend: `NEXT_PUBLIC_STORAGE_URL` (opcional, mesmo prefixo `/storage`)
+
+---
+
+## Módulos implementados (resumo)
+
+| Portal | Módulo | Status |
+|--------|--------|--------|
+| Admin | Cursos, turmas, inscrições (Kanban), alunos | ✅ |
+| Admin | Período de curso (wizard), equipe/diárias, custos do período | ✅ |
+| Admin | Feriados (catálogo + ação), motor letivo / calendário | ✅ |
+| Admin | Estoque (hub, kit, **baixa por ação**, movimentações) | ✅ |
+| Admin | Viagens (ida/volta, hodômetro, auditoria) | ✅ |
+| Admin | Contas a pagar (tipos, vínculos custo/manutenção/penalidade) | ✅ |
+| Admin | Carretas, manutenção (**cidade** → contas), funcionários (**CLT/diária**) | ✅ |
+| Admin | Imprevistos (penalidade → diária), reembolsos (**foto solicitante**), relatórios | ✅ |
+| Admin | Mapa ao vivo / rotas OSRM, rastreamento motoristas | ✅ |
+| Teacher | Dashboard, frequência por turma, histórico, reembolsos | ✅ |
+| Driver | Dashboard, viagens (aceite + ida/volta), ponto entrada/saída | ✅ |
+| Driver | Reembolsos, imprevistos, manutenção, rota, veículo | ✅ |
+| Student | Turmas, frequência, inscrições, certificados, perfil | ✅ |
+| Sistema | JWT + 2FA, notificações, auditoria, MinIO/nginx | ✅ |
+
+---
+
+## Estrutura do projeto
 
 ```
 Sistema_upgrade/
-├── backend/                    # API NestJS
-│   ├── prisma/
-│   │   ├── schema.prisma       # Schema do banco
-│   │   ├── migrations/         # Histórico de migrations
-│   │   ├── seed-desenvolvimento/
-│   │   │   └── seed-full.ts    # Seed principal de desenvolvimento (npm run prisma:seed)
-│   │   ├── seed-prod.ts
-│   │   └── reset-db.ts         # Uso controlado — pode apagar dados
+├── backend/
+│   ├── prisma/                 # schema + migrations
+│   ├── scripts/
+│   │   ├── validate-vps-deploy.sh
+│   │   ├── baseline-and-migrate-local.sh
+│   │   ├── verify-teaching-motor.ts
+│   │   ├── verify-absence-employee-penalty.ts
+│   │   ├── verify-acao-custo-conta-pagar.ts
+│   │   ├── verify-truck-maintenance-conta-pagar.ts
+│   │   ├── verify-acoes-api.ts
+│   │   ├── verify-live-tracking.ts
+│   │   └── verify-employee-contract-approval.ts
 │   └── src/
-│       ├── auth/               # JWT Auth + 2FA
-│       ├── students/           # Gestão de alunos
-│       ├── courses/            # Cursos
-│       ├── classes/            # Turmas
-│       ├── enrollments/        # Inscrições
-│       ├── attendance/         # Frequência
-│       ├── certificates/       # Certificados digitais (QR Code)
-│       ├── reimbursement/      # Reembolsos
-│       ├── trips/              # Viagens do motorista
-│       ├── trucks/             # Carretas
-│       ├── truck-maintenance/  # Manutenção de veículos
-│       ├── employees/          # Funcionários
-│       ├── holiday/            # Feriados & Imprevistos
-│       ├── acoes/              # Períodos de Curso
-│       ├── contas-pagar/       # Contas a Pagar
-│       ├── notifications/      # Notificações em tempo real
-│       ├── audit-logs/         # Histórico de auditoria
-│       ├── reports/            # Relatórios PDF
-│       ├── dashboard/          # KPIs e Analytics
-│       └── settings/           # Configurações do sistema
-├── frontend/                   # Next.js 14 App Router
-│   └── app/
-│       ├── admin/              # Portal Administrador
-│       ├── teacher/            # Portal Professor
-│       ├── driver/             # Portal Motorista
-│       └── student/            # Portal Aluno
+│       ├── acoes/              # Períodos de curso
+│       ├── classes/            # Turmas + motor letivo
+│       ├── trips/              # Viagens motorista
+│       ├── driver-location/    # GPS + progresso mapa admin
+│       ├── routing/            # Proxy OSRM (rotas no mapa)
+│       ├── stock/              # Estoque + reservas + baixa
+│       ├── truck-maintenance/
+│       ├── employees/          # RH + aprovação CLT/diária
+│       ├── reimbursement/
+│       ├── absences/           # Imprevistos
+│       ├── contas-pagar/
+│       ├── holiday/
+│       ├── public-upload/
+│       └── common/             # calendário, MinIO, employee-period-payment, …
+├── frontend/
+│   ├── app/                    # admin | teacher | driver | student
+│   ├── components/estoque/     # BaixaEstoqueEditor, KitInsumosEditor, …
+│   ├── components/driver/      # DriverLocationSync
+│   └── lib/
+│       ├── driver-trips.ts     # Ordenação ida/volta motorista
+│       ├── resolve-media-url.ts
+│       └── api/
 ├── docs/
-│   ├── INDEX.md                # Índice: AFAZERES + research + sistema-atual + seeds
-│   ├── sistema-atual/          # Documentação canónica (alinhada ao código)
-│   ├── mapeamentos/            # Roadmaps temáticos
-│   ├── SEEDS_GUIDE.md
-│   ├── AFAZERES/               # Backlog e planos de execução
-│   └── research/               # Pesquisas (05_reports, etc.)
+│   ├── INDEX.md
+│   ├── AUDITORIA/              # Bugs VPS, deploy, sincronia
+│   ├── sistema-atual/          # Documentação técnica canónica
+│   └── SEEDS_GUIDE.md
 ├── docker-compose.yml
+├── docker-compose.prod.yml
+├── nginx/sistemaupgrade.conf
 └── README.md
 ```
 
 ---
 
-## 🔐 Perfis de Usuário
+## Documentação
 
-| Perfil | Acesso |
-|--------|--------|
-| **ADMIN** | Acesso total — alunos, turmas, cursos, financeiro, relatórios, configurações |
-| **TEACHER** | Frequência, reembolsos, histórico, certificados da turma |
-| **DRIVER** | Viagens, manutenção de veículos, reembolsos, imprevistos de rota |
-| **STUDENT** | Portal pessoal — turmas, frequência, inscrições, certificados |
-
----
-
-## ✅ Módulos Implementados
-
-| Portal | Módulo | Status |
-|--------|--------|--------|
-| Admin | Cursos, Turmas, Inscrições (Kanban) | ✅ |
-| Admin | Alunos, Frequência, Certificados | ✅ |
-| Admin | Funcionários, Carretas, Grupos | ✅ |
-| Admin | Períodos de Curso, Feriados & Imprevistos | ✅ |
-| Admin | Viagens (logística, modal auditoria, fotos hodómetro presignadas) | ✅ |
-| Admin | Reembolsos, Contas a Pagar, Relatórios | ✅ |
-| Admin | Dashboard (KPIs), Histórico (Auditoria), Configurações | ✅ |
-| Teacher | Dashboard, Frequência, Histórico | ✅ |
-| Teacher | Reembolsos, Certificados | ✅ |
-| Driver | Dashboard, Viagens, Minha Rota | ✅ |
-| Driver | Manutenção (cards + modal detalhes), Reembolsos, Imprevistos | ✅ |
-| Student | Dashboard, Minhas Turmas, Frequência (calendário) | ✅ |
-| Student | Inscrições, Certificados, Meu Perfil | ✅ |
-| Sistema | Autenticação JWT + 2FA, Notificações em tempo real | ✅ |
+| Documento | Conteúdo |
+|-----------|----------|
+| [`docs/INDEX.md`](docs/INDEX.md) | Índice geral da documentação |
+| [`docs/sistema-atual/README.md`](docs/sistema-atual/README.md) | Arquitetura e fluxos (fonte técnica) |
+| [`docs/AUDITORIA/README.md`](docs/AUDITORIA/README.md) | Auditoria VPS (BUG-01…21) |
+| [`docs/AUDITORIA/DEPLOY-BRANCH-NUEVO.md`](docs/AUDITORIA/DEPLOY-BRANCH-NUEVO.md) | Validar, commit, deploy VPS |
+| [`docs/AUDITORIA/SINCRONIA-CURSO-PERIODO-TURMA.md`](docs/AUDITORIA/SINCRONIA-CURSO-PERIODO-TURMA.md) | Curso, período, turma, viagens |
+| [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) | Seeds e credenciais de desenvolvimento |
 
 ---
 
-## 📚 Documentação
+## Deploy VPS (resumo)
 
-| Arquivo | Conteúdo |
-|---------|---------|
-| [`docs/INDEX.md`](docs/INDEX.md) | **Índice** — por onde começar (AFAZERES, research, sistema-atual) |
-| [`docs/sistema-atual/README.md`](docs/sistema-atual/README.md) | **Fonte de verdade técnica** — arquitetura, fluxos, dados, integrações, bypasses |
-| [`docs/sistema-atual/11-modulo-viagens-logistica.md`](docs/sistema-atual/11-modulo-viagens-logistica.md) | **Viagens** — API, auditoria admin, fotos MinIO |
-| [`docs/SEEDS_GUIDE.md`](docs/SEEDS_GUIDE.md) | Seeds, comandos e credenciais de desenvolvimento |
-| [`docs/AFAZERES/`](docs/AFAZERES/) | Backlog, correcções e planos imediatos |
+1. `git pull origin nuevo`
+2. `backend/.env` produção — `AUTH_BYPASS_MFA=false`, `NODE_ENV=production`, URLs corretas
+3. `frontend/.env.local` a partir de `frontend/.env.production.example` **antes** do build
+4. Nginx: `nginx/sistemaupgrade.conf`
+5. `docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy`  
+   (inclui `driverDepartureDate`, `truck_maintenance.cidade`, etc.)
+6. Rebuild backend + frontend
+7. Conferir `MINIO_PUBLIC_BROWSER_URL` e testar foto (funcionário + reembolso) e cidade em manutenção → Contas a pagar
 
----
-
-## ⚠️ Pendências Conhecidas (Sprint Atual)
-
-| Item | Descrição |
-|------|-----------|
-| **KPI Cards** | Ícones quebrados — em correção |
-| **Dark Theme** | Resíduo em teacher/reembolsos e teacher/frequencia |
-| **Seed Massivo** | Criar seed-master.ts com dados realistas para todos os módulos |
-| **Upload Foto** | Falta endpoint backend para persistir foto de perfil |
+Checklist completo: [`docs/AUDITORIA/DEPLOY-BRANCH-NUEVO.md`](docs/AUDITORIA/DEPLOY-BRANCH-NUEVO.md)
 
 ---
 
-## 📄 Licença
+## Troubleshooting
 
-Propriedade da Upgrade — Todos os direitos reservados.
+### «Falha ao carregar períodos de curso» (admin `/admin/acoes`)
 
-Desenvolvido para os programas **Qualifica Maranhão** e **Qualifica Piauí**.
+O backend devolve **500** em `GET /api/acoes` quando o Postgres não tem a coluna `acoes.driverDepartureDate` (schema Prisma mais novo que o banco).
+
+**Sintoma nos logs:** `The column acoes.driverDepartureDate does not exist in the current database`
+
+**Correção rápida (só coluna em falta):**
+
+```bash
+cd backend && npm run db:hotfix:acao-departure
+```
+
+**Banco legado sem `_prisma_migrations` (P3005 no `migrate deploy`):**
+
+```bash
+cd backend && npm run db:baseline:local
+```
+
+Isso cria o histórico Prisma, aplica SQL incremental pendente e marca as 35 migrations como aplicadas. Depois:
+
+```bash
+npm run acoes:verify   # Prisma + GET /acoes + estatísticas
+```
+
+Em VPS com histórico Prisma OK: `npx prisma migrate deploy`. Recarregue a página após aplicar.
+
+### Erro Next.js `Cannot find module './1682.js'` (dev)
+
+Cache de build corrompido em `frontend/.next` (comum após muitas alterações).
+
+```bash
+cd frontend
+rm -rf .next
+npm run dev
+```
+
+### Fotos de perfil quebradas (funcionários / reembolsos)
+
+- Sintoma: iniciais no lugar da foto, ou imagem 404.
+- Causa típica na VPS: URL MinIO com host interno (`minio:9000`) ou falta de `MINIO_PUBLIC_BROWSER_URL` / proxy `/storage`.
+- Verificar upload em cadastro público (`POST /api/public/upload`) e variáveis no `backend/.env` e `docker-compose.prod.yml`.
+- Após deploy, testar um cadastro novo e abrir a selfie na aprovação em **Funcionários**.
+
+### Manutenção sem cidade em Contas a pagar (`--`)
+
+Registros antigos não têm `cidade` — editar a manutenção e preencher **Cidade**, ou criar novas com o campo obrigatório (migration `20260520160000`).
+
+---
+
+## Pendências conhecidas
+
+| Item | Notas |
+|------|--------|
+| **Migrations em DB legado** | Use `npm run db:baseline:local` uma vez; depois `npm run start:dev` e `migrate deploy` funcionam normalmente |
+| **Regenerar viagens** | Após `driverDepartureDate`, períodos antigos podem precisar regenerar PLANNED |
+| **Fotos legadas** | Funcionários aprovados antes do fix podem precisar reenviar selfie ou corrigir URL no banco |
+| **ESLint** | Sem config no repo; validar com `npm run build` |
+| **Dark theme** | Resíduos em algumas telas teacher (cosmético) |
+
+---
+
+## Licença
+
+Propriedade da **Upgrade** — Todos os direitos reservados.
+
+Desenvolvido para **Qualifica Maranhão** e **Qualifica Piauí**.

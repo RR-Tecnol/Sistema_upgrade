@@ -48,6 +48,7 @@ import { StockModule } from './stock/stock.module';
 import { PublicUploadModule } from './public-upload/public-upload.module';
 // WHATSAPP: Integração Z-API — disparos automáticos de mensagens (@Global)
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { RoutingModule } from './routing/routing.module';
 
 
 @Module({
@@ -93,6 +94,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
         StockModule,          // EST-01: Módulo de Estoque
         PublicUploadModule,   // POST /api/public/upload — cadastro público (funcionário, inscrição, etc.)
         WhatsAppModule,       // WHATSAPP: Integração Z-API — disparos automáticos (@Global)
+        RoutingModule,        // Proxy OSRM — rotas no mapa seguem ruas/avenidas
     ],
     providers: [
         // ThrottlerGuard global — aplica rate limiting em TODOS os endpoints

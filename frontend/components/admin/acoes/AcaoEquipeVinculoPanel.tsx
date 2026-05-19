@@ -33,6 +33,8 @@ type Disponivel = {
     name: string;
     role: string;
     dailyCost?: number | string | null;
+    contractType?: string | null;
+    monthlySalaryCLT?: number | string | null;
     specialty?: string | null;
 };
 
@@ -190,11 +192,18 @@ export function AcaoEquipeVinculoPanel({
             });
     }, [modalOpen, selected?.role, turmasSelecionadasKey, acao.id]);
 
+    const isCltEmp = (emp: Disponivel) => String(emp.contractType || '').toUpperCase() === 'CLT';
+
     const openModal = (emp: Disponivel) => {
         previewSeqRef.current += 1;
         setSelected(emp);
-        const dc = emp.dailyCost != null ? Number(emp.dailyCost) : 0;
-        setValorDiaria(dc > 0 ? dc.toFixed(2) : '');
+        if (isCltEmp(emp)) {
+            const sal = emp.monthlySalaryCLT != null ? Number(emp.monthlySalaryCLT) : 0;
+            setValorDiaria(sal > 0 ? sal.toFixed(2) : '');
+        } else {
+            const dc = emp.dailyCost != null ? Number(emp.dailyCost) : 0;
+            setValorDiaria(dc > 0 ? dc.toFixed(2) : '');
+        }
         if (emp.role === 'INSTRUCTOR') {
             setSelectedTurmaIds([]);
             setInstructorNote('Selecione ao menos uma turma.');
@@ -215,10 +224,15 @@ export function AcaoEquipeVinculoPanel({
 
     const submitVinculo = async () => {
         if (!selected || submitting) return;
+        const clt = isCltEmp(selected);
         const vd = Number(valorDiaria);
         const dias = Number(diasTrabalhados);
-        if (!vd || vd <= 0) {
+        if (!clt && (!vd || vd <= 0)) {
             toast.error('Informe o valor da diária.');
+            return;
+        }
+        if (clt && (!selected.monthlySalaryCLT || Number(selected.monthlySalaryCLT) <= 0)) {
+            toast.error('Funcionário CLT sem salário mensal cadastrado.');
             return;
         }
         if (!dias || dias < 1) {
@@ -237,13 +251,13 @@ export function AcaoEquipeVinculoPanel({
                     : diasSugeridos;
             const payload: {
                 employeeId: string;
-                valorDiaria: number;
+                valorDiaria?: number;
                 diasTrabalhados?: number;
                 classIds?: string[];
             } = {
                 employeeId: selected.id,
-                valorDiaria: vd,
             };
+            if (!clt) payload.valorDiaria = vd;
             if (selected.role === 'INSTRUCTOR') {
                 payload.classIds = selectedTurmaIds;
             }
@@ -476,16 +490,26 @@ export function AcaoEquipeVinculoPanel({
                             ) : null}
 
                             <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
-                                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6B7280' }}>
-                                    Diária (R$)
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        style={{ ...inputStyle, marginTop: 4 }}
-                                        value={valorDiaria}
-                                        onChange={e => setValorDiaria(e.target.value)}
-                                    />
-                                </label>
+                                {selected && isCltEmp(selected) ? (
+                                    <div style={{ padding: 10, borderRadius: 8, background: '#EDE9FE', fontSize: '0.75rem', color: '#5B21B6' }}>
+                                        <strong>CLT</strong> — salário mensal R${' '}
+                                        {selected.monthlySalaryCLT != null
+                                            ? fmtCurrency(Number(selected.monthlySalaryCLT))
+                                            : 'não definido'}
+                                        . O custo no período será proporcional + passagens (conforme dias).
+                                    </div>
+                                ) : (
+                                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6B7280' }}>
+                                        Diária (R$)
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            style={{ ...inputStyle, marginTop: 4 }}
+                                            value={valorDiaria}
+                                            onChange={e => setValorDiaria(e.target.value)}
+                                        />
+                                    </label>
+                                )}
                                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6B7280' }}>
                                     {selected.role === 'INSTRUCTOR'
                                         ? 'Dias (pelo curso da turma selecionada)'

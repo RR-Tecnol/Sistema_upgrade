@@ -216,8 +216,24 @@ cd backend && npm run motor:verify
 
 ---
 
+## Motorista: próxima viagem, desbloqueio e mapa admin
+
+| Conceito | Comportamento real |
+|----------|-------------------|
+| **Próxima viagem** (app motorista) | Entre viagens `PLANNED`, escolher a de **menor** `departureDate` (ida antes da volta). Helper: `frontend/lib/driver-trips.ts` → `pickNextPlannedTrip`. A API lista por `departureDate DESC` — **não** usar `.find(PLANNED)` na lista bruta. |
+| **Iniciar viagem** | Só no **dia civil** da `departureDate` da viagem escolhida (`trips.service` + `isDepartureDay` no front). |
+| **Período `EM_ANDAMENTO`** | Gera/atualiza **diárias** (`acoes.service` `updateStatus`); **não** altera `Trip` nem desbloqueia partida. |
+| **Mapa «Motoristas em rota»** (admin) | Só viagens com `Trip.status = IN_TRANSIT` + motorista com `driverUserId` + GPS após «Iniciar viagem» (`driver-location.service` → `getMotoristaAtivos`). |
+
+**Ida vs volta:** `generateTripsForClass` cria duas viagens PLANNED — ida (origem → cidade) e volta (cidade → origem). Data base da ida: `Acao.driverDepartureDate` se preenchido no período; senão `Class.startDate`. Volta: `Class.endDate`.
+
+**Campo opcional no período:** `driverDepartureDate` (wizard logística + edição em `/admin/acoes/[id]`). Ao alterar com motorista já vinculado, o backend regenera viagens PLANNED canónicas do motorista.
+
+---
+
 ## Deploy VPS
 
-1. `npx prisma migrate deploy` (incl. `20260519120000_class_holiday_acao_id`).
+1. `npx prisma migrate deploy` (incl. `20260519120000_class_holiday_acao_id`, `20260519130000_acao_driver_departure_date`).
 2. Rebuild backend + frontend.
 3. Teste manual: curso 60h → turma manhã 07–12 → painel «60h ÷ 5h = 12 encontros» → período 12 diárias → ocorrência não aumenta diária sozinha.
+4. **Períodos já criados antes do fix:** o motorista pode continuar a ver data errada nas trips antigas até **regenerar** viagens PLANNED — re-vincular motorista no período ou `POST /acoes/:id/funcionarios/:employeeId/regenerate-trips`. O fix do front (próxima viagem = menor data) já mostra a ida se as datas no banco estiverem corretas.

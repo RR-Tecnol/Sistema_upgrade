@@ -30,6 +30,38 @@ export type ReimbursementMeta = {
     perfil?: string;
 };
 
+export type AbsencePenaltyMeta = {
+    hasPenalty: boolean;
+    absenceId?: string;
+    penalidadeImprevisto?: number;
+    reembolsoDevido?: number;
+    valorAntesPenalidade?: number;
+};
+
+/** Metadados de desconto por imprevisto PENALIZED em diária de funcionário. */
+export function parseAbsencePenaltyMeta(conta: { observacoes?: string | null }): AbsencePenaltyMeta {
+    const raw = conta.observacoes || '';
+    const absenceId = raw.match(/absenceId:([a-f0-9-]+)/i)?.[1];
+    const penalidade = raw.match(/penalidade_imprevisto:([\d.,]+)/i)?.[1];
+    const reembolso = raw.match(/reembolso_devido:([\d.,]+)/i)?.[1];
+    const antes = raw.match(/valor_antes_penalidade:([\d.,]+)/i)?.[1];
+    const parseMoney = (s?: string) => {
+        if (!s) return undefined;
+        const n = Number(s.replace(',', '.'));
+        return Number.isFinite(n) ? n : undefined;
+    };
+    const penalidadeImprevisto = parseMoney(penalidade);
+    const reembolsoDevido = parseMoney(reembolso);
+    const valorAntesPenalidade = parseMoney(antes);
+    return {
+        hasPenalty: !!(absenceId || penalidadeImprevisto || reembolsoDevido),
+        absenceId,
+        penalidadeImprevisto,
+        reembolsoDevido,
+        valorAntesPenalidade,
+    };
+}
+
 const USER_ROLE_PERFIL: Record<string, string> = {
     DRIVER: 'Motorista',
     TEACHER: 'Professor',
@@ -148,6 +180,10 @@ export function humanizeObservacoes(raw?: string | null): string {
         .replace(/origem\s*=\s*[^|]+/gi, '')
         .replace(/categoria\s*=\s*[^|]+/gi, '')
         .replace(/motivo\s*=\s*[^|]+/gi, '')
+        .replace(/absenceId:[a-f0-9-]+/gi, '')
+        .replace(/penalidade_imprevisto:[\d.,]+/gi, '')
+        .replace(/reembolso_devido:[\d.,]+/gi, '')
+        .replace(/valor_antes_penalidade:[\d.,]+/gi, '')
         .replace(/\|\s*\|+/g, '|')
         .replace(/^\s*\|+|\|+\s*$/g, '')
         .trim();

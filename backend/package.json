@@ -27,7 +27,16 @@
         "seed:extra": "npx tsx prisma/seed-desenvolvimento/seed-full.ts",
         "seed:prod": "npx tsx prisma/seed-prod.ts",
         "reset:prod": "npx tsx prisma/reset-db.ts",
-        "motor:verify": "npx tsx scripts/verify-teaching-motor.ts"
+        "motor:verify": "npx tsx scripts/verify-teaching-motor.ts",
+        "penalty:verify": "npx tsx scripts/verify-absence-employee-penalty.ts",
+        "acao-custo:verify": "npx tsx scripts/verify-acao-custo-conta-pagar.ts",
+        "maintenance:verify": "npx tsx scripts/verify-truck-maintenance-conta-pagar.ts",
+        "validate:vps": "bash scripts/validate-vps-deploy.sh",
+        "db:hotfix:acao-departure": "prisma db execute --file prisma/migrations/20260519130000_acao_driver_departure_date/migration.sql",
+        "db:baseline:local": "bash scripts/baseline-and-migrate-local.sh",
+        "acoes:verify": "npx tsx scripts/verify-acoes-api.ts",
+        "tracking:verify": "npx tsx scripts/verify-live-tracking.ts",
+        "employee-contract:verify": "npx tsx scripts/verify-employee-contract-approval.ts"
     },
     "keywords": [
         "nestjs",

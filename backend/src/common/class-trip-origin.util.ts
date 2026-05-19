@@ -37,6 +37,24 @@ export async function resolveClassTripOriginCityId(
     );
 }
 
+/** Data base da viagem de ida: período.driverDepartureDate ou início letivo da turma. */
+export async function resolveIdaDepartureBaseDate(
+    prisma: PrismaService,
+    classRef: { startDate: Date },
+    acaoId?: string,
+): Promise<Date> {
+    if (acaoId) {
+        const acao = await prisma.acao.findUnique({
+            where: { id: acaoId },
+            select: { driverDepartureDate: true },
+        });
+        if (acao?.driverDepartureDate) {
+            return new Date(acao.driverDepartureDate);
+        }
+    }
+    return new Date(classRef.startDate);
+}
+
 /** Combina data base com horário HH:mm (horário local do servidor, alinhado ao restante do módulo de viagens). */
 export function combineDateAndTime(baseDate: Date, timeStr: string): Date {
     const [h, m] = (timeStr || '07:00').split(':').map(Number);

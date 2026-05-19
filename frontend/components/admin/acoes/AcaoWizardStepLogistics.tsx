@@ -17,6 +17,18 @@ export function AcaoWizardStepLogistics({
                 Valores para custo de deslocamento na Visão Geral. Turmas, motoristas e equipe com diária são vinculados no
                 dashboard do período após a criação.
             </p>
+            <div>
+                <label style={WIZARD_LABEL}>Dia da partida da carreta (ida) — opcional</label>
+                <input
+                    type="date"
+                    style={WIZARD_INPUT}
+                    value={form.driverDepartureDate}
+                    onChange={e => setForm(f => ({ ...f, driverDepartureDate: e.target.value }))}
+                />
+                <p style={{ fontSize: '0.72rem', color: '#6B7280', margin: '6px 0 0', lineHeight: 1.4 }}>
+                    Vazio: a ida usa o início letivo da turma. Preencha se a carreta parte noutro dia.
+                </p>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div>
                     <label style={WIZARD_LABEL}>Distância (km)</label>

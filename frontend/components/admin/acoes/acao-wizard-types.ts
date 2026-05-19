@@ -39,6 +39,8 @@ export type AcaoWizardFormState = {
     endDateManual: boolean;
     dataInicio: string;
     dataFim: string;
+    /** Dia da partida da carreta (ida) — opcional; vazio = início letivo da turma */
+    driverDepartureDate: string;
     localExecucao: string;
     distanciaKm: string;
     precoCombustivelL: string;
@@ -68,6 +70,7 @@ export const INITIAL_ACAO_WIZARD_FORM: AcaoWizardFormState = {
     endDateManual: false,
     dataInicio: '',
     dataFim: '',
+    driverDepartureDate: '',
     localExecucao: '',
     distanciaKm: '',
     precoCombustivelL: '',

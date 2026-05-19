@@ -117,6 +117,9 @@ export function AcaoPeriodWizard({
                 : undefined,
             dataInicio: form.dataInicio,
             dataFim: form.dataFim,
+            driverDepartureDate: form.driverDepartureDate?.trim()
+                ? `${form.driverDepartureDate.trim()}T12:00:00.000Z`
+                : undefined,
             status: form.status,
             permitirInscricoes: form.permitirInscricoes,
             distanciaKm: form.distanciaKm ? Number(form.distanciaKm) : undefined,

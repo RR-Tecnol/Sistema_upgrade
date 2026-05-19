@@ -25,20 +25,17 @@ function ensureLeafletCssLink() {
     document.head.appendChild(link);
 }
 
-async function routeOSRM(from: [number, number], to: [number, number]): Promise<[number, number][]> {
+async function routeDriving(from: [number, number], to: [number, number]): Promise<[number, number][]> {
     const [fLat, fLng] = from;
     const [tLat, tLng] = to;
-    const url = `https://router.project-osrm.org/route/v1/driving/${fLng},${fLat};${tLng},${tLat}?overview=full&geometries=geojson`;
     try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
-        if (!res.ok) return [from, to];
-        const data = await res.json();
-        if (data.code !== 'Ok' || !data.routes?.length) return [from, to];
-        return data.routes[0].geometry.coordinates.map(
-            ([lon, lat]: [number, number]) => [lat, lon] as [number, number],
-        );
+        const api = (await import('@/lib/api/client')).default;
+        const { data } = await api.get<{ coordinates?: [number, number][] }>('/routing/driving', {
+            params: { fromLat: fLat, fromLng: fLng, toLat: tLat, toLng: tLng },
+        });
+        return data?.coordinates?.length && data.coordinates.length > 2 ? data.coordinates : [];
     } catch {
-        return [from, to];
+        return [];
     }
 }
 
@@ -101,7 +98,7 @@ export default function TripRoutePreviewMap({
                 }).addTo(map);
 
                 setHint('Calculando trajeto pelas estradas…');
-                const latlngs: [number, number][] = await routeOSRM(
+                const latlngs: [number, number][] = await routeDriving(
                     [originLat, originLng],
                     [destLat, destLng],
                 );

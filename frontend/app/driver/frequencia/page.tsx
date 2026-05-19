@@ -106,7 +106,7 @@ export default function DriverFrequencia() {
     };
 
     return (
-        <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
+        <div className="space-y-6 animate-fade-in w-full">
             <AdminHeaderHero
                 title="MEU PONTO"
                 subtitle="Registro diário e histórico de presença do motorista"

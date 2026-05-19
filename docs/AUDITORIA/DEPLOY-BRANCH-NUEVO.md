@@ -11,9 +11,20 @@ Guia para **commit** no repositório; o deploy na VPS fica com quem opera o serv
 ## Validação local (antes do commit)
 
 ```bash
+cd backend && npm run validate:vps
+```
+
+Equivale a: `prisma validate` + `generate` + `build` backend + `motor:verify` + `penalty:verify` (imprevisto/diária/motorista) + `build` frontend + `migrate status`.
+
+Atalhos individuais:
+
+```bash
 cd backend && npx prisma validate && npx prisma generate && npm run build
+cd backend && npm run motor:verify && npm run penalty:verify && npm run acao-custo:verify
 cd ../frontend && npm run build
 ```
+
+**Abastecimento / despesa no período:** ao cadastrar em *Custos* da ação, o backend cria `ContaPagar` (`abastecimento` ou `outros`) com `acaoCustoId:` nas observações. Custos antigos sem conta são sincronizados ao abrir o período (`findOne`). Remover o custo desativa a conta vinculada.
 
 > `npm run lint` em backend/frontend pede config ESLint inexistente no repo; use **`npm run build`** como validação TypeScript (obrigatório antes do commit).
 
@@ -47,6 +58,19 @@ git push -u origin nuevo
 | Reembolso/imprevisto | `POST /api/public/upload` → `public-uploads` |
 
 Detalhe: [AUDITORIA/REVISAO-VPS-SPRINT1.md](./AUDITORIA/REVISAO-VPS-SPRINT1.md)
+
+## Motorista / mapa (após deploy com fix de partida)
+
+| Verificação | Esperado |
+|-------------|----------|
+| App motorista — próxima viagem | Ida (`PLANNED` com menor `departureDate`), não a volta no fim do período |
+| Botão «Iniciar viagem» | Ativo só no dia da `departureDate` da viagem mostrada |
+| Admin — Motoristas em rota | Vazio até existir trip `IN_TRANSIT` (não basta período `EM_ANDAMENTO`) |
+| Migration | `20260519130000_acao_driver_departure_date` (`Acao.driverDepartureDate` opcional) |
+
+**Reparo em períodos já existentes (ex. QUALIFICA-MA-3):** após `migrate deploy` + rebuild, regenerar viagens PLANNED do motorista (`POST /acoes/:id/funcionarios/:employeeId/regenerate-trips` ou re-vincular motorista no dashboard do período). Sem isso, datas antigas no banco podem persistir mesmo com o front corrigido.
+
+Documentação: [SINCRONIA-CURSO-PERIODO-TURMA.md](./SINCRONIA-CURSO-PERIODO-TURMA.md) — secção «Motorista: próxima viagem, desbloqueio e mapa admin».
 
 ## Dev local vs VPS (sem conflito)
 

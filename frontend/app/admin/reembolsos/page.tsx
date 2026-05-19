@@ -42,7 +42,7 @@ interface Reimbursement {
     active: boolean;
     rejectionReason?: string | null;
     createdAt: string;
-    employee?: { name: string };
+    employee?: { name: string; photoUrl?: string };
     acao?: { nome: string };
 }
 
@@ -691,6 +691,7 @@ export default function ReembolsosPage() {
                         accentColor={st.color}
                         accentGlow={glow}
                         initials={initialsFromName(empName)}
+                        photoUrl={detailing.employee?.photoUrl}
                         statusBadge={reimbursementStatusHeaderBadge(detailing.status)}
                         headline={empName}
                         headerTags={(

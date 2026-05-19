@@ -723,6 +723,7 @@ model TruckMaintenance {
   statusPagamento String?   @default("pendente") // pendente | paga
   fornecedor      String?
   responsavel     String?
+  cidade          String?   // cidade do serviço — espelhada em ContaPagar.cidade
   observacoes     String?
   contaPagarId    String?   // criado automaticamente ao concluir
   createdAt       DateTime  @default(now())
@@ -1416,6 +1417,8 @@ model Acao {
   status              AcaoStatus @default(PLANEJADA)
   dataInicio          DateTime
   dataFim             DateTime
+  /// Dia civil da partida da carreta (ida). Opcional — vazio usa início letivo da turma.
+  driverDepartureDate DateTime?
   /// Motor letivo do período (fonte de verdade operacional — turmas herdam ao vincular)
   motorCourseId       String?
   period              Period             @default(MORNING)
