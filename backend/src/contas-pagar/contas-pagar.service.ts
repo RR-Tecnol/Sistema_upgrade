@@ -304,7 +304,7 @@ export class ContasPagarService {
                 ...(dto.tipo_espontaneo !== undefined && { tipo_espontaneo: dto.tipo_espontaneo }),
                 ...(dto.descricao !== undefined && { descricao: dto.descricao }),
                 ...(dto.valor !== undefined && { valor: dto.valor }),
-                ...(dto.data_vencimento !== undefined && { data_vencimento: dto.data_vencimento ? this.parseDateSafe(dto.data_vencimento) : null }),
+                ...(dto.data_vencimento !== undefined && dto.data_vencimento && { data_vencimento: this.parseDateSafe(dto.data_vencimento) as Date }),
                 ...(dto.data_pagamento !== undefined && { data_pagamento: dto.data_pagamento ? this.parseDateSafe(dto.data_pagamento) : null }),
                 ...(dto.status !== undefined && { status: dto.status }),
                 ...(dto.recorrente !== undefined && { recorrente: dto.recorrente }),
