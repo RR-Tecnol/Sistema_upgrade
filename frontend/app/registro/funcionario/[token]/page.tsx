@@ -317,7 +317,31 @@ export default function RegistroFuncionarioPage() {
 
     return (
         <div style={{ minHeight: '100vh', display: 'flex', background: '#F3F4F6', fontFamily: 'Inter, sans-serif' }}>
-            <div style={{ width: '380px', background: 'linear-gradient(135deg, #0A0A0A, #1C1C2E)', padding: '3rem 2rem', display: 'flex', flexDirection: 'column', color: '#fff', position: 'relative', overflow: 'hidden' }}>
+          <style>{`
+            @media (max-width: 768px) {
+              .reg-sidebar { display: none !important; }
+              .reg-mobile-header { display: flex !important; }
+              .reg-main { padding: 0.75rem !important; padding-top: 0.75rem !important; box-sizing: border-box; }
+              .reg-card { padding: 1.25rem !important; border-radius: 16px !important; margin-top: 70px !important; }
+              .reg-grid-2 { grid-template-columns: 1fr !important; }
+              .reg-mobile-pt { padding-top: 0 !important; margin-bottom: 0 !important; display: none !important; }
+            }
+          `}</style>
+
+          {/* Mobile top bar — only on small screens */}
+          <div className="reg-mobile-header" style={{ display: 'none', position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50, background: 'linear-gradient(135deg,#0A0A0A,#1C1C2E)', padding: '1rem 1.25rem', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>
+            <div>
+              <div style={{ color: '#FFD600', fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '0.9rem', letterSpacing: '0.06em' }}>UPGRADE</div>
+              <div style={{ color: '#9CA3AF', fontSize: '0.62rem', marginTop: 1 }}>Portal do Colaborador</div>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {steps.map((_, i) => (
+                <div key={i} style={{ width: i === step ? 20 : 8, height: 8, borderRadius: 4, background: i < step ? '#059669' : i === step ? '#FFD600' : 'rgba(255,255,255,0.2)', transition: 'all 0.3s' }} />
+              ))}
+            </div>
+          </div>
+            {/* Desktop Sidebar */}
+            <div className="reg-sidebar" style={{ width: '380px', flexShrink: 0, background: 'linear-gradient(135deg, #0A0A0A, #1C1C2E)', padding: '3rem 2rem', display: 'flex', flexDirection: 'column', color: '#fff', position: 'relative', overflow: 'hidden' }}>
                 <ParticleField />
                 <div style={{ position: 'relative', zIndex: 10 }}>
                     <div style={{ display: 'inline-block', padding: '0.5rem 1rem', background: 'rgba(255,214,0,0.1)', border: '1px solid rgba(255,214,0,0.3)', borderRadius: 100, color: '#FFD600', fontWeight: 800, fontSize: '0.7rem', letterSpacing: '0.1em', marginBottom: '2rem' }}>
@@ -343,8 +367,11 @@ export default function RegistroFuncionarioPage() {
                 </div>
             </div>
 
-            <div style={{ flex: 1, padding: '4rem', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-                <div className="animate-fade-in" style={{ background: '#fff', borderRadius: 24, padding: '3rem', boxShadow: '0 10px 40px rgba(0,0,0,0.04)', maxWidth: 640, width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div className="reg-main" style={{ flex: 1, padding: '4rem', display: 'flex', flexDirection: 'column', overflowY: 'auto', paddingTop: 'env(safe-area-inset-top, 4rem)' }}>
+                <div className="reg-card animate-fade-in" style={{ background: '#fff', borderRadius: 24, padding: '3rem', boxShadow: '0 10px 40px rgba(0,0,0,0.04)', maxWidth: 640, width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    {/* Mobile step indicator inside card */}
+                    <div style={{ display: 'none' }} className="reg-mobile-header" />
+                    <div style={{ marginBottom: '0.5rem', paddingTop: '3.5rem' }} className="reg-mobile-pt" />
                     <div style={{ marginBottom: '2rem' }}>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', marginBottom: '0.5rem' }}>{steps[step]}</h2>
                         <div style={{ width: 40, height: 4, background: '#FFD600', borderRadius: 2 }} />
@@ -378,7 +405,7 @@ export default function RegistroFuncionarioPage() {
 
                         {step === 1 && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
+                                <div className="reg-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
                                     <div className="form-group">
                                         <label className="form-label" style={{ fontWeight: 600 }}>CEP *</label>
                                         <input className="form-input" value={cep} onChange={e => setCep(formatCep(e.target.value))} placeholder="00000-000" maxLength={9} />
@@ -389,7 +416,7 @@ export default function RegistroFuncionarioPage() {
                                         <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="Sua cidade" />
                                     </div>
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+                                <div className="reg-grid-2" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
                                     <div className="form-group">
                                         <label className="form-label" style={{ fontWeight: 600 }}>Rua *</label>
                                         <input className="form-input" value={street} onChange={e => setStreet(e.target.value)} placeholder="Logradouro" />
@@ -421,7 +448,7 @@ export default function RegistroFuncionarioPage() {
                                         />
                                     )}
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div className="reg-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                     <div className="form-group">
                                         <label className="form-label" style={{ fontWeight: 600 }}>Bairro *</label>
                                         <input className="form-input" value={neighborhood} onChange={e => setNeighborhood(e.target.value)} />
@@ -480,7 +507,7 @@ export default function RegistroFuncionarioPage() {
                                     </>
                                 ) : isDriver ? (
                                     <>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div className="reg-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                             <div className="form-group">
                                                 <label className="form-label" style={{ fontWeight: 600 }}>Número da CNH *</label>
                                                 <input className="form-input" value={cnhNumber} onChange={e => setCnhNumber(e.target.value)} />
