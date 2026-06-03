@@ -83,6 +83,18 @@ const FUTURISTIC_CSS = `
 .futuristic-card-3d:hover { transform: perspective(800px) rotateX(-4deg) rotateY(4deg) translateZ(8px); }
 .stat-neon:hover { animation: neon-border 1.5s ease-in-out infinite; }
 .holo-text { background: linear-gradient(90deg,#B89B00,#FFD600,#fff,#FFD600,#B89B00); background-size:200%; -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; animation: hero-gradient 4s linear infinite; }
+@media (max-width: 640px) {
+  .acao-hero-pad { padding: 20px 18px 0 !important; }
+  .acao-hero-h1 { font-size: 1.05rem !important; letter-spacing: 0.02em !important; margin-bottom: 10px !important; }
+  .acao-hero-icon { width: 48px !important; height: 48px !important; font-size: 1.4rem !important; }
+  .acao-hero-icon-ring { inset: -4px !important; }
+  .acao-hero-icon-wrap { gap: 12px !important; }
+  .acao-status-ctrl { align-items: flex-start !important; width: 100%; }
+  .acao-status-ctrl select { width: 100%; box-sizing: border-box; }
+  .equipe-cards-grid { grid-template-columns: 1fr !important; }
+  .insc-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .insc-form-grid { grid-template-columns: 1fr !important; }
+}
 `;
 
 // ── Utilitários ──────────────────────────────────────────────────
@@ -1007,7 +1019,7 @@ function TabFuncionarios({ acao, onUpdate }: { acao: Acao; onUpdate: () => void 
                     </div>
 
                     {/* Cards Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
+                    <div className="equipe-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(340px, 100%), 1fr))', gap: 14 }}>
                         {funcionariosList.map((f) => {
                             const emp = f.employee;
                             const cfg = ROLE_CFG[emp?.role || 'OTHER'] || ROLE_CFG.OTHER;
@@ -1339,7 +1351,7 @@ function TabInscricoes({ acao, onRefresh }: { acao: Acao; onRefresh: () => void 
             )}
 
             {/* KPIs */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 12 }}>
+            <div className="insc-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 12 }}>
                 {[
                     { label: 'Total', val: todas.length, icon: '👥', glow: '255,214,0', color: '#FFD600' },
                     { label: 'Aprovados', val: todas.filter(i => i.status === 'APPROVED').length, icon: '✅', glow: '52,211,153', color: '#34D399' },
@@ -1384,7 +1396,7 @@ function TabInscricoes({ acao, onRefresh }: { acao: Acao; onRefresh: () => void 
             {/* Inscrever aluno */}
             <div style={{ background: 'var(--bg-card)', border: '1.5px solid #FEF08A', borderRadius: 16, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', position: 'relative', overflow: 'visible' }}>
                 <div style={{ fontFamily: 'Orbitron', fontSize: '0.65rem', fontWeight: 800, color: '#B89B00', letterSpacing: '0.12em', marginBottom: 14 }}>➕ INSCREVER ALUNO MANUALMENTE</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+                <div className="insc-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
                     <div ref={searchRef} style={{ position: 'relative' }}>
                         <label style={LBL}>Buscar Aluno *</label>
                         <div style={{ position: 'relative' }}>
@@ -1704,25 +1716,25 @@ export default function AcaoDetailPage() {
                 </div>
 
                 {/* Conteúdo principal do Hero */}
-                <div style={{ position: 'relative', zIndex: 3, padding: '32px 36px 0' }}>
+                <div className="acao-hero-pad" style={{ position: 'relative', zIndex: 3, padding: '32px 36px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20 }}>
 
                         {/* Ícone + Título */}
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
+                        <div className="acao-hero-icon-wrap" style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
                             {/* Ícone 3D com anéis */}
-                            <div style={{ position: 'relative', width: 72, height: 72, flexShrink: 0, animation: 'float3d 4s ease-in-out infinite' }}>
+                            <div className="acao-hero-icon" style={{ position: 'relative', width: 72, height: 72, flexShrink: 0, animation: 'float3d 4s ease-in-out infinite' }}>
                                 <div style={{
                                     position: 'absolute', inset: 0, borderRadius: 18,
                                     background: 'linear-gradient(135deg, #FFD600, #E6A800)',
                                     boxShadow: '0 0 24px rgba(255,214,0,0.6), 0 0 60px rgba(255,214,0,0.2), 0 8px 32px rgba(0,0,0,0.4)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem'
                                 }}>⚡</div>
-                                <div style={{ position: 'absolute', inset: -6, borderRadius: 22, border: '1px solid rgba(255,214,0,0.3)', animation: 'ring-rotate 6s linear infinite', pointerEvents: 'none' }} />
+                                <div className="acao-hero-icon-ring" style={{ position: 'absolute', inset: -6, borderRadius: 22, border: '1px solid rgba(255,214,0,0.3)', animation: 'ring-rotate 6s linear infinite', pointerEvents: 'none' }} />
                             </div>
 
                             <div>
                                 <div style={{ fontFamily: 'Orbitron', fontSize: '0.6rem', fontWeight: 700, color: 'rgba(255,214,0,0.6)', letterSpacing: '0.25em', marginBottom: 6 }}>UPGRADE // AÇÃO OPERACIONAL</div>
-                                <h1 className="holo-text" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.6rem', fontWeight: 900, margin: '0 0 14px', letterSpacing: '0.05em', lineHeight: 1.1 }}>{acao.nome}</h1>
+                                <h1 className="holo-text acao-hero-h1" style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.6rem', fontWeight: 900, margin: '0 0 14px', letterSpacing: '0.05em', lineHeight: 1.1 }}>{acao.nome}</h1>
 
                                 {/* Metadados em chips */}
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -1760,7 +1772,7 @@ export default function AcaoDetailPage() {
                         </div>
 
                         {/* Status control futurista */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                        <div className="acao-status-ctrl" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                             <div style={{ fontFamily: 'Orbitron', fontSize: '0.55rem', color: 'rgba(255,214,0,0.5)', fontWeight: 700, letterSpacing: '0.2em' }}>ALTERAR STATUS</div>
                             <select value={acao.status} onChange={e => changeStatus(e.target.value as AcaoStatus)} disabled={updatingStatus}
                                 style={{
@@ -1778,7 +1790,8 @@ export default function AcaoDetailPage() {
                     </div>
 
                     {/* === TABS FUTURISTAS === */}
-                    <div style={{ display: 'flex', gap: 0, marginTop: 28, paddingLeft: 0, position: 'relative' }}>
+                    <div style={{ display: 'flex', gap: 0, marginTop: 28, paddingLeft: 0, position: 'relative', overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+                        <style>{`.hide-scrollbar::-webkit-scrollbar{display:none}`}</style>
                         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '1px', background: 'rgba(255,214,0,0.2)' }} />
                         {TABS.map((tab, idx) => {
                             const isActive = activeTab === tab.id;
@@ -1793,7 +1806,8 @@ export default function AcaoDetailPage() {
                                         fontWeight: isActive ? 800 : 500, fontFamily: isActive ? 'Orbitron' : 'Inter',
                                         fontSize: '0.78rem', cursor: 'pointer', letterSpacing: isActive ? '0.05em' : 0,
                                         boxShadow: isActive ? '0 -2px 16px rgba(255,214,0,0.15) inset' : 'none',
-                                        borderRadius: '8px 8px 0 0'
+                                        borderRadius: '8px 8px 0 0',
+                                        flexShrink: 0, whiteSpace: 'nowrap',
                                     }}>
                                     <span style={{ marginRight: 6 }}>{tab.icon}</span>{tab.label}
                                     {isActive && <div style={{

@@ -3173,11 +3173,21 @@ export class PdfService {
     return null;
   }
 
-  async getOfficialCertificateTemplatePath(): Promise<string> {
-    const selected = await this.templateService.resolvePublishedTemplate(undefined, undefined);
+  async getOfficialCertificateTemplatePath(state?: string): Promise<string> {
+    const normalizedState = state?.trim().toUpperCase() || undefined;
+    // Tenta resolver pelo estado específico primeiro; cai no GLOBAL se não encontrar
+    const selected =
+      normalizedState
+        ? (await this.templateService.resolvePublishedTemplate(undefined, normalizedState)) ??
+          (await this.templateService.resolvePublishedTemplate(undefined, undefined))
+        : await this.templateService.resolvePublishedTemplate(undefined, undefined);
     const templatePath = await this.resolveCertificateTemplatePath(selected?.pdfPath ?? undefined);
     if (!templatePath) {
-      throw new NotFoundException('Template oficial de certificado não encontrado');
+      throw new NotFoundException(
+        normalizedState
+          ? `Template oficial de certificado não encontrado para UF: ${normalizedState}`
+          : 'Template oficial de certificado não encontrado',
+      );
     }
     return templatePath;
   }

@@ -2506,3 +2506,56 @@ body.no-animations *::after {
   max-width: 100%;
   height: auto;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE RESPONSIVENESS v2 — Grid item min-width fix
+   CSS Grid items têm min-width:auto por padrão e forçam a célula
+   a expandir além de 1fr. min-width:0 corrige o overflow.
+═══════════════════════════════════════════════════════════ */
+
+/* ── Funcionários: cards não excedem 1fr no mobile ── */
+.func-card-grid > * {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Alunos: grid de cards constrained ── */
+.alunos-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  padding: 16px;
+}
+
+.alunos-card-grid > * {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .alunos-card-grid {
+    grid-template-columns: 1fr !important;
+  }
+  /* filtro de alunos: barra de busca sem minWidth no mobile */
+  .alunos-filter-search {
+    min-width: 0 !important;
+  }
+}
+
+/* ── Fabricação: grids 2-col colapsam para 1-col no mobile ── */
+@media (max-width: 640px) {
+  .fab-form-2col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Certificados Editor: rows de coordenadas fazem wrap no mobile ── */
+@media (max-width: 768px) {
+  .cert-coord-row {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* ── Certificados Templates Editor: left column items constrained ── */
+.cert-templates-editor-grid > * {
+  min-width: 0;
+}

@@ -330,7 +330,8 @@ export function AcaoEquipeVinculoPanel({
                     </p>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 10 }}>
+                <style>{`.acv-filter-grid{display:grid;grid-template-columns:1fr 180px;gap:10px}@media(max-width:640px){.acv-filter-grid{grid-template-columns:1fr}}`}</style>
+                <div className="acv-filter-grid">
                     <input
                         style={inputStyle}
                         placeholder="Buscar por nome, e-mail ou especialidade…"

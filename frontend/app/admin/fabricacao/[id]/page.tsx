@@ -174,7 +174,11 @@ export default function OrdemDetailPage({ params }: { params: { id: string } }) 
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+      <style>{`
+        .fab-detail-2col { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+        @media (max-width: 768px) { .fab-detail-2col { grid-template-columns: 1fr; } }
+      `}</style>
+      <div className="fab-detail-2col">
 
         {/* Roteiro Stepper */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 16, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', alignSelf: 'start' }}>

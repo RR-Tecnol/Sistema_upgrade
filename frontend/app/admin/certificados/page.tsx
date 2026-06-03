@@ -1004,9 +1004,11 @@ export default function CertificadosPage() {
     const [autoFillLoading, setAutoFillLoading] = useState(false);
     const [savingTemplate, setSavingTemplate] = useState(false);
     const [userRole, setUserRole] = useState('');
-    const templatePreviewUrl =
-        `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3012/api').replace(/\/api$/, '')}/api/certificates/template/model`;
+    const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+    const [seedingTemplates, setSeedingTemplates] = useState(false);
 
+    // URL base da API para links de download direto
+    const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3012/api').replace(/\/api$/, '/api');
 
     const lastPdfObjectUrl = useRef<string | null>(null);
     useEffect(
@@ -1408,16 +1410,22 @@ export default function CertificadosPage() {
     };
 
     const seedMasterTemplates = async () => {
+        setSeedingTemplates(true);
         setTemplateMessage(null);
         try {
             const res = await api.post('/certificates/admin/seed-master-templates');
             const results = res.data?.results as { state: string; status: string }[] ?? [];
             const summary = results.map(r => `${r.state}: ${r.status}`).join(' · ');
-            setTemplateMessage(`? Moldes Mestres activados! ${summary}. O sistema vai usar estes modelos para todos os cursos sem template específico.`);
+            toast.success(`✅ Moldes Mestres MA/PI recriados! ${summary}`);
+            setTemplateMessage(`✅ Moldes Mestres activados! ${summary}. Templates MA e PI oficiais recriados com coordenadas padrão.`);
             await fetchTemplates();
         } catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
-            setTemplateMessage(err?.response?.data?.message || 'Falha ao activar moldes mestres (permissão admin).');
+            const msg = err?.response?.data?.message || 'Falha ao activar moldes mestres (permissão admin).';
+            toast.error(msg);
+            setTemplateMessage(msg);
+        } finally {
+            setSeedingTemplates(false);
         }
     };
 
@@ -1999,26 +2007,106 @@ export default function CertificadosPage() {
                     subtitle="Emita e gerencie certificados digitais de conclusão"
                     badge="Painel oficial de emissão"
                     rightSlot={(
-                        <a
-                            href={templatePreviewUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                                padding: '0.6rem 1rem',
-                                borderRadius: 10,
-                                background: '#EEF2FF',
-                                border: '1px solid #C7D2FE',
-                                fontSize: '0.8rem',
-                                color: '#3730A3',
-                                fontWeight: 700,
-                                textDecoration: 'none',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.35rem',
-                            }}
-                        >
-                            📄 Ver/Baixar Modelo Atual
-                        </a>
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                type="button"
+                                id="btn-download-modelo"
+                                onClick={() => setShowDownloadMenu(v => !v)}
+                                style={{
+                                    padding: '0.6rem 1rem',
+                                    borderRadius: 10,
+                                    background: '#EEF2FF',
+                                    border: '1px solid #C7D2FE',
+                                    fontSize: '0.8rem',
+                                    color: '#3730A3',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                }}
+                            >
+                                📄 Baixar Modelo por UF ▾
+                            </button>
+                            {showDownloadMenu && (
+                                <>
+                                    {/* Overlay — fecha ao clicar fora. zIndex alto para estar acima do header admin */}
+                                    <div
+                                        onClick={() => setShowDownloadMenu(false)}
+                                        style={{ position: 'fixed', inset: 0, zIndex: 9990 }}
+                                    />
+                                    <style>{`
+                                        .cert-uf-dd {
+                                            position: absolute;
+                                            top: calc(100% + 6px);
+                                            right: 0;
+                                            min-width: 240px;
+                                        }
+                                        @media (max-width: 640px) {
+                                            .cert-uf-dd {
+                                                right: auto;
+                                                left: 0;
+                                                min-width: 220px;
+                                                max-width: calc(100vw - 32px);
+                                            }
+                                        }
+                                    `}</style>
+                                    <div className="cert-uf-dd" style={{
+                                        background: '#fff',
+                                        border: '1px solid #C7D2FE',
+                                        borderRadius: 12,
+                                        boxShadow: '0 8px 32px rgba(55,48,163,0.14)',
+                                        zIndex: 9991,
+                                        padding: '0.4rem',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '0.15rem',
+                                    }}>
+                                        <div style={{ padding: '0.4rem 0.7rem 0.25rem', fontSize: '0.65rem', color: '#9CA3AF', fontWeight: 700, letterSpacing: '0.06em' }}>
+                                            TEMPLATES PUBLICADOS (PDF)
+                                        </div>
+                                        {templates
+                                            .filter(t => (t.scope === 'STATE' || t.scope === 'GLOBAL') && t.currentVersion?.status === 'PUBLISHED')
+                                            .map(t => (
+                                                <a
+                                                    key={t.id}
+                                                    href={`${apiBaseUrl}/certificates/template/model${t.state ? `?state=${t.state}` : ''}`}
+                                                    download
+                                                    onClick={() => setShowDownloadMenu(false)}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        padding: '0.55rem 0.7rem',
+                                                        borderRadius: 8,
+                                                        textDecoration: 'none',
+                                                        color: '#1E3A8A',
+                                                        fontSize: '0.82rem',
+                                                        fontWeight: 600,
+                                                        transition: 'background 0.15s',
+                                                    }}
+                                                    onMouseEnter={e => (e.currentTarget.style.background = '#EEF2FF')}
+                                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                >
+                                                    <span style={{ fontSize: '1rem' }}>🗺️</span>
+                                                    <div>
+                                                        <div>{t.currentVersion?.title || t.key}</div>
+                                                        <div style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>
+                                                            {t.scope}{t.state ? ` • ${t.state}` : ''} • PDF
+                                                        </div>
+                                                    </div>
+                                                </a>
+                                            ))
+                                        }
+                                        {templates.filter(t => (t.scope === 'STATE' || t.scope === 'GLOBAL') && t.currentVersion?.status === 'PUBLISHED').length === 0 && (
+                                            <div style={{ padding: '0.6rem 0.7rem', fontSize: '0.78rem', color: '#9CA3AF' }}>
+                                                Nenhum modelo publicado ainda.
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     )}
                 />
                 <div style={{ marginTop: '-0.6rem', padding: '0.7rem 0.9rem', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', maxWidth: 760 }}>
@@ -2277,15 +2365,16 @@ export default function CertificadosPage() {
                                             boxShadow: '0 6px 18px rgba(29,78,216,0.25)',
                                         }}
                                     >
-                                        <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>+</span>
-                                        Novo modelo PDF
+                                        <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>🧹</span>
+                                        Limpar Editor
                                     </button>
 
                                     {/* PRIMARY ACTION: seed master templates */}
                                     <button
                                         type="button"
                                         onClick={seedMasterTemplates}
-                                        title="Cria/atualiza Moldes Mestres por UF com coordenadas padrão. Aplica-se a todos os cursos automaticamente."
+                                        disabled={seedingTemplates}
+                                        title="Recria os Moldes Mestres oficiais para MA e PI com as imagens de fundo e coordenadas padrão. Use após enviar novos fundos para estes estados."
                                         style={{
                                             display: 'inline-flex',
                                             alignItems: 'center',
@@ -2293,15 +2382,20 @@ export default function CertificadosPage() {
                                             padding: '0.58rem 0.95rem',
                                             borderRadius: 10,
                                             border: '1px solid #059669',
-                                            background: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
+                                            background: seedingTemplates
+                                                ? 'linear-gradient(180deg, #6B7280 0%, #4B5563 100%)'
+                                                : 'linear-gradient(180deg, #059669 0%, #047857 100%)',
                                             color: '#FFFFFF',
                                             fontWeight: 800,
                                             fontSize: '0.78rem',
-                                            cursor: 'pointer',
+                                            cursor: seedingTemplates ? 'not-allowed' : 'pointer',
                                             boxShadow: '0 6px 18px rgba(5,150,105,0.25)',
+                                            opacity: seedingTemplates ? 0.75 : 1,
                                         }}
                                     >
-                                        🛠️ Ativar Moldes Mestres por UF
+                                        {seedingTemplates
+                                            ? <><div className="spinner" style={{ width: 13, height: 13, borderWidth: 2 }} /> Ativando...</>
+                                            : <>🛠️ Recriar Moldes MA/PI</>}
                                     </button>
 
                                     {isDevelopment && (
@@ -2430,7 +2524,7 @@ export default function CertificadosPage() {
                             <div
                                 className="glass-card"
                                 style={{
-                                    padding: '1.15rem 1.2rem',
+                                    padding: '1.25rem 1.5rem',
                                     border: '1px solid var(--border-yellow)',
                                     boxShadow: '0 8px 32px rgba(15, 23, 42, 0.06)',
                                 }}
@@ -2448,7 +2542,7 @@ export default function CertificadosPage() {
                                         placeholder="Título da versão"
                                         style={{ width: '100%', padding: '0.65rem 0.8rem', borderRadius: 10, border: '1px solid #E5E7EB', fontSize: '0.88rem' }}
                                     />
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '0.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.65rem' }}>
                                         <div>
                                             <label style={{ fontSize: '0.65rem', color: '#9CA3AF', display: 'block', marginBottom: 4 }}>Âmbito</label>
                                             <select
@@ -2630,7 +2724,7 @@ export default function CertificadosPage() {
                                                     {pdfDrawHeader && (
                                                         <div style={{ marginBottom: '0.75rem', paddingBottom: '0.7rem', borderBottom: '1px dashed #FCD34D' }}>
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', fontWeight: 'bold' }}>Nome do Aluno</label>
-                                                            <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+                                                            <div className="cert-coord-row" style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
                                                                 <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                     Posição X:
                                                                     <input type="number" value={coordForm['nameX'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, nameX: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="Auto" />
@@ -2670,7 +2764,7 @@ export default function CertificadosPage() {
                                                             placeholder="Texto da data..."
                                                             style={{ width: '100%', marginTop: 3, padding: '0.55rem', borderRadius: 6, border: '1px solid #FCD34D', fontSize: '0.78rem' }}
                                                         />
-                                                        <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+                                                        <div className="cert-coord-row" style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                 Posição X:
                                                                 <input type="number" value={coordForm['dateX'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, dateX: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="Auto" />
@@ -2685,7 +2779,7 @@ export default function CertificadosPage() {
                                                                 <CoordFontStepper coordKey="dateSize" value={coordForm.dateSize ?? ''} onChange={(k, v) => setCoordForm((prev) => ({ ...prev, [k]: v }))} />
                                                             </label>
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+                                                        <div className="cert-coord-row" style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                 Posição X:
                                                                 <input type="number" value={coordForm['p2CourseBoxX'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, p2CourseBoxX: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="421" />
@@ -2709,7 +2803,7 @@ export default function CertificadosPage() {
                                                             placeholder="Texto da carga horária..."
                                                             style={{ width: '100%', marginTop: 3, padding: '0.55rem', borderRadius: 6, border: '1px solid #FCD34D', fontSize: '0.78rem' }}
                                                         />
-                                                        <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+                                                        <div className="cert-coord-row" style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
                                                             <label style={{ fontSize: '0.65rem', color: '#78716C', display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                 Posição X:
                                                                 <input type="number" value={coordForm['p2WorkloadX'] ?? ''} onChange={(e) => setCoordForm(prev => ({ ...prev, p2WorkloadX: e.target.value }))} style={{ width: 60, padding: '0.2rem', borderRadius: 4, border: '1px solid #D4D4D8', fontSize: '0.75rem' }} placeholder="290" />

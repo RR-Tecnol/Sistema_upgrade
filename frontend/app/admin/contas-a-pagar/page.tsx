@@ -1596,7 +1596,7 @@ function ContasPagarPageInner() {
                         </div>
                         <input className="cp-input" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="🔍  Buscar por descrição ou cidade..." style={{ marginBottom: showFilters ? 12 : 0 }} />
                         {showFilters && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, marginTop: 4 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginTop: 4 }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '.63rem', fontWeight: 700, textTransform: 'uppercase', color: '#6B7280', marginBottom: 5 }}>Tipo</label>
                                     <select className="cp-input" value={filterTipo} onChange={e => setFilterTipo(e.target.value)}>
@@ -1733,14 +1733,13 @@ function ContasPagarPageInner() {
                 {/* ─── GRID DE CARDS (igual Sistema Carreta) ── */}
                 <div>
                     {/* Header do bloco */}
-                    <div style={{ borderRadius: '14px 14px 0 0', padding: '12px 18px', background: 'linear-gradient(135deg,#0a0a0f,#111118)', display: 'flex', alignItems: 'center', gap: 10 }}>
-
-                        <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(255,214,0,.15)', border: '1px solid rgba(255,214,0,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.78rem' }}>📄</div>
-                        <span style={{ fontFamily: 'Orbitron', fontSize: '.62rem', fontWeight: 800, color: '#FFD600', letterSpacing: '.13em' }}>
+                    <div style={{ borderRadius: '14px 14px 0 0', padding: '12px 18px', background: 'linear-gradient(135deg,#0a0a0f,#111118)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(255,214,0,.15)', border: '1px solid rgba(255,214,0,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.78rem', flexShrink: 0 }}>📄</div>
+                        <span style={{ fontFamily: 'Orbitron', fontSize: '.62rem', fontWeight: 800, color: '#FFD600', letterSpacing: '.13em', flexShrink: 0 }}>
                             LANÇAMENTOS ({filterStatus ? listTotal : totalGeralContagem})
                             {contasExibidas.length !== listTotal && listTotal > 0 ? ` · ${contasExibidas.length} nesta página` : ''}
                         </span>
-                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                             {!collapseLancamentoCards ? (
                                 <AdminViewModeToggle mode={lancamentosViewMode} onChange={setLancamentosViewMode} />
                             ) : null}

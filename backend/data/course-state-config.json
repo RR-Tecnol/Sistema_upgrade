@@ -111,5 +111,17 @@
       "durationDays": 1,
       "workloadHours": 60
     }
+  },
+  "cf9602a7-c65d-4f46-a9cb-96009b83e9f7": {
+    "MA": {
+      "available": true,
+      "durationDays": 30,
+      "workloadHours": 60
+    },
+    "PI": {
+      "available": true,
+      "durationDays": 30,
+      "workloadHours": 40
+    }
   }
 }

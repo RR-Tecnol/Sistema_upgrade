@@ -325,10 +325,33 @@ export class CertificateController {
     }
 
     @Get('template/model')
-    @ApiOperation({ summary: 'Baixa o template oficial atual do certificado' })
-    async downloadOfficialTemplate(@Res() res: Response) {
-        const templatePath = await this.pdfSvc.getOfficialCertificateTemplatePath();
-        const filename = path.basename(templatePath);
+    @ApiOperation({ summary: 'Baixa o template oficial de certificado (PDF). Aceita ?state=MA para baixar por UF.' })
+    async downloadOfficialTemplate(@Query('state') state: string, @Res() res: Response) {
+        const normalizedState = state?.trim().toUpperCase() || undefined;
+        const templatePath = await this.pdfSvc.getOfficialCertificateTemplatePath(normalizedState);
+        const ext = path.extname(templatePath).toLowerCase();
+        const label = normalizedState ?? 'modelo';
+        const filename = `certificado-${label}.pdf`;
+
+        // PNG/JPG: converte para PDF com pdf-lib antes de enviar (garante download como PDF real)
+        if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
+            const { PDFDocument } = await import('pdf-lib');
+            const fs = await import('node:fs/promises');
+            const imgBytes = await fs.readFile(templatePath);
+            const pdfDoc = await PDFDocument.create();
+            const page = pdfDoc.addPage([841.89, 595.28]); // A4 paisagem em pt
+            const image = ext === '.png'
+                ? await pdfDoc.embedPng(imgBytes)
+                : await pdfDoc.embedJpg(imgBytes);
+            page.drawImage(image, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() });
+            const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Cache-Control', 'no-store');
+            return res.send(Buffer.from(pdfBytes));
+        }
+
+        // PDF nativo: serve diretamente
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Cache-Control', 'public, max-age=3600');

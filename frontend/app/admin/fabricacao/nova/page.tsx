@@ -136,7 +136,7 @@ export default function NovaOrdemPage() {
               <label style={labelStyle}>Descrição do Baú *</label>
               <input value={form.descricaoBau} onChange={e => set('descricaoBau', e.target.value)} placeholder="Ex: Baú padrão Qualifica 2026 — 12m" style={fieldStyle} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="fab-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label style={labelStyle}>Tipo de Configuração</label>
                 <select value={form.configuracao} onChange={e => set('configuracao', e.target.value)} style={fieldStyle}>
@@ -169,7 +169,7 @@ export default function NovaOrdemPage() {
                 <option value="MISTO">Misto</option>
               </select>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="fab-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label style={labelStyle}>Data Início (Baseline) *</label>
                 <input type="date" value={form.dataInicioBaseline} onChange={e => set('dataInicioBaseline', e.target.value)} style={fieldStyle} />
@@ -179,7 +179,7 @@ export default function NovaOrdemPage() {
                 <input type="date" value={form.dataConclusaoBaseline} onChange={e => set('dataConclusaoBaseline', e.target.value)} style={fieldStyle} />
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="fab-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label style={labelStyle}>Orçamento Total (R$) *</label>
                 <input
@@ -212,7 +212,7 @@ export default function NovaOrdemPage() {
             {/* Baú */}
             <div style={{ background: '#FAFAFA', border: '1px solid #E5E7EB', borderRadius: 12, padding: '20px' }}>
               <div style={{ fontWeight: 700, color: '#374151', fontSize: '0.85rem', marginBottom: 14 }}>🏗️ Compra do Baú / Carreta</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="fab-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div>
                   <label style={labelStyle}>Valor do Baú (R$)</label>
                   <input
@@ -234,7 +234,7 @@ export default function NovaOrdemPage() {
             {/* Frete */}
             <div style={{ background: '#FAFAFA', border: '1px solid #E5E7EB', borderRadius: 12, padding: '20px' }}>
               <div style={{ fontWeight: 700, color: '#374151', fontSize: '0.85rem', marginBottom: 14 }}>🚚 Frete até o Destino</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="fab-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div>
                   <label style={labelStyle}>Valor do Frete (R$)</label>
                   <input

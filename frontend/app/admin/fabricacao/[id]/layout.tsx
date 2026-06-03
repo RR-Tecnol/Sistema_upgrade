@@ -39,12 +39,20 @@ export default function OrdemLayout({ children, params }: { children: React.Reac
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }} className="animate-fade-in">
+      <style>{`
+        .fab-order-header-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+        .fab-order-meta { display: flex; gap: 24px; flex-wrap: wrap; }
+        @media (max-width: 768px) {
+          .fab-order-meta { gap: 12px; }
+          .fab-order-meta > div { text-align: left; }
+        }
+      `}</style>
 
       {/* Header da Ordem — card branco com accent amarelo */}
       <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 16, padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', borderLeft: '4px solid #FFD600' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <div className="fab-order-header-row">
               <Link href={backHref} style={{
                 fontSize: '0.72rem', color: '#B89B00', textDecoration: 'none', fontWeight: 700,
                 background: '#FFFDE7', border: '1.5px solid #FFD600', borderRadius: 20,
@@ -63,7 +71,7 @@ export default function OrdemLayout({ children, params }: { children: React.Reac
             {ordem?.cliente && <div style={{ fontSize: '0.7rem', color: '#9CA3AF', marginTop: 4 }}>Cliente: {ordem.cliente}</div>}
           </div>
           {ordem && (
-            <div style={{ display: 'flex', gap: 24 }}>
+            <div className="fab-order-meta">
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '0.6rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Orçamento</div>
                 <div style={{ fontSize: '0.95rem', fontFamily: 'Orbitron, sans-serif', fontWeight: 900, color: '#B89B00' }}>R$ {Number(ordem.orcamentoTotal).toLocaleString('pt-BR')}</div>

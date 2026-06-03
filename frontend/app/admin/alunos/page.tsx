@@ -104,7 +104,7 @@ export default function AlunosPage() {
             {/* ── FILTER BAR ── */}
             <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E5E7EB', padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
                 {/* Search */}
-                <div style={{ flex: 1, minWidth: 220, position: 'relative' }}>
+                <div className="alunos-filter-search" style={{ flex: 1, minWidth: 0, position: 'relative' }}>
                     <MagnifyingGlassIcon style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: '#9CA3AF' }} />
                     <input
                         type="text"
@@ -194,7 +194,7 @@ export default function AlunosPage() {
                         <p style={{ fontSize: '0.78rem', color: '#D1D5DB', marginTop: '0.4rem' }}>Tente ajustar os filtros ou cadastre um novo aluno</p>
                     </div>
                 ) : listViewMode === 'card' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14, padding: 16 }}>
+                    <div className="alunos-card-grid">
                         {students.map((student, idx) => {
                             const initials = student.user.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
                             const isMA = student.address?.state === 'MA';

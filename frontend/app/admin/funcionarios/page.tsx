@@ -480,7 +480,7 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete, onDetails }: { emp: Emp
                 <div style={{ height: 1, background: `linear-gradient(90deg, ${role.color}30, transparent)`, marginBottom: '0.9rem' }} />
 
                 {/* Action buttons */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <div className="func-emp-btn-trio" style={{ marginBottom: '0.5rem' }}>
                     <button
                         onClick={onDetails}
                         style={{
@@ -498,7 +498,7 @@ function EmployeeCard({ emp, onEdit, onToggle, onDelete, onDetails }: { emp: Emp
                         🔍 Ver Detalhes
                     </button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                <div className="func-emp-btn-trio">
                     <button
                         onClick={onEdit}
                         style={{
@@ -1899,18 +1899,23 @@ export default function FuncionariosPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }} className="animate-fade-in">
         <style>{`
             .func-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; }
-            .func-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.1rem; }
+            .func-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.1rem; }
+            .func-card-grid > * { min-width: 0; overflow: hidden; }
             .func-filter-selects { display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: flex-end; }
             .func-select-cargo { flex: 0 1 172px; min-width: 152px; display: flex; flex-direction: column; gap: 6px; }
             .func-select-dept  { flex: 0 1 188px; min-width: 160px; display: flex; flex-direction: column; gap: 6px; }
             .func-select-status { flex: 0 1 156px; min-width: 140px; display: flex; flex-direction: column; gap: 6px; }
             .func-table-wrap { background: #FFFFFF; border-radius: 16px; border: 1px solid #E5E7EB; overflow: hidden; }
+            .func-emp-btn-trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; }
             @media (max-width: 640px) {
                 .func-kpi-grid { grid-template-columns: repeat(3, 1fr); }
                 .func-card-grid { grid-template-columns: 1fr; }
                 .func-filter-selects { flex-direction: column; }
                 .func-select-cargo, .func-select-dept, .func-select-status { flex: 1 1 100%; min-width: 0; width: 100%; }
                 .func-table-wrap { overflow-x: auto; }
+            }
+            @media (max-width: 400px) {
+                .func-emp-btn-trio { grid-template-columns: 1fr 1fr; }
             }
         `}</style>
 

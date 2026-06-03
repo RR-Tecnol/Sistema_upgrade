@@ -133,6 +133,8 @@ export default function ApontamentosPage({ params }: { params: { id: string } })
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+        .ap-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+        @media (max-width: 640px) { .ap-form-grid { grid-template-columns: 1fr; gap: 12px; } }
       `}</style>
 
       <AdminHeaderHero
@@ -169,7 +171,7 @@ export default function ApontamentosPage({ params }: { params: { id: string } })
           </div>
 
           {/* Operação + Funcionário */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
+          <div className="ap-form-grid">
             {inputHelper('Operação *',
               <select value={form.operacaoId} onChange={e => setForm(f => ({ ...f, operacaoId: e.target.value }))} style={selectStyle}>
                 <option value="">— Selecione a operação —</option>
@@ -191,7 +193,7 @@ export default function ApontamentosPage({ params }: { params: { id: string } })
           </div>
 
           {/* Data + Horas */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
+          <div className="ap-form-grid">
             {inputHelper('Data *',
               <input type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} style={inputStyle} />
             )}
@@ -279,6 +281,8 @@ export default function ApontamentosPage({ params }: { params: { id: string } })
         </div>
       ) : (
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+          <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 560 }}>
           <div style={{ padding: '14px 20px', borderBottom: '2px solid #F3F4F6', background: '#F9FAFB', display: 'grid', gridTemplateColumns: '110px 1fr 1fr 70px 80px 90px', gap: 0 }}>
             {['Data', 'Funcionário', 'Operação', 'Horas', 'Avanço', 'Atividade'].map(h => (
               <div key={h} style={{ fontSize: '0.65rem', fontWeight: 800, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</div>
@@ -313,6 +317,8 @@ export default function ApontamentosPage({ params }: { params: { id: string } })
               </div>
             </div>
           ))}
+          </div>
+          </div>
         </div>
       )}
     </div>

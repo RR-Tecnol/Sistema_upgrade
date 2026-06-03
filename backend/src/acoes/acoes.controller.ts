@@ -275,6 +275,7 @@ export class AcoesController {
     }
 
     @Get(':id/funcionarios')
+    @Roles('ADMIN', 'COORDINATOR', 'FINANCIAL')
     @ApiOperation({ summary: 'Listar funcionários vinculados à ação (paginado)' })
     @ApiQuery({ name: 'page', required: false })
     @ApiQuery({ name: 'limit', required: false })

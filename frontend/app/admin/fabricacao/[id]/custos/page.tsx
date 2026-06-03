@@ -396,9 +396,10 @@ export default function CustosPage({ params }: { params: { id: string } }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <style>{`.fab-custo-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}.fab-custo-hdr{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px}@media(max-width:640px){.fab-custo-cols{grid-template-columns:1fr}.fab-custo-hdr{flex-direction:column}}`}</style>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="fab-custo-hdr">
         <div>
           <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, color: '#B89B00', fontSize: '0.9rem', letterSpacing: '0.08em' }}>
             💰 DASHBOARD DE CUSTOS
@@ -470,7 +471,7 @@ export default function CustosPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="fab-custo-cols">
 
         {/* Card Aquisição — com edição inline */}
         <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 14, padding: 20 }}>
@@ -604,7 +605,7 @@ export default function CustosPage({ params }: { params: { id: string } }) {
 
       {/* Tabela de lançamentos */}
       <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.88rem' }}>📋 Todos os Lançamentos</div>
           <select
             value={filtroTipo}
@@ -628,7 +629,8 @@ export default function CustosPage({ params }: { params: { id: string } }) {
             </div>
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
             <thead>
               <tr style={{ background: '#F9FAFB' }}>
                 {['Tipo', 'Ofício', 'Prestador', 'Descrição', 'Gate', 'Vencimento', 'Valor', ''].map(h => (
@@ -719,6 +721,7 @@ export default function CustosPage({ params }: { params: { id: string } }) {
               </tr>
             </tfoot>
           </table>
+          </div>
         )}
       </div>
 

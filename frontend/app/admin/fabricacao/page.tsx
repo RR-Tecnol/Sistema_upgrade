@@ -45,6 +45,14 @@ export default function FabricacaoPage() {
         .col-scroll::-webkit-scrollbar-track{background:transparent}
         .col-scroll::-webkit-scrollbar-thumb{background:#E5E7EB;border-radius:4px}
         .col-scroll::-webkit-scrollbar-thumb:hover{background:#D1D5DB}
+        .fab-board-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; }
+        .fab-board-grid > * { min-width:0; }
+        .fab-list-grid  { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+        .fab-list-grid > * { min-width:0; }
+        @media(max-width:640px){
+          .fab-board-grid { grid-template-columns:1fr; }
+          .fab-list-grid  { grid-template-columns:1fr; }
+        }
       `}</style>
 
       {/* Alerta ANDON */}
@@ -105,13 +113,13 @@ export default function FabricacaoPage() {
           <div style={{ width: 40, height: 40, border: '3px solid #FFD600', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.75s linear infinite' }} />
         </div>
       ) : filtroStatus !== 'TODOS' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+        <div className="fab-list-grid">
           {ordensFiltradas.length === 0
             ? <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '48px 0', color: '#9CA3AF', fontSize: '0.9rem' }}>Nenhuma ordem encontrada</div>
             : ordensFiltradas.map(o => <OrdemCard key={o.id} ordem={o} />)}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+        <div className="fab-board-grid">
           {COLUMNS.map(col => {
             // Mais recentes primeiro
             const cols = [...ordens.filter(o => o.status === col.status)].sort(
