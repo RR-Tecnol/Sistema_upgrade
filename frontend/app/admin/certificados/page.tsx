@@ -2448,7 +2448,7 @@ export default function CertificadosPage() {
                                         placeholder="Título da versão"
                                         style={{ width: '100%', padding: '0.65rem 0.8rem', borderRadius: 10, border: '1px solid #E5E7EB', fontSize: '0.88rem' }}
                                     />
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '0.5rem' }}>
                                         <div>
                                             <label style={{ fontSize: '0.65rem', color: '#9CA3AF', display: 'block', marginBottom: 4 }}>Âmbito</label>
                                             <select
@@ -2523,15 +2523,18 @@ export default function CertificadosPage() {
                                                 onClick={() => setTemplateModelTab('conteudo')}
                                                 style={{
                                                     flex: 1,
-                                                    padding: '0.5rem 0.75rem',
+                                                    padding: '0.45rem 0.5rem',
                                                     borderRadius: 8,
                                                     border: 'none',
-                                                    fontSize: '0.78rem',
+                                                    fontSize: '0.73rem',
                                                     fontWeight: 700,
                                                     cursor: 'pointer',
                                                     background: templateModelTab === 'conteudo' ? '#FFFFFF' : 'transparent',
                                                     color: templateModelTab === 'conteudo' ? '#0F172A' : '#6B7280',
                                                     boxShadow: templateModelTab === 'conteudo' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
                                                 }}
                                             >
                                                 Conteúdo e textos
@@ -2541,18 +2544,21 @@ export default function CertificadosPage() {
                                                 onClick={() => setTemplateModelTab('coordenadas')}
                                                 style={{
                                                     flex: 1,
-                                                    padding: '0.5rem 0.75rem',
+                                                    padding: '0.45rem 0.5rem',
                                                     borderRadius: 8,
                                                     border: 'none',
-                                                    fontSize: '0.78rem',
+                                                    fontSize: '0.73rem',
                                                     fontWeight: 700,
                                                     cursor: 'pointer',
                                                     background: templateModelTab === 'coordenadas' ? '#FFFFFF' : 'transparent',
                                                     color: templateModelTab === 'coordenadas' ? '#0F172A' : '#6B7280',
                                                     boxShadow: templateModelTab === 'coordenadas' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
                                                 }}
                                             >
-                                                Ajuste fino (coordenadas)
+                                                Ajuste fino
                                             </button>
                                         </div>
                                         {templateModelTab === 'conteudo' ? (

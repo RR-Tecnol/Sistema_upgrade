@@ -247,7 +247,8 @@ export default function AlunosPage() {
                         })}
                     </div>
                 ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
                         <thead>
                             <tr style={{ background: '#FFFDE7', borderBottom: '2px solid #FEF08A' }}>
                                 {['Aluno', 'CPF', 'Contato', 'Estado', 'Matrículas', 'Status', 'Ações'].map(h => (
@@ -348,6 +349,7 @@ export default function AlunosPage() {
                             })}
                         </tbody>
                     </table>
+                    </div>
                 )}
             </div>
 

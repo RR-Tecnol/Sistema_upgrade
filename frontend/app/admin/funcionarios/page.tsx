@@ -1918,7 +1918,7 @@ export default function FuncionariosPage() {
             <div style={{
                 position: 'relative', borderRadius: 24, overflow: 'hidden',
                 background: 'linear-gradient(135deg, #0A0A0A 0%, #1C1C2E 50%, #0A0A0A 100%)',
-                border: '1px solid rgba(255,214,0,0.2)', padding: '2rem 2.5rem',
+                border: '1px solid rgba(255,214,0,0.2)', padding: 'clamp(1.25rem, 4vw, 2rem) clamp(1rem, 4vw, 2.5rem)',
                 boxShadow: '0 0 60px rgba(255,214,0,0.05), inset 0 1px 0 rgba(255,255,255,0.05)',
                 minHeight: 160,
             }}>
@@ -1928,14 +1928,15 @@ export default function FuncionariosPage() {
 
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1.5rem' }}>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                        {/* overflow:hidden garante que o título não vaze além do hero no mobile */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', overflow: 'hidden' }}>
                             <div style={{
-                                width: 42, height: 42, borderRadius: 12,
+                                width: 42, height: 42, borderRadius: 12, flexShrink: 0,
                                 background: 'linear-gradient(135deg, #FFD600, #B89B00)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 fontSize: '1.3rem', boxShadow: '0 0 20px rgba(255,214,0,0.4)',
                             }}>👥</div>
-                            <h1 style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: '1.8rem', letterSpacing: '0.1em', color: '#FFFFFF', textShadow: '0 0 30px rgba(255,214,0,0.4)', margin: 0 }}>
+                            <h1 style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, fontSize: 'clamp(1.1rem, 5vw, 1.8rem)', letterSpacing: '0.06em', color: '#FFFFFF', textShadow: '0 0 30px rgba(255,214,0,0.4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                                 FUNCIONÁRIOS
                             </h1>
                         </div>

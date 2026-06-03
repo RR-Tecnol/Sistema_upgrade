@@ -2479,6 +2479,25 @@ body.no-animations *::after {
   }
 }
 
+/* ── Funcionários — Cards Grid ── */
+.func-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .func-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Funcionários — Table wrapper com scroll horizontal ── */
+.func-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Preview panel: garante que a imagem do certificado não ultrapasse 100% da coluna */
 .cert-templates-editor-grid > div:last-child {
   min-width: 0;
