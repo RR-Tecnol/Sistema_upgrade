@@ -207,16 +207,20 @@ export default function LoginPage() {
                             </p>
                         </div>
 
-                        <div className="login-branding-features" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', position: 'relative' }}>
-                            {['Gestão de Cursos e Turmas', 'Frequência Digital Touch', 'Certificação com QR Code', 'Relatórios e Dashboards'].map((label, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.6rem 0.9rem', borderRadius: 10, background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.08)', fontSize: '0.82rem', color: 'rgba(0,0,0,0.7)', fontWeight: 500 }}>
-                                    <div style={{ width: 20, height: 20, borderRadius: 6, background: 'rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(0,0,0,0.45)' }} />
+                        {/* login-branding-features: display controlado pelo CSS (display:none no mobile) */}
+                        {/* NÃO colocar display inline aqui — o CSS media query precisa ter precedência */}
+                        <div className="login-branding-features">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', position: 'relative' }}>
+                                {['Gestão de Cursos e Turmas', 'Frequência Digital Touch', 'Certificação com QR Code', 'Relatórios e Dashboards'].map((label, i) => (
+                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.6rem 0.9rem', borderRadius: 10, background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.08)', fontSize: '0.82rem', color: 'rgba(0,0,0,0.7)', fontWeight: 500 }}>
+                                        <div style={{ width: 20, height: 20, borderRadius: 6, background: 'rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(0,0,0,0.45)' }} />
+                                        </div>
+                                        <span>{label}</span>
                                     </div>
-                                    <span>{label}</span>
-                                </div>
-                            ))}
-                            <div style={{ marginTop: '0.5rem', fontSize: '0.6rem', color: 'rgba(0,0,0,0.4)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>v2.0.0 · UPGRADE · 2026</div>
+                                ))}
+                                <div style={{ marginTop: '0.5rem', fontSize: '0.6rem', color: 'rgba(0,0,0,0.4)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>v2.0.0 · UPGRADE · 2026</div>
+                            </div>
                         </div>
                     </div>
 
