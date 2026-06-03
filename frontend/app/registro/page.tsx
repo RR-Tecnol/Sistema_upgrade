@@ -153,6 +153,12 @@ export default function RegistroPage() {
 
     return (
         <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+        <style>{`
+            .reg-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+            @media (max-width: 480px) {
+                .reg-2col { grid-template-columns: 1fr; }
+            }
+        `}</style>
             <div style={{ width: '100%', maxWidth: 540 }}>
                 {/* Logo */}
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
@@ -204,7 +210,7 @@ export default function RegistroPage() {
                                 <h2 style={{ fontFamily: 'Orbitron', fontSize: '1rem', fontWeight: 900, color: '#111827', marginBottom: '0.3rem' }}>Qual é seu perfil?</h2>
                                 <p style={{ fontSize: '0.78rem', color: '#6B7280' }}>Selecione como você vai atuar no programa Upgrade.</p>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            <div className="reg-2col">
                                 {([
                                     { role: 'TEACHER', label: 'Professor', desc: 'Ministra cursos profissionalizantes', icon: <AcademicCapIcon style={{ width: 28 }} /> },
                                     { role: 'DRIVER', label: 'Motorista', desc: 'Operador de carreta-escola', icon: <TruckIcon style={{ width: 28 }} /> },
@@ -222,7 +228,7 @@ export default function RegistroPage() {
                                     </button>
                                 ))}
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            <div className="reg-2col">
                                 <div style={{ gridColumn: '1 / -1' }}>
                                     <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>Nome Completo *</label>
                                     <input className="form-input" placeholder="João da Silva" value={form.name} onChange={e => set('name', e.target.value)} />
@@ -258,7 +264,7 @@ export default function RegistroPage() {
                                 <h2 style={{ fontFamily: 'Orbitron', fontSize: '1rem', fontWeight: 900, color: '#111827', marginBottom: '0.3rem' }}>Dados Pessoais</h2>
                                 <p style={{ fontSize: '0.78rem', color: '#6B7280' }}>Informe seus dados pessoais e endereço.</p>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            <div className="reg-2col">
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>Data de Nascimento *</label>
                                     <input className="form-input" type="date" value={form.birthDate} onChange={e => set('birthDate', e.target.value)} />
@@ -330,7 +336,7 @@ export default function RegistroPage() {
                             )}
 
                             {form.role === 'DRIVER' && (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div className="reg-2col">
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>Número da CNH *</label>
                                         <input className="form-input" placeholder="00000000000" value={form.licenseNumber} onChange={e => set('licenseNumber', e.target.value)} style={{ fontFamily: 'JetBrains Mono' }} />

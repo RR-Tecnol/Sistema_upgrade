@@ -18,6 +18,7 @@ export type StockItemCategory =
     | 'EPI'
     | 'ALIMENTACAO'
     | 'ESCRITORIO'
+    | 'MATERIAL_FABRICACAO'
     | 'OUTRO';
 
 export type StockMovementType =
@@ -226,6 +227,7 @@ const DEFAULT_CATEGORY_ENUMS: StockItemCategory[] = [
     'EPI',
     'ALIMENTACAO',
     'ESCRITORIO',
+    'MATERIAL_FABRICACAO',
     'OUTRO',
 ];
 
@@ -973,36 +975,39 @@ export const stockApi = {
 // ═══════════════════════════════════════════════════════════════════
 
 export const CATEGORIA_LABEL: Record<StockItemCategory, string> = {
-    CONSUMIVEL: 'Consumível',
-    DIDATICO: 'Didático',
-    LIMPEZA: 'Limpeza',
-    EQUIPAMENTO: 'Equipamento',
-    EPI: 'EPI',
-    ALIMENTACAO: 'Alimentação',
-    ESCRITORIO: 'Escritório',
-    OUTRO: 'Outro',
+    CONSUMIVEL:           'Consumível',
+    DIDATICO:             'Didático',
+    LIMPEZA:              'Limpeza',
+    EQUIPAMENTO:          'Equipamento',
+    EPI:                  'EPI',
+    ALIMENTACAO:          'Alimentação',
+    ESCRITORIO:           'Escritório',
+    MATERIAL_FABRICACAO:  'Materiais para Fabricação',
+    OUTRO:                'Outro',
 };
 
 export const CATEGORIA_COLOR: Record<StockItemCategory, string> = {
-    CONSUMIVEL:  '#0891B2',
-    DIDATICO:    '#7C3AED',
-    LIMPEZA:     '#059669',
-    EQUIPAMENTO: '#EA580C',
-    EPI:         '#DC2626',
-    ALIMENTACAO: '#D97706',
-    ESCRITORIO:  '#6366F1',
-    OUTRO:       '#6B7280',
+    CONSUMIVEL:          '#0891B2',
+    DIDATICO:            '#7C3AED',
+    LIMPEZA:             '#059669',
+    EQUIPAMENTO:         '#EA580C',
+    EPI:                 '#DC2626',
+    ALIMENTACAO:         '#D97706',
+    ESCRITORIO:          '#6366F1',
+    MATERIAL_FABRICACAO: '#B89B00',
+    OUTRO:               '#6B7280',
 };
 
 export const CATEGORIA_ICON: Record<StockItemCategory, string> = {
-    CONSUMIVEL:  '📦',
-    DIDATICO:    '📘',
-    LIMPEZA:     '🧴',
-    EQUIPAMENTO: '🔧',
-    EPI:         '🦺',
-    ALIMENTACAO: '🍱',
-    ESCRITORIO:  '✏️',
-    OUTRO:       '❔',
+    CONSUMIVEL:          '📦',
+    DIDATICO:            '📘',
+    LIMPEZA:             '🧴',
+    EQUIPAMENTO:         '🔧',
+    EPI:                 '🦺',
+    ALIMENTACAO:         '🍱',
+    ESCRITORIO:          '✏️',
+    MATERIAL_FABRICACAO: '🏭',
+    OUTRO:               '❔',
 };
 
 /**

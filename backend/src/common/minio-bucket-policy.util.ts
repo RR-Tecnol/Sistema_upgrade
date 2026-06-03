@@ -25,4 +25,6 @@ export const APP_STORAGE_BUCKETS = [
     process.env.MINIO_BUCKET_FEEDBACK || 'feedbacks',
     process.env.MINIO_BUCKET_CONTAS_PAGAR || 'contas-pagar',
     process.env.MINIO_BUCKET_REPORTS || 'reports',
+    process.env.MINIO_BUCKET_PRODUCAO_FOTOS || 'producao-fotos',
+    process.env.MINIO_BUCKET_PRODUCAO_DOCS  || 'producao-docs',
 ] as const;

@@ -205,11 +205,11 @@ export default function HistoricoPage() {
 
                         {/* Paginação */}
                         {totalPages > 1 && (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.25rem', borderTop: '1px solid #F3F4F6' }}>
-                                <div style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', padding: '0.85rem 1.25rem', borderTop: '1px solid #F3F4F6' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#9CA3AF', textAlign: 'center' }}>
                                     Página <strong>{page}</strong> de <strong>{totalPages}</strong> — {total} registros
                                 </div>
-                                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
                                     <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn-ghost" style={{ padding: '0.4rem 0.7rem', fontSize: '0.78rem' }}>← Anterior</button>
                                     <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="btn-ghost" style={{ padding: '0.4rem 0.7rem', fontSize: '0.78rem' }}>Próxima →</button>
                                 </div>

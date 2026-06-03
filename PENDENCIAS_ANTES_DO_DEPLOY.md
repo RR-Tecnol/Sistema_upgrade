@@ -17,3 +17,19 @@
 
 ---
 *Mantenha este arquivo atualizado sempre que precisarmos criar um atalho para testes locais.*
+
+---
+
+### 4. Ativar Moldes Mestres de Certificado na VPS
+
+- **Contexto**: O sistema de templates de certificado usa Moldes Mestres (MA e PI) que precisam ser inicializados no banco de dados. Na VPS, esse seed nunca foi executado, o que causa o erro 404 ao clicar em **"📄 Ver/Baixar Modelo Atual"**.
+- **Sintoma**: `{"message":"Template oficial de certificado não encontrado","error":"Not Found","statusCode":404}` ao acessar `sistemaupgrade.com.br/api/certificates/template/model`.
+- **Ação após o deploy**:
+  1. Acesse o painel admin na VPS: `sistemaupgrade.com.br/admin/certificados`
+  2. Clique na aba **"Modelos de Documento"**
+  3. Clique no botão verde **🛠️ Ativar Moldes Mestres por UF**
+  4. Aguarde a confirmação de sucesso — os modelos MA e PI serão criados/atualizados no banco
+  5. Após isso, o botão "📄 Ver/Baixar Modelo Atual" funcionará corretamente
+- **Alternativa via API**: `POST /api/certificates/admin/seed-master-templates` (autenticado como ADMIN).
+- **Nenhum arquivo de código precisa ser alterado** — é apenas uma configuração de banco de dados.
+

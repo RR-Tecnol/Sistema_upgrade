@@ -127,6 +127,10 @@ export default function StudentNotificationsPage() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} className="animate-fade-in">
+        <style>{`
+            .notif-kpi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+            @media (max-width: 640px) { .notif-kpi { grid-template-columns: repeat(2, 1fr); } }
+        `}</style>
             <AdminHeaderHero
                 title="NOTIFICAÇÕES"
                 subtitle="Acompanhe alertas, aprovações e conquistas"
@@ -139,7 +143,7 @@ export default function StudentNotificationsPage() {
                 ) : undefined}
             />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
+            <div className="notif-kpi">
                 <AnimatedKpiCard label="Total" value={stats.total} color="#6B7280" bg="#F3F4F6" border="#E5E7EB" compact />
                 <AnimatedKpiCard label="Não Lidas" value={stats.unread} color="#B89B00" bg="#FFFDE7" border="#FEF08A" compact />
                 <AnimatedKpiCard label="Certificados" value={stats.certs} color="#7C3AED" bg="#F5F3FF" border="#DDD6FE" compact />

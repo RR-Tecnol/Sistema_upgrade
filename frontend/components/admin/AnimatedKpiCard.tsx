@@ -56,7 +56,16 @@ export default function AnimatedKpiCard({
     const n = useCountUp(value);
     const [hov, setHov] = useState(false);
     const shownValue = displayValue ?? `${n}${suffix}`;
-    const isLongValue = shownValue.length >= 10;
+    const vLen = shownValue.length;
+    const isMonetary = shownValue.startsWith('R$');
+    // Esconde o ícone quando valor monetário longo (não cabe os dois juntos)
+    const hideIcon = isMonetary && vLen >= 5;
+    const valueFontSize = compact
+        ? (vLen >= 8 ? '0.85rem' : vLen >= 6 ? '1rem' : '1.15rem')
+        : (hideIcon
+            ? (vLen >= 9 ? '1.1rem' : vLen >= 7 ? '1.3rem' : '1.55rem')
+            : (vLen >= 10 ? '1rem' : vLen >= 7 ? '1.2rem' : vLen >= 5 ? '1.4rem' : '1.7rem'));
+
 
     return (
         <div
@@ -93,8 +102,8 @@ export default function AnimatedKpiCard({
             <div className="adm-kpi-topline" style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)`, opacity: hov ? 1 : 0.45 }} />
             <div className="adm-kpi-ring" style={{ borderColor: `${color}2A` }} />
             <div className="adm-kpi-ring adm-kpi-ring-sm" style={{ borderColor: `${color}1F` }} />
-            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: compact ? '0.6rem' : '0.8rem' }}>
-                <div style={{ minWidth: 0 }}>
+            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: compact ? '0.4rem' : '0.6rem' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color, opacity: 0.72, marginBottom: '0.25rem' }}>
                         {label}
                     </div>
@@ -102,10 +111,10 @@ export default function AnimatedKpiCard({
                         style={{
                             fontFamily: 'Orbitron, sans-serif',
                             fontWeight: 900,
-                            fontSize: compact ? (isLongValue ? '1.2rem' : '1.35rem') : (isLongValue ? '1.55rem' : '1.7rem'),
+                            fontSize: valueFontSize,
                             color,
                             lineHeight: 1.05,
-                            wordBreak: 'break-word',
+                            whiteSpace: 'nowrap',
                             animation: 'adm-float 3s ease-in-out infinite',
                             filter: hov ? `drop-shadow(0 0 8px ${color}99)` : 'none',
                             transition: 'filter .28s ease',
@@ -115,13 +124,13 @@ export default function AnimatedKpiCard({
                     </div>
                     {sub && <div style={{ marginTop: '0.2rem', fontSize: '0.68rem', color, opacity: 0.58 }}>{sub}</div>}
                 </div>
-                {icon ? (
+                {!hideIcon && icon ? (
                     <div style={{ width: compact ? 30 : 34, height: compact ? 30 : 34, borderRadius: 10, border: `1px solid ${border}66`, background: `${color}1A`, display: 'flex', alignItems: 'center', justifyContent: 'center', color, flexShrink: 0, boxShadow: hov ? `0 0 14px ${color}40` : `0 0 6px ${color}20`, transition: 'box-shadow .3s ease' }}>
                         {icon}
                     </div>
-                ) : (
+                ) : !hideIcon ? (
                     <div style={{ width: 3, height: 46, borderRadius: 2, background: color, opacity: 0.28 }} />
-                )}
+                ) : null}
             </div>
             <div className="adm-kpi-dot" style={{ background: color }} />
         </div>

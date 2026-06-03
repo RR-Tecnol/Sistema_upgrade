@@ -1897,6 +1897,22 @@ export default function FuncionariosPage() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }} className="animate-fade-in">
+        <style>{`
+            .func-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; }
+            .func-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.1rem; }
+            .func-filter-selects { display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: flex-end; }
+            .func-select-cargo { flex: 0 1 172px; min-width: 152px; display: flex; flex-direction: column; gap: 6px; }
+            .func-select-dept  { flex: 0 1 188px; min-width: 160px; display: flex; flex-direction: column; gap: 6px; }
+            .func-select-status { flex: 0 1 156px; min-width: 140px; display: flex; flex-direction: column; gap: 6px; }
+            .func-table-wrap { background: #FFFFFF; border-radius: 16px; border: 1px solid #E5E7EB; overflow: hidden; }
+            @media (max-width: 640px) {
+                .func-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+                .func-card-grid { grid-template-columns: 1fr; }
+                .func-filter-selects { flex-direction: column; }
+                .func-select-cargo, .func-select-dept, .func-select-status { flex: 1 1 100%; min-width: 0; width: 100%; }
+                .func-table-wrap { overflow-x: auto; }
+            }
+        `}</style>
 
             {/* ── HERO HEADER ── */}
             <div style={{
@@ -2310,7 +2326,7 @@ export default function FuncionariosPage() {
 
             {/* ── ROLE KPI CARDS (aba Funcionários) ── */}
             {activeTab === 'employees' && kpis.byRole.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
+                <div className="func-kpi-grid">
                     {kpis.byRole.map((r: any, i: number) => {
                         const cfg = ROLE_CONFIG[r.role as EmployeeRole];
                         if (!cfg) return null;
@@ -2356,7 +2372,7 @@ export default function FuncionariosPage() {
                         </span>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem', alignItems: 'flex-end' }}>
+                    <div className="func-filter-selects">
                         <div style={{ flex: '1 1 220px', minWidth: 200, position: 'relative' }}>
                             <label htmlFor="emp-filter-search" className="form-label" style={{ marginBottom: 6, fontSize: '0.62rem', color: '#92400E' }}>
                                 Busca
@@ -2415,21 +2431,21 @@ export default function FuncionariosPage() {
                             };
                             return (
                                 <>
-                                    <div style={{ flex: '0 1 172px', minWidth: 152, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div className="func-select-cargo">
                                         <label htmlFor="filter-role" className="form-label" style={{ marginBottom: 0, fontSize: '0.62rem', color: '#92400E' }}>Cargo</label>
                                         <select id="filter-role" value={filterRole} onChange={e => setFilterRole(e.target.value)} className="form-input" style={selectStyle} onFocus={onSelFocus} onBlur={onSelBlur}>
                                             <option value="">Todos os cargos</option>
                                             {ROLES.map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                         </select>
                                     </div>
-                                    <div style={{ flex: '0 1 188px', minWidth: 160, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div className="func-select-dept">
                                         <label htmlFor="filter-dept" className="form-label" style={{ marginBottom: 0, fontSize: '0.62rem', color: '#92400E' }}>Departamento</label>
                                         <select id="filter-dept" value={filterDept} onChange={e => setFilterDept(e.target.value)} className="form-input" style={selectStyle} onFocus={onSelFocus} onBlur={onSelBlur}>
                                             <option value="">Todos os departamentos</option>
                                             {DEPTS.map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                                         </select>
                                     </div>
-                                    <div style={{ flex: '0 1 156px', minWidth: 140, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div className="func-select-status">
                                         <label htmlFor="filter-active" className="form-label" style={{ marginBottom: 0, fontSize: '0.62rem', color: '#92400E' }}>Status</label>
                                         <select id="filter-active" value={filterActive} onChange={e => setFilterActive(e.target.value)} className="form-input" style={selectStyle} onFocus={onSelFocus} onBlur={onSelBlur}>
                                             <option value="">Todos os status</option>
@@ -2519,7 +2535,7 @@ export default function FuncionariosPage() {
                     </button>
                 </div>
             ) : employeesViewMode === 'card' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.1rem' }}>
+                <div className="func-card-grid">
                     {employees.map((emp, i) => (
                         <div key={emp.id} className="animate-scale-in" style={{ animationDelay: `${i * 50}ms` }}>
                             <EmployeeCard
@@ -2534,7 +2550,7 @@ export default function FuncionariosPage() {
                 </div>
             ) : (
                 /* List mode */
-                <div style={{ background: '#FFFFFF', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+                <div className="func-table-wrap">
                     <table className="data-table">
                         <thead>
                             <tr>

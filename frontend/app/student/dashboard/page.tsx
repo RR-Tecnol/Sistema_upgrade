@@ -290,13 +290,21 @@ export default function StudentDashboard() {
     return (
         <>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }} className="animate-fade-in">
+        <style>{`
+            .std-kpi-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+            .std-chart-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+            @media (max-width: 640px) {
+                .std-kpi-4 { grid-template-columns: repeat(2, 1fr); }
+                .std-chart-2col { grid-template-columns: 1fr; }
+            }
+        `}</style>
             <AdminHeaderHero
                 title={`OLÁ, ${user?.name?.split(' ')[0]?.toUpperCase() || 'ALUNO'}`}
                 subtitle={new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
                 badge="PORTAL DO ALUNO"
             />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.75rem' }}>
+            <div className="std-kpi-4">
                 <AnimatedKpiCard
                     label="Matrículas Ativas"
                     value={activeEnrollments.length}
@@ -602,7 +610,7 @@ export default function StudentDashboard() {
             })()}
 
             {/* ── Frequência + Quick Links ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+            <div className="std-chart-2col">
                 {/* Frequência Geral com ProgressOrb — CLICÁVEL */}
                 <div
                     className="glass-card"

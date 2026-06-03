@@ -177,13 +177,20 @@ export default function DriverViagens() {
 
     return (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
+        <style>{`
+            .drv-viagens-kpi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+            .drv-viagens-decide { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+            @media (max-width: 640px) {
+                .drv-viagens-kpi { grid-template-columns: repeat(2, 1fr); }
+            }
+        `}</style>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <AdminHeaderHero
                 title="VIAGENS"
                 subtitle="Acompanhe viagens em andamento, planejadas e concluídas"
                 badge="MOTORISTA"
             />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
+            <div className="drv-viagens-kpi">
                 <AnimatedKpiCard label="Em Andamento" value={trips.filter(t => t.status === 'IN_TRANSIT').length} color="#10B981" bg="#F0FDF4" border="#BBF7D0" compact />
                 <AnimatedKpiCard label="Planejadas" value={trips.filter(t => t.status === 'PLANNED').length} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" compact />
                 <AnimatedKpiCard label="Concluídas" value={trips.filter(t => t.status === 'COMPLETED').length} color="#6B7280" bg="#F3F4F6" border="#E5E7EB" compact />
@@ -281,7 +288,7 @@ export default function DriverViagens() {
                         {trip.status === 'PLANNED' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                 {needsDriverResponse(trip) && (
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                    <div className="drv-viagens-decide">
                                         <button
                                             onClick={() => handleDecision(trip.id, 'ACCEPTED')}
                                             disabled={respondingId === trip.id}

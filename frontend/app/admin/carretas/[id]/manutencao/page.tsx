@@ -17,6 +17,18 @@ const CSS = `
 @keyframes mn-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes mn-3d-in{from{opacity:0;transform:perspective(400px) rotateY(-25deg) scale(.85)}to{opacity:1;transform:perspective(400px) rotateY(0deg) scale(1)}}
 @keyframes mn-count{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+.mn-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 1rem; }
+.mn-main-grid { display: grid; grid-template-columns: 1fr 280px; gap: 1.25rem; align-items: start; }
+.mn-sidebar { display: flex; flex-direction: column; gap: 1rem; position: sticky; top: 80px; }
+.mn-filter-bar { background: #fff; border-radius: 16px; padding: 12px 16px; border: 1px solid #F3F4F6; box-shadow: 0 2px 6px rgba(0,0,0,.04); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .mn-kpi-grid { grid-template-columns: repeat(2,1fr); }
+  .mn-main-grid { grid-template-columns: 1fr; }
+  .mn-sidebar { position: static; order: 2; }
+  .mn-filter-bar { flex-direction: column; align-items: stretch; }
+  .mn-filter-bar input { width: 100%; box-sizing: border-box; }
+  .mn-filter-bar select { width: 100%; }
+}
 `;
 
 /* ── helpers ── */
@@ -494,8 +506,7 @@ export default function ManutencaoPage() {
                 </div>
             </div>
 
-            {/* KPIs */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '1rem' }}>
+            <div className="mn-kpi-grid">
                 <KpiCard icon="💰" label="Total Gasto" value={stats?.totalGasto ?? 0} color="#EF4444" isCurrency delay={0} />
                 <KpiCard icon="🔧" label="Em Andamento" value={stats?.emAndamento ?? 0} color="#F59E0B" delay={70} />
                 <KpiCard icon="✅" label="Concluídas" value={stats?.concluidas ?? 0} color="#10B981" delay={140} />
@@ -503,12 +514,12 @@ export default function ManutencaoPage() {
             </div>
 
             {/* 2 Colunas: Lista + Sidebar */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1.25rem', alignItems: 'start' }}>
+            <div className="mn-main-grid">
 
                 {/* Coluna esquerda: busca + filtros + lista */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     {/* Barra de filtros */}
-                    <div style={{ background: '#fff', borderRadius: 16, padding: '12px 16px', border: '1px solid #F3F4F6', boxShadow: '0 2px 6px rgba(0,0,0,.04)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div className="mn-filter-bar">
                         <div style={{ flex: 1, position: 'relative', minWidth: 180 }}>
                             <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.9rem', color: '#9CA3AF' }}>🔍</span>
                             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar manutenção..." style={{ width: '100%', boxSizing: 'border-box' as const, padding: '8px 12px 8px 34px', borderRadius: 9, border: '1.5px solid #E5E7EB', fontSize: '0.78rem', color: '#111827', background: '#FAFAFA', outline: 'none' }} />
@@ -574,7 +585,7 @@ export default function ManutencaoPage() {
                 </div>
 
                 {/* Sidebar direita: info carreta + gráfico */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'sticky', top: 80 }}>
+                <div className="mn-sidebar">
                     {/* Card da carreta */}
                     <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', border: '1px solid #F3F4F6', boxShadow: '0 4px 16px rgba(0,0,0,.06)', animation: 'mn-fade .5s 300ms both' }}>
                         <div style={{ background: 'linear-gradient(135deg,#1e3a5f,#1e40af)', padding: '20px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>

@@ -146,6 +146,10 @@ export default function TeacherReembolsos() {
 
     return (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <style>{`
+            .tchr-reimb-kpi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+            @media (max-width: 640px) { .tchr-reimb-kpi { grid-template-columns: repeat(2, 1fr); } }
+        `}</style>
 
             <AdminHeaderHero
                 title="REEMBOLSOS"
@@ -160,7 +164,7 @@ export default function TeacherReembolsos() {
 
             {/* KPIs */}
             {reembolsos.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
+                <div className="tchr-reimb-kpi">
                     {[
                         { label: 'Pendentes',  count: totPendente,  color: '#92400E', bg: '#FFFDE7', border: '#FEF08A' },
                         { label: 'Aprovados',  count: totAprovado,  color: '#065F46', bg: '#F0FDF4', border: '#BBF7D0' },

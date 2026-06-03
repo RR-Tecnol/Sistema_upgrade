@@ -23,8 +23,10 @@ const STATUS_OPTIONS = [
 ];
 
 const TYPE_OPTIONS = [
-    { value:'STANDARD',   label:'Padrão (1 curso)' },
-    { value:'MULTICOURSE', label:'Multicurso (múltiplos cursos)' },
+    { value:'STANDARD',    label:'Truck Rígido Padrão (1 curso)' },
+    { value:'MULTICOURSE', label:'Truck Rígido Multicurso' },
+    { value:'CAVALINHO',   label:'Cavalinho (Caminhão Trator)' },
+    { value:'BAU',         label:'Baú / Carreta Reboque (Sala de Aula)' },
 ];
 
 const STATE_OPTIONS = [
@@ -44,11 +46,14 @@ export default function CarretaEditPage() {
     const [error, setError] = useState('');
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
     const [movOpen, setMovOpen] = useState(false);
+    const [vinculos, setVinculos] = useState<any[]>([]);
+    const [vinculosLoading, setVinculosLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<'dados' | 'estoque' | 'trio'>('dados');
 
     const [form, setForm] = useState({
         identifier: '',
         licensePlate: '',
-        type: 'STANDARD' as 'STANDARD' | 'MULTICOURSE',
+        type: 'STANDARD' as 'STANDARD' | 'MULTICOURSE' | 'CAVALINHO' | 'BAU',
         groupId: '',
         state: 'MA',
         capacity: 16,
@@ -74,6 +79,14 @@ export default function CarretaEditPage() {
             setTruck(t);
             setGroups(unwrapListData<Group>(g));
             setStats(sRes?.data || null);
+            // Carrega vínculos do Trio Logístico (apenas CAVALINHO e BAU)
+            if (t.type === 'CAVALINHO' || t.type === 'BAU') {
+                setVinculosLoading(true);
+                api.get('/carretas/vinculo', { params: { truckId: t.id } })
+                    .then(r => setVinculos(r.data?.data ?? r.data ?? []))
+                    .catch(() => setVinculos([]))
+                    .finally(() => setVinculosLoading(false));
+            }
             setForm({
                 identifier: t.identifier,
                 licensePlate: t.licensePlate,
@@ -218,8 +231,37 @@ export default function CarretaEditPage() {
                 onSuccess={() => setMovOpen(false)}
             />
 
-            {/* Form */}
-            <form onSubmit={handleSave}>
+            {/* Tabs de navegação */}
+            {truck && (
+                <div style={{ display:'flex', gap:0, borderBottom:'1px solid #E5E7EB', marginBottom:'1.5rem' }}>
+                    {[
+                        { key:'dados',   label:'Dados & Manutenção' },
+                        { key:'estoque', label:'Estoque' },
+                        ...(truck.type === 'CAVALINHO' || truck.type === 'BAU'
+                            ? [{ key:'trio', label:'⚡ Trio Logístico' }]
+                            : []),
+                    ].map((tab) => (
+                        <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setActiveTab(tab.key as any)}
+                            style={{
+                                padding:'0.65rem 1.1rem', border:'none', background:'transparent',
+                                cursor:'pointer', fontSize:'0.82rem',
+                                fontWeight: activeTab === tab.key ? 700 : 500,
+                                color: activeTab === tab.key ? '#B89B00' : '#6B7280',
+                                borderBottom: activeTab === tab.key ? '2px solid #FFD600' : '2px solid transparent',
+                                transition:'all .15s',
+                            }}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {/* Form — Tab Dados */}
+            {activeTab === 'dados' && <form onSubmit={handleSave}>
                 {error && (
                     <div style={{ padding:'0.75rem 1rem', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:'#DC2626', fontSize:'0.82rem', fontWeight:600, marginBottom:'1rem' }}>
                         ⚠️ {error}
@@ -445,10 +487,123 @@ export default function CarretaEditPage() {
                         }
                     </button>
                 </div>
-            </form>
+            </form>}
 
-            {/* ── Itens em estoque NESTA carreta + vínculo com última ação consumidora ── */}
-            <TruckStockSection truckId={id} truckIdentifier={truck?.identifier} />
+            {/* Tab Estoque */}
+            {activeTab === 'estoque' && (
+                <TruckStockSection truckId={id} truckIdentifier={truck?.identifier} />
+            )}
+
+            {/* Tab Trio Logístico */}
+            {activeTab === 'trio' && truck && (truck.type === 'CAVALINHO' || truck.type === 'BAU') && (
+                <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem' }}>
+
+                    {/* Info contextual */}
+                    <div style={{
+                        padding:'1rem 1.25rem', borderRadius:12,
+                        background: truck.type === 'CAVALINHO' ? 'rgba(245,158,11,0.06)' : 'rgba(8,145,178,0.06)',
+                        border: truck.type === 'CAVALINHO' ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(8,145,178,0.3)',
+                    }}>
+                        <p style={{ fontSize:'0.85rem', fontWeight:700, margin:'0 0 0.35rem',
+                            color: truck.type === 'CAVALINHO' ? '#D97706' : '#0891B2' }}>
+                            {truck.type === 'CAVALINHO' ? '🚛 Cavalinho — Caminhão Trator' : '🚌 Baú — Carreta Reboque / Sala de Aula'}
+                        </p>
+                        <p style={{ fontSize:'0.78rem', color:'#6B7280', margin:0, lineHeight:1.6 }}>
+                            {truck.type === 'CAVALINHO'
+                                ? 'Este veículo é o trator com motor. Puxa o Baú até a cidade, desengata e retorna sozinho (gasta menos combustível no retorno sem carga).'
+                                : 'Este veículo é o reboque onde a sala de aula é montada. Fica fixo na cidade durante todo o período do curso. Possui estoque próprio de consumíveis.'}
+                        </p>
+                    </div>
+
+                    {/* Histórico de vínculos */}
+                    <div style={{ background:'#FFFFFF', borderRadius:14, border:'1px solid #E5E7EB', overflow:'hidden' }}>
+                        <div style={{
+                            padding:'0.75rem 1.25rem', borderBottom:'1px solid #F3F4F6',
+                            display:'flex', justifyContent:'space-between', alignItems:'center',
+                            background: truck.type === 'CAVALINHO' ? '#FFFDE7' : '#F0F9FF',
+                        }}>
+                            <span style={{ fontWeight:700, fontSize:'0.85rem', color:'#111827' }}>
+                                {truck.type === 'CAVALINHO'
+                                    ? 'Baús que este Cavalinho já puxou'
+                                    : 'Cavalinhos que já puxaram este Baú'}
+                            </span>
+                            <span style={{ fontFamily:'Orbitron, sans-serif', fontWeight:900, fontSize:'0.78rem',
+                                color: truck.type === 'CAVALINHO' ? '#B89B00' : '#0891B2' }}>
+                                {vinculos.length}
+                            </span>
+                        </div>
+
+                        {vinculosLoading ? (
+                            <div style={{ padding:'2rem', textAlign:'center', color:'#9CA3AF', fontSize:'0.82rem' }}>
+                                Carregando histórico...
+                            </div>
+                        ) : vinculos.length === 0 ? (
+                            <div style={{ padding:'2.5rem', textAlign:'center' }}>
+                                <p style={{ fontSize:'0.82rem', color:'#9CA3AF', margin:'0 0 0.3rem' }}>
+                                    Nenhum vínculo registrado ainda.
+                                </p>
+                                <p style={{ fontSize:'0.72rem', color:'#D1D5DB', margin:0 }}>
+                                    Os vínculos são criados automaticamente quando o cavalinho engata o baú para uma viagem.
+                                </p>
+                            </div>
+                        ) : vinculos.map((v: any, i: number) => (
+                            <div key={v.id} style={{
+                                padding:'0.85rem 1.25rem',
+                                borderBottom: i < vinculos.length - 1 ? '1px solid #F9FAFB' : 'none',
+                                display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap',
+                                transition:'background .15s',
+                            }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FFFDE7'}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#FFFFFF'}
+                            >
+                                <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ fontWeight:700, fontSize:'0.82rem', color:'#111827' }}>
+                                        {truck.type === 'CAVALINHO'
+                                            ? (v.bau?.identifier ?? v.bauId)
+                                            : (v.cavalinho?.identifier ?? v.cavalinhoId)}
+                                    </div>
+                                    {v.acao && (
+                                        <div style={{ fontSize:'0.72rem', color:'#6B7280', marginTop:'0.15rem' }}>
+                                            Ação: {v.acao.nome ?? v.acao.cidadeNome}
+                                        </div>
+                                    )}
+                                    {v.observacoes && (
+                                        <div style={{ fontSize:'0.7rem', color:'#9CA3AF', marginTop:'0.1rem' }}>
+                                            {v.observacoes}
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ textAlign:'right', flexShrink:0 }}>
+                                    <div style={{ fontSize:'0.75rem', fontFamily:'JetBrains Mono, monospace', color:'#374151' }}>
+                                        {new Date(v.dataInicio).toLocaleDateString('pt-BR')}
+                                        {v.dataFim && (
+                                            <span style={{ color:'#9CA3AF' }}> → {new Date(v.dataFim).toLocaleDateString('pt-BR')}</span>
+                                        )}
+                                    </div>
+                                    <span style={{
+                                        display:'inline-block', marginTop:'0.25rem',
+                                        padding:'0.15rem 0.55rem', borderRadius:99,
+                                        fontSize:'0.65rem', fontWeight:700,
+                                        background: v.dataFim ? '#F3F4F6' : '#D1FAE5',
+                                        color: v.dataFim ? '#6B7280' : '#065F46',
+                                    }}>
+                                        {v.dataFim ? 'Desengajado' : '🟢 ENGAJADO AGORA'}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Regra operacional */}
+                    <div style={{ padding:'0.75rem 1rem', borderRadius:10, background:'#F9FAFB', border:'1px solid #E5E7EB' }}>
+                        <p style={{ fontSize:'0.72rem', color:'#6B7280', margin:0, lineHeight:1.7 }}>
+                            <strong>Regra do Trio Logístico:</strong> Uma unidade em trânsito pode ter até 3 placas
+                            registradas (Cavalinho + Baú 1 + Baú 2 dependendo da configuração).
+                            O cálculo de combustível considera que o Cavalinho gasta <strong>menos no retorno</strong> (sem carga do Baú).
+                        </p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

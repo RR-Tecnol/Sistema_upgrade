@@ -34,21 +34,21 @@ export function AdminListPagination({
             className={className}
             style={{
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: 8,
+                justifyContent: 'center',
+                gap: 10,
                 fontSize: '0.78rem',
                 color: '#6B7280',
                 ...style,
             }}
         >
-            <span>
+            <span style={{ textAlign: 'center' }}>
                 {total} {itemLabel}
                 {showNav ? ` — página ${page} de ${totalPages}` : ''}
             </span>
             {showNav && (
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                     <button
                         type="button"
                         className="btn-secondary"

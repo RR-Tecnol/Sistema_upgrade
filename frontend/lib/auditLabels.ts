@@ -47,6 +47,29 @@ export const AUDIT_ACTION_META: Record<string, AuditActionMeta> = {
         color: '#D97706',
         icon: '📅',
     },
+    // —— Fabricação: Ordens ——
+    ORDEM_FABRICACAO_CRIADA:        { label: 'OF criada', color: '#0891B2', icon: '🏭' },
+    ORDEM_FABRICACAO_ATUALIZADA:    { label: 'OF atualizada', color: '#6366F1', icon: '✏️' },
+    ORDEM_FABRICACAO_STATUS_CHANGE: { label: 'Status da OF alterado', color: '#D97706', icon: '🔀' },
+    ORDEM_FABRICACAO_DELETADA:      { label: 'OF removida', color: '#DC2626', icon: '🗑️' },
+    // —— Fabricação: Apontamentos ——
+    APONTAMENTO_REGISTRADO:         { label: 'Apontamento registrado', color: '#10B981', icon: '📋' },
+    MATERIAL_CONSUMIDO_FABRICACAO:  { label: 'Material consumido (fabricação)', color: '#EA580C', icon: '🔩' },
+    // —— Fabricação: Gate de Qualidade ——
+    GATE_APROVADO:                  { label: 'Gate aprovado', color: '#10B981', icon: '✅' },
+    GATE_REJEITADO:                 { label: 'Gate reprovado', color: '#DC2626', icon: '❌' },
+    GATE_ANDONE_ATIVADO:            { label: 'Andon ativado', color: '#F59E0B', icon: '🚨' },
+    // —— Fabricação: Não Conformidades ——
+    NC_CRIADA:                      { label: 'Não conformidade registrada', color: '#EF4444', icon: '⚠️' },
+    NC_RESOLVIDA:                   { label: 'Não conformidade resolvida', color: '#10B981', icon: '✔️' },
+    // —— Fabricação: BOM / Insumos ——
+    INSUMO_FABRICACAO_CRIADO:       { label: 'Insumo de fabricação criado', color: '#7C3AED', icon: '⚙️' },
+    INSUMO_FABRICACAO_ATUALIZADO:   { label: 'Insumo de fabricação editado', color: '#7C3AED', icon: '✏️' },
+    BOM_ITEM_ADICIONADO:            { label: 'Item adicionado ao BOM', color: '#0891B2', icon: '📌' },
+    BOM_ITEM_REMOVIDO:              { label: 'Item removido do BOM', color: '#6B7280', icon: '🗑️' },
+    // —— Fabricação: Funcionários / Custos ——
+    FUNCIONARIO_OF_VINCULADO:       { label: 'Funcionário vinculado à OF', color: '#3B82F6', icon: '👷' },
+    CUSTO_OF_REGISTRADO:            { label: 'Custo registrado na OF', color: '#D97706', icon: '💰' },
 };
 
 /** Módulos (tableName do Prisma) → nome legível. */
@@ -70,6 +93,17 @@ export const AUDIT_TABLE_LABELS: Record<string, string> = {
     trucks: 'Carretas',
     groups: 'Grupos',
     cities: 'Cidades',
+    // —— Fabricação ——
+    OrdemFabricacao:          'Ordens de Fabricação (OF)',
+    apontamentos_diarios:     'Apontamentos de Fabricação',
+    insumos_fabricacao:       'Insumos de Fabricação',
+    stock_items_fabricacao:   'Estoque → Fabricação',
+    gates_qualidade:          'Gates de Qualidade',
+    nao_conformidades:        'Não Conformidades',
+    ordem_fabricacao_bom_items: 'BOM (Lista de Materiais)',
+    movimentos_insumo:        'Movimentos de Insumos',
+    funcionarios_producao:    'Funcionários de Produção',
+    custos_of:                'Custos da OF',
 };
 
 /** Perfis de usuário → português. */
@@ -85,11 +119,21 @@ export const USER_ROLE_LABELS: Record<string, string> = {
 /** Opções do filtro por módulo (histórico global). */
 export const AUDIT_MODULE_FILTER_OPTIONS: { value: string; label: string }[] = [
     { value: '', label: 'Todos os módulos' },
+    // —— Estoque ——
     { value: 'stock_items', label: AUDIT_TABLE_LABELS.stock_items },
     { value: 'stock_movements', label: AUDIT_TABLE_LABELS.stock_movements },
     { value: 'stock_purchase_requests', label: AUDIT_TABLE_LABELS.stock_purchase_requests },
     { value: 'stock_categories', label: AUDIT_TABLE_LABELS.stock_categories },
     { value: 'acao_stock_reservations', label: AUDIT_TABLE_LABELS.acao_stock_reservations },
+    // —— Fabricação ——
+    { value: 'OrdemFabricacao', label: AUDIT_TABLE_LABELS.OrdemFabricacao },
+    { value: 'apontamentos_diarios', label: AUDIT_TABLE_LABELS.apontamentos_diarios },
+    { value: 'insumos_fabricacao', label: AUDIT_TABLE_LABELS.insumos_fabricacao },
+    { value: 'stock_items_fabricacao', label: AUDIT_TABLE_LABELS.stock_items_fabricacao },
+    { value: 'gates_qualidade', label: AUDIT_TABLE_LABELS.gates_qualidade },
+    { value: 'nao_conformidades', label: AUDIT_TABLE_LABELS.nao_conformidades },
+    { value: 'custos_of', label: AUDIT_TABLE_LABELS.custos_of },
+    // —— Outros ——
     { value: 'enrollments', label: AUDIT_TABLE_LABELS.enrollments },
     { value: 'classes', label: AUDIT_TABLE_LABELS.classes },
     { value: 'trips', label: AUDIT_TABLE_LABELS.trips },

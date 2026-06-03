@@ -4,7 +4,7 @@ export interface Truck {
     id: string;
     identifier: string;
     licensePlate: string;
-    type: 'STANDARD' | 'MULTICOURSE';
+    type: 'STANDARD' | 'MULTICOURSE' | 'CAVALINHO' | 'BAU';
     groupId: string;
     state: string;
     capacity: number;
@@ -28,7 +28,7 @@ export interface Truck {
 export interface CreateTruckDto {
     identifier: string;
     licensePlate: string;
-    type: 'STANDARD' | 'MULTICOURSE';
+    type: 'STANDARD' | 'MULTICOURSE' | 'CAVALINHO' | 'BAU';
     groupId: string;
     state: string;
     capacity: number;

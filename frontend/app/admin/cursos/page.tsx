@@ -110,6 +110,23 @@ const COURSES_TUTORIAL_STEPS: AdminTutorialStep[] = [
     },
 ];
 
+const formatWorkload = (course: Course) => {
+    const maRule = course.stateConfig?.MA;
+    const piRule = course.stateConfig?.PI;
+    const maHours = maRule?.available ? maRule.workloadHours : null;
+    const piHours = piRule?.available ? piRule.workloadHours : null;
+
+    if (maHours !== null && piHours !== null) {
+        if (maHours === piHours) {
+            return `${maHours}h`;
+        }
+        return `MA: ${maHours}h | PI: ${piHours}h`;
+    }
+    if (maHours !== null) return `MA: ${maHours}h`;
+    if (piHours !== null) return `PI: ${piHours}h`;
+    return `${course.workloadHours || course.workload || 0}h`;
+};
+
 export default function CursosPage() {
     const [courses, setCourses] = useState<Course[]>([]);
     const [page, setPage] = useState(1);
@@ -209,6 +226,21 @@ export default function CursosPage() {
             .drag-scroll::-webkit-scrollbar-thumb { background: #FFD600; border-radius: 3px; }
             @keyframes scrollHint { from { left: 0; } to { left: 55%; } }
             @keyframes scrollHintR { from { right: 0; } to { right: 55%; } }
+            .cursos-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.85rem; }
+            .cursos-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+            .cursos-filter-bar { background: #FFFFFF; border-radius: 14px; border: 1px solid #E5E7EB; padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 1px 4px rgba(0,0,0,0.05); flex-wrap: wrap; }
+            .cursos-filter-search { flex: 1; min-width: 160px; position: relative; }
+            .cursos-filter-selects { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+            .cursos-filter-toggle { display: flex; align-items: center; gap: 0.5rem; }
+            @media (max-width: 640px) {
+                .cursos-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+                .cursos-card-grid { grid-template-columns: 1fr; }
+                .cursos-filter-bar { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+                .cursos-filter-search { width: 100%; min-width: unset; }
+                .cursos-filter-selects { width: 100%; }
+                .cursos-filter-selects select { flex: 1; }
+                .cursos-filter-toggle { justify-content: flex-end; }
+            }
         `}</style>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} className="animate-fade-in">
 
@@ -230,7 +262,7 @@ export default function CursosPage() {
             />
 
             {/* ── KPI STRIP ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>
+            <div className="cursos-kpi-grid">
                 {[
                     {
                         key: 'all',
@@ -315,8 +347,8 @@ export default function CursosPage() {
             </div>
 
             {/* ── FILTER BAR ── */}
-            <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E5E7EB', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, position: 'relative' }}>
+            <div className="cursos-filter-bar">
+                <div className="cursos-filter-search">
                     <MagnifyingGlassIcon style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: '#9CA3AF' }} />
                     <input
                         type="text"
@@ -333,30 +365,33 @@ export default function CursosPage() {
                         onBlur={e => (e.target as HTMLElement).style.borderColor = '#E5E7EB'}
                     />
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
-                    {filtered.length} curso{filtered.length !== 1 ? 's' : ''}
+                <div className="cursos-filter-selects">
+                    <div style={{ fontSize: '0.72rem', color: '#9CA3AF', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                        {filtered.length} curso{filtered.length !== 1 ? 's' : ''}
+                    </div>
+                    <select
+                        value={stateFilter}
+                        onChange={e => setStateFilter(e.target.value)}
+                        style={{ padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', fontSize: '0.75rem' }}
+                    >
+                        <option value="all">Todos os estados</option>
+                        {detectedStates.map(uf => (
+                            <option key={uf} value={uf}>{uf}</option>
+                        ))}
+                    </select>
+                    <select
+                        value={multicourseFilter}
+                        onChange={e => setMulticourseFilter(e.target.value as 'all' | 'multi' | 'single')}
+                        style={{ padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', fontSize: '0.75rem' }}
+                    >
+                        <option value="all">Todos os tipos</option>
+                        <option value="multi">Multicurso</option>
+                        <option value="single">Curso único</option>
+                    </select>
                 </div>
-                <select
-                    value={stateFilter}
-                    onChange={e => setStateFilter(e.target.value)}
-                    style={{ padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', fontSize: '0.75rem' }}
-                >
-                    <option value="all">Todos os estados</option>
-                    {detectedStates.map(uf => (
-                        <option key={uf} value={uf}>{uf}</option>
-                    ))}
-                </select>
-                <select
-                    value={multicourseFilter}
-                    onChange={e => setMulticourseFilter(e.target.value as 'all' | 'multi' | 'single')}
-                    style={{ padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', fontSize: '0.75rem' }}
-                >
-                    <option value="all">Todos os tipos</option>
-                    <option value="multi">Multicurso</option>
-                    <option value="single">Curso único</option>
-                </select>
-                <div style={{ width: 1, height: 24, background: '#E5E7EB' }} />
-                <AdminViewModeToggle mode={listViewMode} onChange={setListViewMode} />
+                <div className="cursos-filter-toggle">
+                    <AdminViewModeToggle mode={listViewMode} onChange={setListViewMode} />
+                </div>
             </div>
 
             {/* ── LOADING ── */}
@@ -425,7 +460,7 @@ export default function CursosPage() {
                                             <td style={{ padding: '0.7rem 1rem', whiteSpace: 'nowrap' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                                     <ClockIcon style={{ width: 13, height: 13, color: acc.color, flexShrink: 0 }} />
-                                                    <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.82rem', color: acc.color }}>{course.workloadHours || course.workload}h</span>
+                                                    <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.82rem', color: acc.color }}>{formatWorkload(course)}</span>
                                                 </div>
                                             </td>
                                             <td style={{ padding: '0.7rem 1rem' }}>
@@ -500,7 +535,7 @@ export default function CursosPage() {
 
             {/* ── GRID / CARD VIEW ── */}
             {!loading && filtered.length > 0 && listViewMode === 'card' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
+                <div className="cursos-card-grid">
                     {filtered.map((course, idx) => {
                         const acc = ACCENTS[idx % ACCENTS.length];
                         const initials = course.name.split(' ').filter((w: string) => w.length > 2).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
@@ -544,46 +579,94 @@ export default function CursosPage() {
                                     </div>
                                     <div style={{ fontWeight: 800, color: '#111827', fontSize: '0.9rem', lineHeight: 1.3, marginBottom: '0.3rem' }}>{course.name}</div>
                                     <div style={{ fontSize: '0.72rem', color: '#9CA3AF', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.5 }}>{course.description}</div>
-                                </div>
-                                <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${acc.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div style={{ display: 'flex', gap: '1rem' }}>
+                                    
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '0.8rem', 
+                                        marginTop: '0.75rem', 
+                                        paddingTop: '0.6rem', 
+                                        borderTop: '1px dashed rgba(0,0,0,0.06)' 
+                                    }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                            <ClockIcon style={{ width: 12, height: 12, color: acc.color }} />
-                                            <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.75rem', color: acc.color }}>{course.workloadHours || course.workload}h</span>
+                                            <ClockIcon style={{ width: 12, height: 12, color: acc.color, flexShrink: 0 }} />
+                                            <span style={{ fontFamily: 'Orbitron', fontWeight: 900, fontSize: '0.7rem', color: acc.color, whiteSpace: 'nowrap' }}>
+                                                {formatWorkload(course)}
+                                            </span>
                                         </div>
-                                        <div style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>{course._count?.classes || 0} turmas</div>
+                                        <div style={{ width: 1, height: 12, background: 'rgba(0,0,0,0.1)' }} />
+                                        <div style={{ fontSize: '0.72rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
+                                            <strong>{course._count?.classes || 0}</strong> {course._count?.classes === 1 ? 'turma' : 'turmas'}
+                                        </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '0.35rem' }}>
-                                        <Link href={`/admin/cursos/${course.id}`}
-                                            style={{ padding: '0.35rem 0.65rem', borderRadius: 7, background: '#FFFDE7', border: '1px solid #FEF08A', color: '#92730A', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                            <EyeIcon style={{ width: 12, height: 12 }} />
-                                            Ver
-                                        </Link>
-                                        <Link href={`/admin/cursos/${course.id}?edit=1`}
-                                            style={{ padding: '0.35rem 0.55rem', borderRadius: 7, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: '0.72rem', textDecoration: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                            ✏️
-                                        </Link>
-                                        <button
-                                            onClick={() => handleToggleActive(course)}
-                                            disabled={togglingId === course.id}
-                                            style={{
-                                                padding: '0.35rem 0.65rem',
-                                                borderRadius: 7,
-                                                background: course.active ? '#F3F4F6' : '#ECFDF5',
-                                                border: `1px solid ${course.active ? '#E5E7EB' : '#BBF7D0'}`,
-                                                color: course.active ? '#6B7280' : '#15803D',
-                                                fontSize: '0.72rem',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.25rem',
-                                                opacity: togglingId === course.id ? 0.6 : 1,
-                                            }}
-                                        >
-                                            <CheckCircleIcon style={{ width: 12, height: 12 }} />
+                                </div>
+                                <div style={{ 
+                                    padding: '0.6rem 0.8rem', 
+                                    borderTop: `1px solid ${acc.border}`, 
+                                    display: 'flex', 
+                                    gap: '0.35rem', 
+                                    background: '#FBFBFB' 
+                                }}>
+                                    <Link href={`/admin/cursos/${course.id}`}
+                                        style={{ 
+                                            flex: 1, 
+                                            justifyContent: 'center', 
+                                            padding: '0.4rem 0', 
+                                            borderRadius: 7, 
+                                            background: '#FFFDE7', 
+                                            border: '1px solid #FEF08A', 
+                                            color: '#92730A', 
+                                            fontSize: '0.7rem', 
+                                            fontWeight: 700, 
+                                            textDecoration: 'none', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '0.3rem' 
+                                        }}>
+                                        <EyeIcon style={{ width: 12, height: 12 }} />
+                                        Ver
+                                    </Link>
+                                    <Link href={`/admin/cursos/${course.id}?edit=1`}
+                                        style={{ 
+                                            padding: '0.4rem 0.55rem', 
+                                            borderRadius: 7, 
+                                            background: '#EFF6FF', 
+                                            border: '1px solid #BFDBFE', 
+                                            color: '#1D4ED8', 
+                                            fontSize: '0.7rem', 
+                                            textDecoration: 'none', 
+                                            cursor: 'pointer', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center' 
+                                        }}>
+                                        ✏️
+                                    </Link>
+                                    <button
+                                        onClick={() => handleToggleActive(course)}
+                                        disabled={togglingId === course.id}
+                                        style={{
+                                            flex: 1.2, 
+                                            justifyContent: 'center',
+                                            padding: '0.4rem 0', 
+                                            borderRadius: 7,
+                                            background: course.active ? '#F3F4F6' : '#ECFDF5',
+                                            border: `1px solid ${course.active ? '#E5E7EB' : '#BBF7D0'}`,
+                                            color: course.active ? '#6B7280' : '#15803D',
+                                            fontSize: '0.7rem', 
+                                            fontWeight: 700, 
+                                            cursor: 'pointer',
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '0.25rem',
+                                            opacity: togglingId === course.id ? 0.6 : 1,
+                                        }}
+                                    >
+                                        <CheckCircleIcon style={{ width: 12, height: 12, flexShrink: 0 }} />
+                                        <span style={{ whiteSpace: 'nowrap' }}>
                                             {togglingId === course.id ? '...' : course.active ? 'Inativar' : 'Reativar'}
-                                        </button>
-                                    </div>
+                                        </span>
+                                    </button>
                                 </div>
                             </div>
                         );

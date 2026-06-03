@@ -25,6 +25,7 @@ import {
     ExclamationTriangleIcon,
     ChatBubbleLeftRightIcon,
     CubeIcon,
+    WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 
 const navSections = [
@@ -49,6 +50,7 @@ const navSections = [
         label: 'Infraestrutura',
         items: [
             { name: 'Carretas', href: '/admin/carretas', icon: TruckIcon },
+            { name: 'Fabricação', href: '/admin/fabricacao', icon: WrenchScrewdriverIcon },
             { name: 'Estoque', href: '/admin/estoque', icon: CubeIcon },
             { name: 'Grupos', href: '/admin/grupos', icon: BuildingOfficeIcon },
         ]
@@ -146,13 +148,15 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                         <div key={section.label}>
                             <div className="sidebar-section-label">{section.label}</div>
                             {section.items.map((item, index) => {
-                                // LIVRO_DE_REGRAS: se existe item com match exato no pathname, usar só exact match
-                    // Evita dupla seleção ex: /funcionarios e /funcionarios/frequencia
-                    const allHrefs = navSections.flatMap(s => s.items.map(i => i.href));
-                    const hasExactMatch = allHrefs.includes(pathname ?? '');
-                    const isActive = pathname === item.href ||
-                        (!hasExactMatch && (pathname?.startsWith(item.href + '/') ?? false));
+                                const allHrefs = navSections.flatMap(s => s.items.map(i => i.href));
+                                const hasExactMatch = allHrefs.includes(pathname ?? '');
+                                const isActive = pathname === item.href ||
+                                    (!hasExactMatch && (pathname?.startsWith(item.href + '/') ?? false));
                                 const Icon = item.icon;
+
+                                // Badge especial para Fabricação (destaque visual de novo módulo)
+                                const isFabricacao = item.href === '/admin/fabricacao';
+
                                 return (
                                     <Link
                                         key={item.name}
@@ -163,6 +167,21 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                                     >
                                         <Icon style={{ width: '1rem', height: '1rem', flexShrink: 0 }} />
                                         <span>{item.name}</span>
+                                        {isFabricacao && !isActive && (
+                                            <span style={{
+                                                marginLeft: 'auto',
+                                                fontSize: '0.55rem',
+                                                fontWeight: 800,
+                                                letterSpacing: '0.08em',
+                                                padding: '0.15rem 0.45rem',
+                                                borderRadius: 99,
+                                                background: 'rgba(0,0,0,0.12)',
+                                                color: 'rgba(0,0,0,0.55)',
+                                                textTransform: 'uppercase',
+                                            }}>
+                                                NOVO
+                                            </span>
+                                        )}
                                         {isActive && (
                                             <div style={{ marginLeft: 'auto', width: 5, height: 5, borderRadius: '50%', background: 'rgba(0,0,0,0.5)' }} />
                                         )}

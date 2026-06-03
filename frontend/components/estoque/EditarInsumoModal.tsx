@@ -11,14 +11,15 @@ import { toast } from '@/components/ui/Toast';
 import { ModalPortal, MODAL_PORTAL_Z_INDEX } from '@/components/ui/ModalPortal';
 
 const CATEGORIAS_OPTS: { value: StockItemCategory; label: string }[] = [
-    { value: 'CONSUMIVEL',  label: 'Consumível' },
-    { value: 'DIDATICO',    label: 'Didático' },
-    { value: 'LIMPEZA',     label: 'Limpeza' },
-    { value: 'EQUIPAMENTO', label: 'Equipamento' },
-    { value: 'EPI',         label: 'EPI' },
-    { value: 'ALIMENTACAO', label: 'Alimentação' },
-    { value: 'ESCRITORIO',  label: 'Escritório' },
-    { value: 'OUTRO',       label: 'Outro' },
+    { value: 'CONSUMIVEL',          label: 'Consumível' },
+    { value: 'DIDATICO',            label: 'Didático' },
+    { value: 'LIMPEZA',             label: 'Limpeza' },
+    { value: 'EQUIPAMENTO',         label: 'Equipamento' },
+    { value: 'EPI',                 label: 'EPI' },
+    { value: 'ALIMENTACAO',         label: 'Alimentação' },
+    { value: 'ESCRITORIO',          label: 'Escritório' },
+    { value: 'MATERIAL_FABRICACAO', label: 'Materiais para Fabricação' },
+    { value: 'OUTRO',               label: 'Outro' },
 ];
 
 const labelCss: React.CSSProperties = {

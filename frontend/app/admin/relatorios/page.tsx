@@ -260,6 +260,16 @@ export default function RelatoriosPage() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }} className="animate-fade-in">
+        <style>{`
+            .rel-chart-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+            .rel-chart-2fr1fr { display: grid; grid-template-columns: 2fr 1fr; gap: 1.25rem; }
+            .rel-table-wrap { overflow: hidden; }
+            @media (max-width: 640px) {
+                .rel-chart-2col   { grid-template-columns: 1fr; }
+                .rel-chart-2fr1fr { grid-template-columns: 1fr; }
+                .rel-table-wrap   { overflow-x: auto; }
+            }
+        `}</style>
             <AdminHeaderHero
                 title="RELATÓRIOS EXECUTIVOS"
                 subtitle="Panorama completo do sistema: captação, operação acadêmica, campo e financeiro"
@@ -489,7 +499,7 @@ export default function RelatoriosPage() {
             )}
 
             {/* Correlação estratégica */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+            <div className="rel-chart-2col">
                 <div className="glass-card">
                     <div className="card-header">
                         <div className="card-title">🔗 Funil de Conversão (Captação → Certificação)</div>
@@ -531,7 +541,7 @@ export default function RelatoriosPage() {
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+            <div className="rel-chart-2col">
                 <div className="glass-card">
                     <div className="card-header">
                         <div className="card-title">📡 Correlação Operacional (Eventos do Período)</div>
@@ -576,7 +586,7 @@ export default function RelatoriosPage() {
             </div>
 
             {/* Charts Row 1 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+            <div className="rel-chart-2col">
 
                 {/* Bar — Inscrições por mês */}
                 <div className="glass-card">
@@ -637,7 +647,7 @@ export default function RelatoriosPage() {
             </div>
 
             {/* Charts Row 2 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.25rem' }}>
+            <div className="rel-chart-2fr1fr">
 
                 {/* Bar — Alunos por curso */}
                 <div className="glass-card">
@@ -700,7 +710,7 @@ export default function RelatoriosPage() {
             </div>
 
             {/* Summary Table */}
-            <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="glass-card rel-table-wrap" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
                     <div className="card-title">📋 Resumo por Curso</div>
                     <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 6 }}>
@@ -742,7 +752,7 @@ export default function RelatoriosPage() {
                 </table>
             </div>
 
-            <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="glass-card rel-table-wrap" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
                     <div className="card-title">🚀 Top Rotas por Inscritos</div>
                     <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 6 }}>

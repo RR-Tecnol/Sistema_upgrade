@@ -94,14 +94,15 @@ function FormTextarea({ label, ...props }: React.TextareaHTMLAttributes<HTMLText
 }
 
 const CATEGORIAS_OPTS: { value: StockItemCategory; label: string; icon: string }[] = [
-    { value: 'CONSUMIVEL',  label: 'Consumível',   icon: '📦' },
-    { value: 'DIDATICO',    label: 'Didático',     icon: '📘' },
-    { value: 'LIMPEZA',     label: 'Limpeza',      icon: '🧴' },
-    { value: 'EQUIPAMENTO', label: 'Equipamento',  icon: '🔧' },
-    { value: 'EPI',         label: 'EPI',          icon: '🦺' },
-    { value: 'ALIMENTACAO', label: 'Alimentação',  icon: '🍱' },
-    { value: 'ESCRITORIO',  label: 'Escritório',   icon: '✏️' },
-    { value: 'OUTRO',       label: 'Outro',        icon: '❔' },
+    { value: 'CONSUMIVEL',          label: 'Consumível',              icon: '📦' },
+    { value: 'DIDATICO',            label: 'Didático',                icon: '📘' },
+    { value: 'LIMPEZA',             label: 'Limpeza',                 icon: '🧴' },
+    { value: 'EQUIPAMENTO',         label: 'Equipamento',             icon: '🔧' },
+    { value: 'EPI',                 label: 'EPI',                     icon: '🦺' },
+    { value: 'ALIMENTACAO',         label: 'Alimentação',             icon: '🍱' },
+    { value: 'ESCRITORIO',          label: 'Escritório',              icon: '✏️' },
+    { value: 'MATERIAL_FABRICACAO', label: 'Materiais p/ Fabricação', icon: '🏭' },
+    { value: 'OUTRO',               label: 'Outro',                   icon: '❔' },
 ];
 
 /** Embalagem contável — o saldo é sempre nessa unidade */
@@ -790,8 +791,6 @@ export function NovoInsumoWizard({ isModal, onModalClose, onModalSuccess }: { is
                                                     flexDirection: 'column',
                                                     gap: '0.3rem',
                                                     position: 'relative',
-                                                    minWidth: 0,
-                                                    overflow: 'hidden',
                                                 }}>
                                                 {/* Linha 1: ícone + nome + check */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
@@ -800,11 +799,8 @@ export function NovoInsumoWizard({ isModal, onModalClose, onModalSuccess }: { is
                                                         fontSize: '0.75rem',
                                                         fontWeight: isSelected ? 800 : 600,
                                                         color: isSelected ? color : '#6B7280',
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        whiteSpace: 'nowrap',
+                                                        lineHeight: 1.3,
                                                         flex: 1,
-                                                        minWidth: 0,
                                                     }}>{c.nome}</span>
                                                     {isSelected && (
                                                         <CheckCircleIcon style={{ width: 13, height: 13, color: color, flexShrink: 0 }} />

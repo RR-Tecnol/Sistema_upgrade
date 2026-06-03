@@ -206,6 +206,15 @@ const CSS = `
 .cp-type-btn.selected { border-color:#2563EB; background:rgba(37,99,235,.08); box-shadow:0 0 0 3px rgba(37,99,235,.18); }
 .cp-input { width:100%; padding:.68rem 1rem; border-radius:9px; border:1.5px solid #E5E7EB; background:#F9FAFB; font-size:.88rem; outline:none; transition:border-color .18s,box-shadow .18s; box-sizing:border-box; }
 .cp-input:focus { border-color:#2563EB; background:#fff; box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+.cp-tipo-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; }
+.cp-form-2col { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width: 640px) {
+  .cp-tipo-grid { grid-template-columns:repeat(2,1fr); }
+  .cp-form-2col { grid-template-columns:1fr; }
+}
+@media (min-width: 641px) and (max-width: 900px) {
+  .cp-tipo-grid { grid-template-columns:repeat(3,1fr); }
+}
 `;
 
 /** Mesmo padrão visual dos KPIs em `/admin/carretas` — valor monetário animado */
@@ -503,6 +512,15 @@ function LancamentoCarretaCard({
                     color: tipo.color, marginBottom: 4, letterSpacing: '.02em',
                 }}>
                     {tipo.label}
+                    {(c as any).origem === 'FABRICACAO' && (
+                        <span style={{
+                            display:'inline-block', marginLeft:'0.4rem', verticalAlign:'middle',
+                            padding:'0.1rem 0.5rem', borderRadius:99, fontSize:'0.62rem', fontWeight:700,
+                            background:'#FEF3C7', color:'#B45309', border:'1px solid #FDE68A',
+                        }}>
+                            ⚙ FAB
+                        </span>
+                    )}
                     {c.recorrente && (
                         <span style={{ marginLeft: 6, fontSize: '.62rem', background: 'rgba(37,99,235,.1)', color: '#2563EB', border: '1px solid rgba(37,99,235,.25)', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>↻</span>
                     )}
@@ -792,7 +810,7 @@ function Modal({ conta, acoes, onClose, onSaved }: {
                                             <div style={{ width: 8, height: 8, borderRadius: '50%', background: cat.cor }} />
                                             <span style={{ fontSize: '.82rem', fontWeight: 700, color: cat.cor }}>{cat.label}</span>
                                         </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 9 }}>
+                                        <div className="cp-tipo-grid">
                                             {cat.tipos.map(t => (
                                                 <button key={t.value} className={`cp-type-btn${tipoSel?.value === t.value ? ' selected' : ''}`} onClick={() => selTipo(t)}>
                                                     <span style={{ fontSize: '1.5rem' }}>{t.icon}</span>
@@ -822,7 +840,7 @@ function Modal({ conta, acoes, onClose, onSaved }: {
                                 {/* Descrição */}
                                 <textarea className="cp-input" placeholder="Descrição" rows={2} value={form.descricao} onChange={e => set('descricao', e.target.value)} style={{ resize: 'none', fontFamily: 'inherit' }} />
                                 {/* Valor + Data */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div className="cp-form-2col">
                                     <FInput label="Valor (R$)">
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4 }}>
                                             <span style={{ color: '#2563EB', fontWeight: 700 }}>R$</span>
@@ -853,7 +871,7 @@ function Modal({ conta, acoes, onClose, onSaved }: {
                                 </select>
                                 <div style={{ fontSize: '.7rem', color: '#9CA3AF', marginTop: -8 }}>Vincule esta conta a uma ação específica para rastreamento de custos</div>
                                 {/* Cidade + Status */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <div className="cp-form-2col">
                                     <FInput label="Cidade (para relatórios)">
                                         <input type="text" value={form.cidade} onChange={e => set('cidade', e.target.value)}
                                             placeholder="Ex: São Luís" style={{ border: 'none', outline: 'none', width: '100%', fontSize: '.88rem', background: 'transparent', paddingTop: 4 }} />
@@ -923,6 +941,7 @@ function ContasPagarPageInner() {
     const [traceConta, setTraceConta] = useState<ContaPagar | null>(null);
     // PASSO 3.9: aba excluídos
     const [showDeleted, setShowDeleted] = useState(false);
+    const [filtroOrigem, setFiltroOrigem] = useState<'TODOS' | 'OPERACIONAL' | 'FABRICACAO'>('TODOS');
     const [deletedContas, setDeletedContas] = useState<ContaPagar[]>([]);
     const [page, setPage] = useState(1);
     const [deletedPage, setDeletedPage] = useState(1);
@@ -989,7 +1008,11 @@ function ContasPagarPageInner() {
     useAdminFinanceRefresh(load, ['contas']);
 
     const contas = resp?.contas ?? [];
-    const contasExibidas = contas;
+    const contasExibidas = contas.filter(c => {
+        if (filtroOrigem === 'TODOS') return true;
+        const origem = (c as any).origem ?? 'OPERACIONAL';
+        return origem === filtroOrigem;
+    });
     const listTotal = resp?.total ?? contas.length;
     const listTotalPages = resp?.totalPages ?? 1;
 
@@ -1541,6 +1564,36 @@ function ContasPagarPageInner() {
                     </div>
                     <div style={{ padding: '14px 18px' }}>
                         {/* Busca — sempre visível */}
+                        {/* Filtro de Origem — Operacional vs Fabricação */}
+                        <div style={{
+                            display:'inline-flex', borderRadius:10, overflow:'hidden',
+                            border:'1px solid #E5E7EB', marginBottom:'0.85rem',
+                        }}>
+                            {([
+                                { key:'TODOS',       label:'Todas as Origens' },
+                                { key:'OPERACIONAL', label:'Operacional' },
+                                { key:'FABRICACAO',  label:'⚙ Fabricação' },
+                            ] as const).map(opt => (
+                                <button
+                                    key={opt.key}
+                                    onClick={() => setFiltroOrigem(opt.key)}
+                                    style={{
+                                        padding:'0.45rem 0.95rem', border:'none', cursor:'pointer',
+                                        fontSize:'0.78rem', fontWeight: filtroOrigem === opt.key ? 800 : 500,
+                                        background: filtroOrigem === opt.key
+                                            ? (opt.key === 'FABRICACAO' ? '#FEF3C7' : '#FFFDE7')
+                                            : '#FFFFFF',
+                                        color: filtroOrigem === opt.key
+                                            ? (opt.key === 'FABRICACAO' ? '#B45309' : '#B89B00')
+                                            : '#9CA3AF',
+                                        borderRight: opt.key !== 'FABRICACAO' ? '1px solid #E5E7EB' : 'none',
+                                        transition:'all .15s',
+                                    }}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
                         <input className="cp-input" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="🔍  Buscar por descrição ou cidade..." style={{ marginBottom: showFilters ? 12 : 0 }} />
                         {showFilters && (
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, marginTop: 4 }}>

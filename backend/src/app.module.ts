@@ -49,6 +49,8 @@ import { PublicUploadModule } from './public-upload/public-upload.module';
 // WHATSAPP: Integração Z-API — disparos automáticos de mensagens (@Global)
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { RoutingModule } from './routing/routing.module';
+// FABRICACAO: Módulo industrial de produção de carretas baú (SAP PP + Procore + Primavera P6)
+import { FabricacaoModule } from './fabricacao/fabricacao.module';
 
 
 @Module({
@@ -95,6 +97,7 @@ import { RoutingModule } from './routing/routing.module';
         PublicUploadModule,   // POST /api/public/upload — cadastro público (funcionário, inscrição, etc.)
         WhatsAppModule,       // WHATSAPP: Integração Z-API — disparos automáticos (@Global)
         RoutingModule,        // Proxy OSRM — rotas no mapa seguem ruas/avenidas
+        FabricacaoModule,    // FABRICACAO: Engines CPM/EVM + Gates + Andon + 30+ endpoints
     ],
     providers: [
         // ThrottlerGuard global — aplica rate limiting em TODOS os endpoints

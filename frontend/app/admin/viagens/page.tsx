@@ -659,10 +659,20 @@ export default function AdminViagensPage() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <style>{`
+            .viagens-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0.75rem; }
+            .viagens-form-grid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,.95fr); gap: 1rem; }
+            .viagens-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem; }
+            @media (max-width: 640px) {
+                .viagens-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+                .viagens-form-grid { grid-template-columns: 1fr; }
+                .viagens-card-grid { grid-template-columns: 1fr; }
+            }
+        `}</style>
             <AdminHeaderHero title="VIAGENS" subtitle="Vínculo de motorista, aceite/recusa e penalização" badge="ADMIN" />
             <ViagensSidebarTutorial />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '0.75rem' }}>
+            <div className="viagens-kpi-grid">
                 <AnimatedKpiCard label="Planejadas" value={kpis.planned} color="#0891B2" bg="#F0F9FF" border="#BAE6FD" compact />
                 <AnimatedKpiCard label="Em Trânsito" value={kpis.transit} color="#059669" bg="#F0FDF4" border="#BBF7D0" compact />
                 <AnimatedKpiCard label="Recusadas" value={kpis.rejected} color="#DC2626" bg="#FEF2F2" border="#FECACA" compact />
@@ -670,12 +680,9 @@ export default function AdminViagensPage() {
             </div>
 
             <div
-                className="glass-card"
+                className="glass-card viagens-form-grid"
                 style={{
                     padding: '1.15rem',
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0,1.35fr) minmax(0,.95fr)',
-                    gap: '1rem',
                     border: '1px solid #FDE68A',
                     boxShadow: '0 14px 35px rgba(245, 158, 11, 0.18)',
                     background: 'linear-gradient(135deg, #FFFDF1 0%, #FFFFFF 60%)',
@@ -936,7 +943,7 @@ export default function AdminViagensPage() {
                         )}
                     </div>
                 ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
+            <div className="viagens-card-grid">
                 {loading ? (
                     <div className="glass-card" style={{ gridColumn: '1 / -1', padding: '1rem', color: '#64748B' }}>Carregando viagens...</div>
                 ) : trips.map((t, idx) => {

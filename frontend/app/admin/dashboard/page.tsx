@@ -384,6 +384,14 @@ export default function AdminDashboard() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }} className="animate-fade-in">
+        <style>{`
+            .adm-kpi-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.85rem; }
+            .adm-act-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+            @media (max-width: 768px) {
+                .adm-kpi-3 { grid-template-columns: 1fr; }
+                .adm-act-2col { grid-template-columns: 1fr; }
+            }
+        `}</style>
 
             <AdminHeaderHero
                 title="DASHBOARD"
@@ -729,7 +737,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* ── ROW 2: SECONDARY METRICS ── */}
-            <div className="grid-3-cols" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
+            <div className="adm-kpi-3">
                 <AnimatedKpiCard label="Taxa de Aprovação" value={taxaAprovacao} suffix="%" sub="clique para ver detalhes" color="#B89B00" bg="#FFFDE7" border="#FEF08A" icon={<span>📈</span>} onClick={() => openDrilldown('approvalRate')} />
                 <AnimatedKpiCard
                     label="Frequência Média"
@@ -778,7 +786,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* ── ROW 4: ACTIVITIES + UPCOMING ── */}
-            <div className="grid-2-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="adm-act-2col">
 
                 {/* Recent Activity */}
                 <div style={{ background: '#FFFFFF', borderRadius: 14, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>

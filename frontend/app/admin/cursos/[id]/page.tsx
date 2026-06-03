@@ -32,6 +32,7 @@ interface CourseDetail {
         materials?: number;
     };
     classes?: ClassItem[];
+    stateConfig?: Record<string, { available: boolean; durationDays: number; workloadHours?: number }>;
 }
 
 type EditForm = {
@@ -46,6 +47,7 @@ type EditForm = {
     availableInPI: boolean;
     isMulticourse: boolean;
     active: boolean;
+    stateConfig?: Record<string, { available: boolean; durationDays: number; workloadHours?: number }>;
 };
 
 interface ClassItem {
@@ -150,6 +152,10 @@ export default function CursoDetalhePage() {
         availableInPI: true,
         isMulticourse: false,
         active: true,
+        stateConfig: {
+            MA: { available: true, durationDays: 1, workloadHours: 60 },
+            PI: { available: true, durationDays: 1, workloadHours: 60 }
+        }
     });
 
     const hydrateForm = (data: CourseDetail) => {
@@ -165,6 +171,18 @@ export default function CursoDetalhePage() {
             availableInPI: Boolean(data.availableInPI ?? true),
             isMulticourse: Boolean(data.isMulticourse),
             active: Boolean(data.active),
+            stateConfig: {
+                MA: {
+                    available: data.stateConfig?.MA?.available ?? Boolean(data.availableInMA ?? true),
+                    durationDays: data.stateConfig?.MA?.durationDays ?? Number(data.durationDaysMA ?? 1),
+                    workloadHours: data.stateConfig?.MA?.workloadHours ?? data.workloadHours,
+                },
+                PI: {
+                    available: data.stateConfig?.PI?.available ?? Boolean(data.availableInPI ?? true),
+                    durationDays: data.stateConfig?.PI?.durationDays ?? Number(data.durationDaysPI ?? 1),
+                    workloadHours: data.stateConfig?.PI?.workloadHours ?? data.workloadHours,
+                }
+            }
         });
     };
 
@@ -194,13 +212,15 @@ export default function CursoDetalhePage() {
     }, []);
 
     const canSave = useMemo(() => {
-        const wh = Number(form.workloadHours);
+        const whMA = Number(form.stateConfig?.MA?.workloadHours);
+        const whPI = Number(form.stateConfig?.PI?.workloadHours);
         const dma = Number(form.durationDaysMA);
         const dpi = Number(form.durationDaysPI);
         return (
             form.name.trim().length >= 3 &&
             form.description.trim().length > 0 &&
-            Number.isFinite(wh) && wh > 0 &&
+            (!form.availableInMA || (Number.isFinite(whMA) && whMA > 0)) &&
+            (!form.availableInPI || (Number.isFinite(whPI) && whPI > 0)) &&
             Number.isFinite(dma) && dma > 0 &&
             Number.isFinite(dpi) && dpi > 0 &&
             (form.availableInMA || form.availableInPI)
@@ -215,10 +235,14 @@ export default function CursoDetalhePage() {
         }
         try {
             setSaving(true);
+            const maHours = form.availableInMA ? Number(form.stateConfig?.MA?.workloadHours) : 0;
+            const piHours = form.availableInPI ? Number(form.stateConfig?.PI?.workloadHours) : 0;
+            const legacyWorkload = Math.max(maHours, piHours) || Number(form.workloadHours) || 60;
+
             const payload = {
                 name: form.name.trim(),
                 description: form.description.trim(),
-                workloadHours: Number(form.workloadHours),
+                workloadHours: legacyWorkload,
                 durationDaysMA: Number(form.durationDaysMA),
                 durationDaysPI: Number(form.durationDaysPI),
                 prerequisites: form.prerequisites.trim() || undefined,
@@ -227,6 +251,18 @@ export default function CursoDetalhePage() {
                 availableInPI: form.availableInPI,
                 isMulticourse: form.isMulticourse,
                 active: form.active,
+                stateConfig: {
+                    MA: {
+                        available: form.availableInMA,
+                        durationDays: Number(form.durationDaysMA),
+                        workloadHours: form.availableInMA ? Number(form.stateConfig?.MA?.workloadHours) : undefined,
+                    },
+                    PI: {
+                        available: form.availableInPI,
+                        durationDays: Number(form.durationDaysPI),
+                        workloadHours: form.availableInPI ? Number(form.stateConfig?.PI?.workloadHours) : undefined,
+                    }
+                }
             };
             const updated = await coursesApi.update(id, payload);
             const merged = { ...course, ...(updated as unknown as CourseDetail) };
@@ -333,8 +369,54 @@ export default function CursoDetalhePage() {
                                 <input className="form-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
                             </div>
                             <div>
-                                <label className="form-label">Carga Horária (h) *</label>
-                                <input className="form-input" type="number" min={1} value={form.workloadHours} onChange={e => setForm(f => ({ ...f, workloadHours: e.target.value }))} />
+                                <label className="form-label">Carga Horária MA (h) *</label>
+                                <input 
+                                    className="form-input" 
+                                    type="number" 
+                                    min={1} 
+                                    disabled={!form.availableInMA}
+                                    value={form.stateConfig?.MA?.workloadHours ?? ''} 
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        setForm(f => ({
+                                            ...f,
+                                            stateConfig: {
+                                                ...f.stateConfig,
+                                                MA: { 
+                                                    available: f.availableInMA,
+                                                    durationDays: Number(f.durationDaysMA),
+                                                    workloadHours: val !== '' ? Number(val) : undefined 
+                                                },
+                                                PI: f.stateConfig?.PI || { available: f.availableInPI, durationDays: Number(f.durationDaysPI), workloadHours: Number(f.workloadHours) }
+                                            }
+                                        }));
+                                    }} 
+                                />
+                            </div>
+                            <div>
+                                <label className="form-label">Carga Horária PI (h) *</label>
+                                <input 
+                                    className="form-input" 
+                                    type="number" 
+                                    min={1} 
+                                    disabled={!form.availableInPI}
+                                    value={form.stateConfig?.PI?.workloadHours ?? ''} 
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        setForm(f => ({
+                                            ...f,
+                                            stateConfig: {
+                                                ...f.stateConfig,
+                                                MA: f.stateConfig?.MA || { available: f.availableInMA, durationDays: Number(f.durationDaysMA), workloadHours: Number(f.workloadHours) },
+                                                PI: { 
+                                                    available: f.availableInPI,
+                                                    durationDays: Number(f.durationDaysPI),
+                                                    workloadHours: val !== '' ? Number(val) : undefined 
+                                                }
+                                            }
+                                        }));
+                                    }} 
+                                />
                             </div>
                             <div>
                                 <label className="form-label">Duração MA (dias) *</label>
@@ -359,11 +441,49 @@ export default function CursoDetalhePage() {
                         </div>
                         <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: '#374151' }}>
-                                <input type="checkbox" checked={form.availableInMA} onChange={e => setForm(f => ({ ...f, availableInMA: e.target.checked }))} />
+                                <input 
+                                    type="checkbox" 
+                                    checked={form.availableInMA} 
+                                    onChange={e => {
+                                        const checked = e.target.checked;
+                                        setForm(f => ({ 
+                                            ...f, 
+                                            availableInMA: checked,
+                                            stateConfig: {
+                                                ...f.stateConfig,
+                                                MA: { 
+                                                    available: checked,
+                                                    durationDays: Number(f.durationDaysMA),
+                                                    workloadHours: f.stateConfig?.MA?.workloadHours ?? Number(f.workloadHours)
+                                                },
+                                                PI: f.stateConfig?.PI || { available: f.availableInPI, durationDays: Number(f.durationDaysPI), workloadHours: Number(f.workloadHours) }
+                                            }
+                                        }));
+                                    }} 
+                                />
                                 Disponível no MA
                             </label>
                             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: '#374151' }}>
-                                <input type="checkbox" checked={form.availableInPI} onChange={e => setForm(f => ({ ...f, availableInPI: e.target.checked }))} />
+                                <input 
+                                    type="checkbox" 
+                                    checked={form.availableInPI} 
+                                    onChange={e => {
+                                        const checked = e.target.checked;
+                                        setForm(f => ({ 
+                                            ...f, 
+                                            availableInPI: checked,
+                                            stateConfig: {
+                                                ...f.stateConfig,
+                                                MA: f.stateConfig?.MA || { available: f.availableInMA, durationDays: Number(f.durationDaysMA), workloadHours: Number(f.workloadHours) },
+                                                PI: { 
+                                                    available: checked,
+                                                    durationDays: Number(f.durationDaysPI),
+                                                    workloadHours: f.stateConfig?.PI?.workloadHours ?? Number(f.workloadHours)
+                                                }
+                                            }
+                                        }));
+                                    }} 
+                                />
                                 Disponível no PI
                             </label>
                             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: '#374151' }}>
@@ -381,7 +501,8 @@ export default function CursoDetalhePage() {
                 {/* Stats grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', padding: '1rem 1.5rem', gap: '0.75rem' }}>
                     {[
-                        { icon: <ClockIcon style={{ width: 16, height: 16 }} />, label: 'Carga Horária', value: course.workloadHours, displayValue: `${course.workloadHours}h`, color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
+                        { icon: <ClockIcon style={{ width: 16, height: 16 }} />, label: 'Carga Horária MA', value: course.stateConfig?.MA?.workloadHours ?? course.workloadHours, displayValue: `${course.stateConfig?.MA?.workloadHours ?? course.workloadHours}h`, color: '#B89B00', bg: '#FFFDE7', border: '#FEF08A' },
+                        { icon: <ClockIcon style={{ width: 16, height: 16 }} />, label: 'Carga Horária PI', value: course.stateConfig?.PI?.workloadHours ?? course.workloadHours, displayValue: `${course.stateConfig?.PI?.workloadHours ?? course.workloadHours}h`, color: '#D97706', bg: '#FFFBEB', border: '#FCD34D' },
                         { icon: <UserGroupIcon style={{ width: 16, height: 16 }} />, label: 'Turmas Ativas', value: activeClasses, displayValue: String(activeClasses), color: '#059669', bg: '#F0FDF4', border: '#BBF7D0' },
                         { icon: <CheckCircleIcon style={{ width: 16, height: 16 }} />, label: 'Total de Turmas', value: classes.length, displayValue: String(classes.length), color: '#0891B2', bg: '#F0F9FF', border: '#BAE6FD' },
                         { icon: <CheckCircleIcon style={{ width: 16, height: 16 }} />, label: 'Módulos', value: modules.length, displayValue: String(modules.length), color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },

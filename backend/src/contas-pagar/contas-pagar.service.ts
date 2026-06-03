@@ -116,6 +116,7 @@ export class ContasPagarService {
         data_fim?: string;
         search?: string;
         includeDeleted?: boolean; // PASSO 3.9: aba excluídos
+        origem?: 'OPERACIONAL' | 'FABRICACAO' | 'TODOS';
         page?: number;
         limit?: number;
     }) {
@@ -125,6 +126,9 @@ export class ContasPagarService {
         if (filters?.tipo_conta) where.tipo_conta = filters.tipo_conta;
         if (filters?.status) where.status = filters.status as ContaPagarStatus;
         if (filters?.cidade) where.cidade = { contains: filters.cidade, mode: 'insensitive' };
+        if (filters?.origem && filters.origem !== 'TODOS') {
+            where.origem = filters.origem as any;
+        }
         if (filters?.data_inicio || filters?.data_fim) {
             where.data_vencimento = {};
             if (filters.data_inicio) where.data_vencimento.gte = new Date(filters.data_inicio);

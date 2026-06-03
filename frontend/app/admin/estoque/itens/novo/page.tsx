@@ -97,14 +97,15 @@ function FormTextarea({ label, ...props }: React.TextareaHTMLAttributes<HTMLText
 }
 
 const CATEGORIAS_OPTS: { value: StockItemCategory; label: string; icon: string }[] = [
-    { value: 'CONSUMIVEL',  label: 'Consumível',   icon: '📦' },
-    { value: 'DIDATICO',    label: 'Didático',     icon: '📘' },
-    { value: 'LIMPEZA',     label: 'Limpeza',      icon: '🧴' },
-    { value: 'EQUIPAMENTO', label: 'Equipamento',  icon: '🔧' },
-    { value: 'EPI',         label: 'EPI',          icon: '🦺' },
-    { value: 'ALIMENTACAO', label: 'Alimentação',  icon: '🍱' },
-    { value: 'ESCRITORIO',  label: 'Escritório',   icon: '✏️' },
-    { value: 'OUTRO',       label: 'Outro',        icon: '❔' },
+    { value: 'CONSUMIVEL',          label: 'Consumível',                icon: '📦' },
+    { value: 'DIDATICO',            label: 'Didático',                  icon: '📘' },
+    { value: 'LIMPEZA',             label: 'Limpeza',                   icon: '🧴' },
+    { value: 'EQUIPAMENTO',         label: 'Equipamento',               icon: '🔧' },
+    { value: 'EPI',                 label: 'EPI',                       icon: '🦺' },
+    { value: 'ALIMENTACAO',         label: 'Alimentação',               icon: '🍱' },
+    { value: 'ESCRITORIO',          label: 'Escritório',                icon: '✏️' },
+    { value: 'MATERIAL_FABRICACAO', label: 'Materiais p/ Fabricação',   icon: '🏭' },
+    { value: 'OUTRO',               label: 'Outro',                     icon: '❔' },
 ];
 
 const UNIDADES_OPTS: { value: string; label: string }[] = [

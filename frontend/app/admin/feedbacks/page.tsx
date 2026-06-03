@@ -659,11 +659,11 @@ export default function AdminFeedbacksList() {
                     })}
                 </div>
                     {totalPages > 1 && (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0', fontSize: '0.78rem' }}>
-                            <span style={{ color: '#6B7280' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem 0', fontSize: '0.78rem' }}>
+                            <span style={{ color: '#6B7280', textAlign: 'center' }}>
                                 {total} feedback{total !== 1 ? 's' : ''} · Página {page}/{totalPages}
                             </span>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                                 <button
                                     type="button"
                                     onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -853,11 +853,11 @@ export default function AdminFeedbacksList() {
                     </div>
 
                     {totalPages > 1 && (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', borderTop: '1px solid #F3F4F6', fontSize: '0.78rem' }}>
-                            <span style={{ color: '#6B7280' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem 1rem', borderTop: '1px solid #F3F4F6', fontSize: '0.78rem' }}>
+                            <span style={{ color: '#6B7280', textAlign: 'center' }}>
                                 {total} feedback{total !== 1 ? 's' : ''} · Página {page}/{totalPages}
                             </span>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                                 <button
                                     onClick={() => setPage(p => Math.max(1, p - 1))}
                                     disabled={page <= 1}
